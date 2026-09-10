@@ -248,7 +248,7 @@ namespace BarrierefreierStundenplan
                 }
                 catch { }
             }
-            return "1.3.2";
+            return "1.3.3";
         }
 
         private static bool IsNewerVersion(string remote, string local)
@@ -627,8 +627,8 @@ namespace BarrierefreierStundenplan
                 return;
             }
 
-            // 5. WebUntis API Proxy Endpoint
-            if (req.HttpMethod == "POST" && rawUrl.StartsWith("/api/webuntis"))
+            // 5. WebUntis API Proxy Endpoint (JSON-RPC & REST, GET & POST)
+            if (rawUrl.StartsWith("/api/webuntis"))
             {
                 ProxyWebUntis(req, resp);
                 return;
@@ -717,42 +717,61 @@ namespace BarrierefreierStundenplan
         {
             try
             {
-                string targetUrl = DEFAULT_WEBUNTIS_URL;
                 string schoolHeader = req.Headers["X-School"];
                 string serverHeader = req.Headers["X-Server"];
-                if (!string.IsNullOrEmpty(schoolHeader) && !string.IsNullOrEmpty(serverHeader))
+                string sessionId = req.Headers["X-JSESSIONID"];
+                string customEndpoint = req.Headers["X-Endpoint"];
+
+                string srv = !string.IsNullOrEmpty(serverHeader) ? serverHeader : "lwl-bk-soest.webuntis.com";
+                string sch = !string.IsNullOrEmpty(schoolHeader) ? schoolHeader : "lwl-bk-soest";
+
+                string targetUrl;
+                if (!string.IsNullOrEmpty(customEndpoint))
                 {
-                    targetUrl = "https://" + serverHeader + "/WebUntis/jsonrpc.do?school=" + schoolHeader;
+                    string ep = customEndpoint.StartsWith("/") ? customEndpoint : "/" + customEndpoint;
+                    string queryChar = ep.Contains("?") ? "&" : "?";
+                    targetUrl = string.Format("https://{0}/WebUntis{1}{2}school={3}", srv, ep, queryChar, sch);
+                }
+                else
+                {
+                    if (!string.IsNullOrEmpty(sessionId))
+                    {
+                        targetUrl = string.Format("https://{0}/WebUntis/jsonrpc.do;jsessionid={1}?school={2}", srv, sessionId, sch);
+                    }
+                    else
+                    {
+                        targetUrl = string.Format("https://{0}/WebUntis/jsonrpc.do?school={1}", srv, sch);
+                    }
                 }
 
                 HttpWebRequest outReq = (HttpWebRequest)WebRequest.Create(targetUrl);
-                outReq.Method = "POST";
-                outReq.ContentType = "application/json; charset=utf-8";
+                outReq.Method = req.HttpMethod;
                 outReq.Timeout = 15000;
+                outReq.UserAgent = "WebUntis/Mobile (Android; de)";
 
-                string sessionId = req.Headers["X-JSESSIONID"];
                 outReq.CookieContainer = new CookieContainer();
                 if (!string.IsNullOrEmpty(sessionId))
                 {
                     try
                     {
-                        outReq.CookieContainer.Add(new Uri(targetUrl), new Cookie("JSESSIONID", sessionId));
+                        Uri targetUri = new Uri(targetUrl);
+                        outReq.CookieContainer.Add(new Cookie("JSESSIONID", sessionId, "/", targetUri.Host));
                     }
                     catch { }
-
-                    string srv = !string.IsNullOrEmpty(serverHeader) ? serverHeader : "lwl-bk-soest.webuntis.com";
-                    string sch = !string.IsNullOrEmpty(schoolHeader) ? schoolHeader : "lwl-bk-soest";
-                    targetUrl = string.Format("https://{0}/WebUntis/jsonrpc.do;jsessionid={1}?school={2}", srv, sessionId, sch);
                 }
 
-                using (Stream inStream = req.InputStream)
-                using (Stream outStream = outReq.GetRequestStream())
+                if (req.HttpMethod == "POST")
                 {
-                    byte[] buffer = new byte[4096];
-                    int read;
-                    while ((read = inStream.Read(buffer, 0, buffer.Length)) > 0)
+                    outReq.ContentType = "application/json; charset=utf-8";
+                    using (Stream inStream = req.InputStream)
+                    using (Stream outStream = outReq.GetRequestStream())
                     {
-                        outStream.Write(buffer, 0, read);
+                        byte[] buffer = new byte[4096];
+                        int read;
+                        while ((read = inStream.Read(buffer, 0, buffer.Length)) > 0)
+                        {
+                            outStream.Write(buffer, 0, read);
+                        }
                     }
                 }
 
@@ -764,7 +783,7 @@ namespace BarrierefreierStundenplan
                     byte[] data = ms.ToArray();
 
                     resp.StatusCode = (int)outResp.StatusCode;
-                    resp.ContentType = "application/json; charset=utf-8";
+                    resp.ContentType = outResp.ContentType ?? "application/json; charset=utf-8";
 
                     string setCookie = outResp.Headers["Set-Cookie"];
                     if (!string.IsNullOrEmpty(setCookie))
