@@ -1747,6 +1747,41 @@ function initApp() {
   loadAppData();
   updateTodayBadge();
 
+  // 1. Alt+F4 Sofort-Beenden Erkennung (Capture-Phase, gilt überall)
+  window.addEventListener('keydown', e => {
+    if (e.altKey && (e.key === 'F4' || e.code === 'F4' || e.keyCode === 115)) {
+      try {
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon('/api/shutdown');
+        } else {
+          fetch('/api/shutdown', { method: 'POST', keepalive: true }).catch(() => {});
+        }
+      } catch (_) {}
+    }
+  }, true);
+
+  // 2. Fenster schließen Signal (Alt+F4, Schließen-Kreuz, Tab-Schließen)
+  function sendWindowClosingSignal() {
+    try {
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon('/api/window_closing');
+      } else {
+        fetch('/api/window_closing', { method: 'POST', keepalive: true }).catch(() => {});
+      }
+    } catch (_) {}
+  }
+  window.addEventListener('pagehide', sendWindowClosingSignal);
+  window.addEventListener('beforeunload', sendWindowClosingSignal);
+
+  // 3. Kontinuierlicher Heartbeat alle 2.5 Sekunden mit Sichtbarkeitsstatus
+  function sendHeartbeat() {
+    const vis = document.visibilityState || 'visible';
+    fetch('/api/ping?v=' + encodeURIComponent(vis)).catch(() => {});
+  }
+  setInterval(sendHeartbeat, 2500);
+  document.addEventListener('visibilitychange', sendHeartbeat);
+  sendHeartbeat();
+
   // Tastaturnavigation
   window.addEventListener('keydown', e => {
     if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
@@ -1905,7 +1940,7 @@ async function sendUserFeedback(e) {
   const email = (emailEl && emailEl.value.trim()) ? emailEl.value.trim() : 'Keine E-Mail angegeben';
   const message = textEl.value.trim();
   const now = new Date().toLocaleString('de-DE');
-  const appVer = document.getElementById('app-version-display') ? document.getElementById('app-version-display').textContent : 'v1.3.0';
+  const appVer = document.getElementById('app-version-display') ? document.getElementById('app-version-display').textContent : 'v1.3.1';
 
   if (submitBtn) {
     submitBtn.disabled = true;

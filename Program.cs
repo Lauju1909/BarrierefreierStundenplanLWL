@@ -38,6 +38,14 @@ namespace BarrierefreierStundenplan
         private static Assembly _assembly;
         private static ManualResetEvent _exitEvent = new ManualResetEvent(false);
 
+        // State für automatisches Beenden bei Alt+F4 / Fensterschließen
+        private static readonly object _shutdownLock = new object();
+        private static System.Threading.Timer _closingTimer = null;
+        private static bool _closingPending = false;
+        private static DateTime _lastActivity = DateTime.UtcNow;
+        private static bool _pageHasLoaded = false;
+        private static bool _isWindowHidden = false;
+
         [STAThread]
         static void Main()
         {
@@ -128,13 +136,36 @@ namespace BarrierefreierStundenplan
                 updateTimerThread.IsBackground = true;
                 updateTimerThread.Start();
 
+                // 7. Watchdog für automatisches Beenden bei Fensterschließen / Alt+F4
+                Thread watchdogThread = new Thread(() =>
+                {
+                    while (_isRunning)
+                    {
+                        Thread.Sleep(2000);
+                        if (!_isRunning) break;
+                        lock (_shutdownLock)
+                        {
+                            // Sobald die Seite mindestens einmal geladen wurde und im sichtbaren Fenster
+                            // seit über 8 Sekunden kein Signal mehr empfangen wurde: Beenden
+                            if (_pageHasLoaded && !_isWindowHidden && (DateTime.UtcNow - _lastActivity).TotalSeconds > 8)
+                            {
+                                Environment.Exit(0);
+                                break;
+                            }
+                        }
+                    }
+                });
+                watchdogThread.IsBackground = true;
+                watchdogThread.Start();
+
                 string launchUrl = "http://127.0.0.1:" + _activePort + "/index.html";
 
-                // 7. Browser öffnen
+                // 8. Browser öffnen
                 LaunchBestBrowser(launchUrl);
 
-                // 8. Blockieren bis Beenden-Signal
+                // 9. Blockieren bis Beenden-Signal
                 _exitEvent.WaitOne();
+                Environment.Exit(0);
             }
             catch (Exception ex)
             {
@@ -217,7 +248,7 @@ namespace BarrierefreierStundenplan
                 }
                 catch { }
             }
-            return "1.3.0";
+            return "1.3.1";
         }
 
         private static bool IsNewerVersion(string remote, string local)
@@ -343,9 +374,47 @@ namespace BarrierefreierStundenplan
 
             string rawUrl = req.RawUrl.Split('?')[0];
 
-            // 1. Health-Check / Ping
+            // Aktivität registrieren (hält Watchdog aktiv)
+            if (rawUrl != "/api/window_closing" && rawUrl != "/api/shutdown")
+            {
+                lock (_shutdownLock)
+                {
+                    _lastActivity = DateTime.UtcNow;
+                    _pageHasLoaded = true;
+                }
+            }
+
+            // Nur wenn die HTML-Hauptseite neu geladen wird (z. B. bei F5/Reload),
+            // wird ein anstehender Schließ-Timer storniert:
+            if (rawUrl == "/index.html" || rawUrl == "/")
+            {
+                lock (_shutdownLock)
+                {
+                    if (_closingPending)
+                    {
+                        _closingPending = false;
+                        if (_closingTimer != null)
+                        {
+                            try { _closingTimer.Dispose(); } catch { }
+                            _closingTimer = null;
+                        }
+                    }
+                }
+            }
+
+            // 1. Health-Check / Ping / Heartbeat
             if (rawUrl == "/api/ping")
             {
+                string q = req.Url != null ? req.Url.Query : "";
+                if (!string.IsNullOrEmpty(q) && q.IndexOf("hidden", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    lock (_shutdownLock) { _isWindowHidden = true; }
+                }
+                else
+                {
+                    lock (_shutdownLock) { _isWindowHidden = false; }
+                }
+
                 resp.StatusCode = 200;
                 resp.ContentType = "application/json";
                 byte[] pong = Encoding.UTF8.GetBytes("{\"status\":\"ok\"}");
@@ -354,7 +423,37 @@ namespace BarrierefreierStundenplan
                 return;
             }
 
-            // 2. Beenden-Signal
+            // 2. Fenster wird geschlossen / Entladen (Alt+F4, Kreuz oder Tab schließen)
+            if (rawUrl == "/api/window_closing")
+            {
+                resp.StatusCode = 200;
+                resp.ContentType = "application/json";
+                byte[] bye = Encoding.UTF8.GetBytes("{\"status\":\"closing_scheduled\"}");
+                resp.OutputStream.Write(bye, 0, bye.Length);
+                resp.Close();
+
+                lock (_shutdownLock)
+                {
+                    _closingPending = true;
+                    if (_closingTimer != null)
+                    {
+                        try { _closingTimer.Dispose(); } catch { }
+                    }
+                    _closingTimer = new System.Threading.Timer((_) =>
+                    {
+                        lock (_shutdownLock)
+                        {
+                            if (_closingPending)
+                            {
+                                Environment.Exit(0);
+                            }
+                        }
+                    }, null, 1500, Timeout.Infinite);
+                }
+                return;
+            }
+
+            // 3. Sofortiges Beenden-Signal (Alt+F4 Tastendruck oder Beenden-Button)
             if (rawUrl == "/api/shutdown")
             {
                 resp.StatusCode = 200;
@@ -365,8 +464,8 @@ namespace BarrierefreierStundenplan
 
                 ThreadPool.QueueUserWorkItem((_) =>
                 {
-                    Thread.Sleep(600);
-                    _exitEvent.Set();
+                    Thread.Sleep(150);
+                    Environment.Exit(0);
                 });
                 return;
             }
