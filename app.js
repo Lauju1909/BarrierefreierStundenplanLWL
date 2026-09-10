@@ -263,6 +263,18 @@ function speak(text, force = false) {
   }
 }
 
+// Hilfsfunktion: HTML-Zeichen sicher maskieren
+function escHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+
 // =============================================================================
 // 4. NAVIGATION & REITER-WECHSEL (TASTEN 1 BIS 5)
 // =============================================================================
@@ -2288,41 +2300,69 @@ function openLessonDetails(lessonId) {
   const modal = document.getElementById('modal-lesson-details');
   if (!modal) return;
 
-  // Titel
-  const titleEl = modal.querySelector('.modal-title') || modal.querySelector('h2');
-  if (titleEl) titleEl.textContent = lesson.subject || 'Stunde';
-
-  // Zeile: Zeit
-  const setDetail = (selector, value) => {
-    const el = modal.querySelector(selector);
-    if (el) el.textContent = value || '–';
-  };
-
   const fmtTime = t => {
     if (!t) return '–';
     const s = String(t).padStart(4, '0');
     return s.slice(0, 2) + ':' + s.slice(2);
   };
 
-  setDetail('#detail-time',    `${fmtTime(lesson.startTime)} – ${fmtTime(lesson.endTime)}`);
-  setDetail('#detail-date',    lesson.dateStr || '–');
-  setDetail('#detail-room',    lesson.room    || '–');
-  setDetail('#detail-teacher', lesson.teacher || '–');
-  setDetail('#detail-subject', lesson.subject || '–');
-  setDetail('#detail-lstext',  lesson.lstext  || 'Kein Lehrstoff eingetragen.');
-  setDetail('#detail-homework', lesson.homework
+  const hwText = lesson.homework
     ? (Array.isArray(lesson.homework)
-        ? lesson.homework.map(h => `${h.subject}: ${h.description}`).join(' | ')
-        : lesson.homework)
-    : 'Keine Hausaufgaben eingetragen.');
+        ? lesson.homework.map(h => `${escHtml(h.subject || '')}: ${escHtml(h.description || '')}`).join('<br>')
+        : escHtml(String(lesson.homework)))
+    : 'Keine Hausaufgaben eingetragen.';
+
+  const lstextText = lesson.lstext
+    ? escHtml(lesson.lstext)
+    : 'Kein Lehrstoff eingetragen.';
+
+  // Titel setzen
+  const titleEl = modal.querySelector('.modal-title');
+  if (titleEl) titleEl.textContent = lesson.subject || 'Stunde';
+
+  // Modal-Body dynamisch befüllen
+  const body = document.getElementById('modal-lesson-body');
+  if (body) {
+    body.innerHTML = `
+      <dl class="modal-detail-list">
+        <div class="modal-detail-row">
+          <dt class="modal-detail-label">📘 Fach</dt>
+          <dd class="modal-detail-content" data-key="subject">${escHtml(lesson.subject || '–')}</dd>
+        </div>
+        <div class="modal-detail-row">
+          <dt class="modal-detail-label">📅 Datum</dt>
+          <dd class="modal-detail-content" data-key="date">${escHtml(lesson.dateStr || '–')}</dd>
+        </div>
+        <div class="modal-detail-row">
+          <dt class="modal-detail-label">⏰ Zeit</dt>
+          <dd class="modal-detail-content" data-key="time">${fmtTime(lesson.startTime)} – ${fmtTime(lesson.endTime)}</dd>
+        </div>
+        <div class="modal-detail-row">
+          <dt class="modal-detail-label">🏫 Raum</dt>
+          <dd class="modal-detail-content" data-key="room">${escHtml(lesson.room || '–')}</dd>
+        </div>
+        <div class="modal-detail-row">
+          <dt class="modal-detail-label">👤 Lehrer</dt>
+          <dd class="modal-detail-content" data-key="teacher">${escHtml(lesson.teacher || '–')}</dd>
+        </div>
+        <div class="modal-detail-row">
+          <dt class="modal-detail-label">📝 Lehrstoff</dt>
+          <dd class="modal-detail-content" data-key="lstext">${lstextText}</dd>
+        </div>
+        <div class="modal-detail-row">
+          <dt class="modal-detail-label">📚 Hausaufgaben</dt>
+          <dd class="modal-detail-content" data-key="homework">${hwText}</dd>
+        </div>
+      </dl>`;
+  }
 
   modal.style.display = 'flex';
   modal.setAttribute('aria-hidden', 'false');
 
   // Fokus auf Schließen-Button setzen
-  const closeBtn = modal.querySelector('.modal-close-btn, [data-action="close"]');
+  const closeBtn = modal.querySelector('.modal-close-btn');
   if (closeBtn) closeBtn.focus();
-  else modal.focus();
+  else modal.setAttribute('tabindex', '-1'), modal.focus();
 }
 
 function closeLessonDetails() {
@@ -2342,7 +2382,6 @@ function handleLessonKeydown(event, lessonId) {
 function handleModalBackdropClick(event) {
   const modal = document.getElementById('modal-lesson-details');
   if (!modal) return;
-  // Schließen, wenn direkt auf den Backdrop (nicht auf die Karte) geklickt wurde
   if (event.target === modal) {
     closeLessonDetails();
   }
@@ -2352,18 +2391,18 @@ function speakCurrentLessonDetails() {
   const modal = document.getElementById('modal-lesson-details');
   if (!modal || modal.style.display === 'none') return;
 
-  const get = sel => {
-    const el = modal.querySelector(sel);
+  const getVal = key => {
+    const el = modal.querySelector(`[data-key="${key}"]`);
     return el ? el.textContent.trim() : '';
   };
 
-  const subject  = get('.modal-title, h2');
-  const date     = get('#detail-date');
-  const time     = get('#detail-time');
-  const room     = get('#detail-room');
-  const teacher  = get('#detail-teacher');
-  const lstext   = get('#detail-lstext');
-  const homework = get('#detail-homework');
+  const subject  = getVal('subject');
+  const date     = getVal('date');
+  const time     = getVal('time');
+  const room     = getVal('room');
+  const teacher  = getVal('teacher');
+  const lstext   = getVal('lstext');
+  const homework = getVal('homework');
 
   let text = `Stunden-Details: ${subject}. `;
   if (date)     text += `Datum: ${date}. `;
@@ -2398,15 +2437,38 @@ function renderHomework() {
       return new Date(h.dueDate) < today;
     });
   }
-  // 'all' → alles
+  // 'all' und 'classbook' → alles (classbook zeigt Klassenbuch separat)
 
-  // Klassenbuch-Einträge anhängen (falls vorhanden)
+  // Klassenbuch-Einträge
   const classbook = appData.classbook || [];
 
-  // Filter-Button-Zustand aktualisieren
-  document.querySelectorAll('.hw-filter-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.filter === filter);
-    btn.setAttribute('aria-pressed', String(btn.dataset.filter === filter));
+  // Zählbadges aktualisieren
+  const allHw = appData.homework || [];
+  const pendingCount   = allHw.filter(h => !h.completed).length;
+  const completedCount = allHw.filter(h => h.completed).length;
+  const classbookCount = classbook.length;
+  const countAllEl  = document.getElementById('hw-count-all');
+  const countPendEl = document.getElementById('hw-count-pending');
+  const countCompEl = document.getElementById('hw-count-completed');
+  const countCbEl   = document.getElementById('hw-count-classbook');
+  if (countAllEl)  countAllEl.textContent  = String(allHw.length);
+  if (countPendEl) countPendEl.textContent = String(pendingCount);
+  if (countCompEl) countCompEl.textContent = String(completedCount);
+  if (countCbEl)   countCbEl.textContent   = String(classbookCount);
+
+  // Filter-Button aktiv-Zustand über Button-IDs setzen
+  const filterMap = {
+    'pending':   'hw-filter-pending',
+    'all':       'hw-filter-all',
+    'completed': 'hw-filter-completed',
+    'classbook': 'hw-filter-classbook'
+  };
+  Object.entries(filterMap).forEach(([f, id]) => {
+    const btn = document.getElementById(id);
+    if (btn) {
+      btn.classList.toggle('active', f === filter);
+      btn.setAttribute('aria-pressed', String(f === filter));
+    }
   });
 
   if (items.length === 0 && classbook.length === 0) {
@@ -2520,11 +2582,11 @@ function renderAbsences() {
 
   const absences = appData.absences || [];
 
-  // Statistik-Karten aktualisieren
-  const totalEl    = document.getElementById('abs-stat-total');
-  const excusedEl  = document.getElementById('abs-stat-excused');
-  const openEl     = document.getElementById('abs-stat-open');
-  const minutesEl  = document.getElementById('abs-stat-minutes');
+  // Statistik-Karten aktualisieren (IDs aus index.html)
+  const totalEl    = document.getElementById('stat-absence-days');
+  const hoursEl    = document.getElementById('stat-absence-hours');
+  const excusedEl  = document.getElementById('stat-absence-excused');
+  const openEl     = document.getElementById('stat-absence-unexcused');
 
   const total    = absences.length;
   const excused  = absences.filter(a => a.isExcused).length;
@@ -2537,13 +2599,14 @@ function renderAbsences() {
     }
     return sum + 45; // Annahme: 1 Stunde = 45 min
   }, 0);
+  const hours = Math.round(minutes / 45); // Fehlstunden (à 45 min)
 
   if (totalEl)    totalEl.textContent    = String(total);
+  if (hoursEl)    hoursEl.textContent    = String(hours);
+
   if (excusedEl)  excusedEl.textContent  = String(excused);
   if (openEl)     openEl.textContent     = String(open);
-  if (minutesEl)  minutesEl.textContent  = minutes >= 60
-    ? `${Math.floor(minutes/60)}h ${minutes%60}min`
-    : `${minutes} min`;
+
 
   if (absences.length === 0) {
     container.innerHTML = `
@@ -2630,10 +2693,11 @@ function openSponsorLink() {
 }
 
 function saveSponsorSettings() {
-  const titleEl   = document.getElementById('sponsor-title-input');
-  const descEl    = document.getElementById('sponsor-desc-input');
-  const urlEl     = document.getElementById('sponsor-url-input');
-  const visibleEl = document.getElementById('sponsor-visible-toggle');
+  // IDs aus index.html: cfg-sponsor-title, cfg-sponsor-desc, cfg-sponsor-url, cfg-sponsor-visible
+  const titleEl   = document.getElementById('cfg-sponsor-title');
+  const descEl    = document.getElementById('cfg-sponsor-desc');
+  const urlEl     = document.getElementById('cfg-sponsor-url');
+  const visibleEl = document.getElementById('cfg-sponsor-visible');
 
   if (titleEl)   appData.config.sponsorTitle   = titleEl.value.trim();
   if (descEl)    appData.config.sponsorDesc    = descEl.value.trim();
