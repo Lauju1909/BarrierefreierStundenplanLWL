@@ -1,0 +1,11 @@
+﻿# Logs & Temp
+*.log
+*.tmp
+*.bak
+Profile_App/
+__pycache__/
+*.pyc
+
+# Local config cache if any
+*.suo
+*.user

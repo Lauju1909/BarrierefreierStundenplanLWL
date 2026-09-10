@@ -1,0 +1,614 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Windows.Forms;
+
+namespace BarrierefreierStundenplan
+{
+    static class Program
+    {
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr GetConsoleWindow();
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        private const int SW_HIDE = 0;
+        private const int DEFAULT_PORT = 48250;
+        private static int _activePort = DEFAULT_PORT;
+        private const string DEFAULT_WEBUNTIS_URL = "https://lwl-bk-soest.webuntis.com/WebUntis/jsonrpc.do?school=lwl-bk-soest";
+        
+        // GitHub Auto-Updater Konfiguration
+        private const string GITHUB_REPO = "Lauju1909/BarrierefreierStundenplanLWL";
+        private const string GITHUB_RAW_BASE = "https://raw.githubusercontent.com/" + GITHUB_REPO + "/main";
+        private const string VERSION_URL = GITHUB_RAW_BASE + "/version.json";
+
+        private static HttpListener _listener;
+        private static bool _isRunning = true;
+        private static string _baseDir;
+        private static Assembly _assembly;
+        private static ManualResetEvent _exitEvent = new ManualResetEvent(false);
+
+        [STAThread]
+        static void Main()
+        {
+            // 1. Konsole sofort unsichtbar machen
+            try
+            {
+                IntPtr consoleHwnd = GetConsoleWindow();
+                if (consoleHwnd != IntPtr.Zero)
+                {
+                    ShowWindow(consoleHwnd, SW_HIDE);
+                }
+            }
+            catch { }
+
+            _baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            _assembly = Assembly.GetExecutingAssembly();
+
+            // 2. Prüfen, ob bereits eine Instanz auf Port 48250 lauscht
+            if (IsPortInUse(DEFAULT_PORT))
+            {
+                LaunchBestBrowser("http://127.0.0.1:" + DEFAULT_PORT + "/index.html");
+                return;
+            }
+
+            try
+            {
+                try
+                {
+                    ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072 | (SecurityProtocolType)12288 | SecurityProtocolType.Tls12;
+                }
+                catch { }
+
+                // 3. Starte HttpListener mit Port-Fallback
+                bool serverStarted = false;
+                for (int p = DEFAULT_PORT; p <= DEFAULT_PORT + 5; p++)
+                {
+                    try
+                    {
+                        _listener = new HttpListener();
+                        _listener.Prefixes.Add("http://127.0.0.1:" + p + "/");
+                        _listener.Start();
+                        _activePort = p;
+                        serverStarted = true;
+                        break;
+                    }
+                    catch
+                    {
+                        try { _listener.Close(); } catch { }
+                    }
+                }
+
+                if (!serverStarted)
+                {
+                    MessageBox.Show("Der lokale Webserver konnte nicht gestartet werden. Bitte starte deinen Rechner neu.",
+                        "Stundenplan LWL", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // 4. Server-Thread im Hintergrund starten
+                Thread serverThread = new Thread(ListenLoop);
+                serverThread.IsBackground = true;
+                serverThread.Start();
+
+                // 5. Asynchronen Auto-Update-Check beim Start ausführen
+                CheckAndApplyUpdateAsync();
+
+                // 6. Periodischer Hintergrund-Update-Check alle 30 Minuten
+                Thread updateTimerThread = new Thread(() =>
+                {
+                    while (_isRunning)
+                    {
+                        Thread.Sleep(30 * 60 * 1000);
+                        if (!_isRunning) break;
+                        try { CheckAndApplyUpdate(); } catch { }
+                    }
+                });
+                updateTimerThread.IsBackground = true;
+                updateTimerThread.Start();
+
+                string launchUrl = "http://127.0.0.1:" + _activePort + "/index.html";
+
+                // 7. Browser öffnen
+                LaunchBestBrowser(launchUrl);
+
+                // 8. Blockieren bis Beenden-Signal
+                _exitEvent.WaitOne();
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "error.log"), ex.ToString());
+                }
+                catch { }
+                MessageBox.Show("Hinweis beim Starten des Stundenplans: " + ex.Message,
+                    "LWL Berufskolleg Soest", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            finally
+            {
+                _isRunning = false;
+                if (_listener != null && _listener.IsListening)
+                {
+                    try { _listener.Stop(); } catch { }
+                    try { _listener.Close(); } catch { }
+                }
+            }
+        }
+
+        private static bool IsPortInUse(int port)
+        {
+            try
+            {
+                using (TcpClient tcp = new TcpClient())
+                {
+                    IAsyncResult ar = tcp.BeginConnect("127.0.0.1", port, null, null);
+                    bool success = ar.AsyncWaitHandle.WaitOne(300, false);
+                    if (success && tcp.Connected)
+                    {
+                        tcp.EndConnect(ar);
+                        return true;
+                    }
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        public static string GetLocalVersion()
+        {
+            string vPath = Path.Combine(_baseDir, "version.json");
+            if (File.Exists(vPath))
+            {
+                try
+                {
+                    string txt = File.ReadAllText(vPath, Encoding.UTF8);
+                    Match m = Regex.Match(txt, "\"version\"\\s*:\\s*\"v?([^\"]+)\"");
+                    if (m.Success) return m.Groups[1].Value.Trim();
+                }
+                catch { }
+            }
+            return "1.0.0";
+        }
+
+        private static bool IsNewerVersion(string remote, string local)
+        {
+            try
+            {
+                Version r = new Version(remote.Trim('v', 'V'));
+                Version l = new Version(local.Trim('v', 'V'));
+                return r > l;
+            }
+            catch
+            {
+                return !string.Equals(remote.Trim(), local.Trim(), StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        private static void CheckAndApplyUpdateAsync()
+        {
+            ThreadPool.QueueUserWorkItem((_) =>
+            {
+                try
+                {
+                    CheckAndApplyUpdate();
+                }
+                catch { }
+            });
+        }
+
+        public static bool CheckAndApplyUpdate()
+        {
+            try
+            {
+                string localVer = GetLocalVersion();
+                long ticks = DateTime.UtcNow.Ticks;
+                string verUrl = VERSION_URL + "?t=" + ticks;
+
+                using (var client = new WebClient())
+                {
+                    client.Headers.Add("User-Agent", "StundenplanLWL-AutoUpdater");
+                    client.Headers.Add("Cache-Control", "no-cache");
+                    client.Headers.Add("Pragma", "no-cache");
+
+                    string remoteJson = client.DownloadString(verUrl);
+                    Match m = Regex.Match(remoteJson, "\"version\"\\s*:\\s*\"v?([^\"]+)\"");
+                    if (!m.Success) return false;
+
+                    string remoteVer = m.Groups[1].Value.Trim();
+                    if (IsNewerVersion(remoteVer, localVer))
+                    {
+                        string[] filesToUpdate = new string[] { "index.html", "style.css", "app.js" };
+                        Dictionary<string, string> downloadedContent = new Dictionary<string, string>();
+
+                        foreach (string f in filesToUpdate)
+                        {
+                            try
+                            {
+                                string fileUrl = GITHUB_RAW_BASE + "/" + f + "?t=" + ticks;
+                                string content = client.DownloadString(fileUrl);
+                                if (!string.IsNullOrEmpty(content) && content.Length > 200)
+                                {
+                                    downloadedContent[f] = content;
+                                }
+                                else
+                                {
+                                    return false;
+                                }
+                            }
+                            catch
+                            {
+                                return false;
+                            }
+                        }
+
+                        if (downloadedContent.Count == filesToUpdate.Length)
+                        {
+                            foreach (var kvp in downloadedContent)
+                            {
+                                string targetPath = Path.Combine(_baseDir, kvp.Key);
+                                string tmpPath = targetPath + ".tmp";
+                                File.WriteAllText(tmpPath, kvp.Value, Encoding.UTF8);
+                                File.Copy(tmpPath, targetPath, true);
+                                try { File.Delete(tmpPath); } catch { }
+                            }
+
+                            string verTarget = Path.Combine(_baseDir, "version.json");
+                            File.WriteAllText(verTarget, remoteJson, Encoding.UTF8);
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch { }
+            return false;
+        }
+
+        private static void ListenLoop()
+        {
+            while (_isRunning && _listener != null && _listener.IsListening)
+            {
+                try
+                {
+                    HttpListenerContext context = _listener.GetContext();
+                    ThreadPool.QueueUserWorkItem((ctx) => HandleRequest((HttpListenerContext)ctx), context);
+                }
+                catch
+                {
+                    if (!_isRunning) break;
+                }
+            }
+        }
+
+        private static void HandleRequest(HttpListenerContext context)
+        {
+            HttpListenerRequest req = context.Request;
+            HttpListenerResponse resp = context.Response;
+
+            resp.Headers["Access-Control-Allow-Origin"] = "*";
+            resp.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
+            resp.Headers["Access-Control-Allow-Headers"] = "Content-Type, X-School, X-Server, X-JSESSIONID";
+
+            if (req.HttpMethod == "OPTIONS")
+            {
+                resp.StatusCode = 200;
+                resp.Close();
+                return;
+            }
+
+            string rawUrl = req.RawUrl.Split('?')[0];
+
+            // 1. Health-Check / Ping
+            if (rawUrl == "/api/ping")
+            {
+                resp.StatusCode = 200;
+                resp.ContentType = "application/json";
+                byte[] pong = Encoding.UTF8.GetBytes("{\"status\":\"ok\"}");
+                resp.OutputStream.Write(pong, 0, pong.Length);
+                resp.Close();
+                return;
+            }
+
+            // 2. Beenden-Signal
+            if (rawUrl == "/api/shutdown")
+            {
+                resp.StatusCode = 200;
+                resp.ContentType = "application/json";
+                byte[] bye = Encoding.UTF8.GetBytes("{\"status\":\"shutting_down\"}");
+                resp.OutputStream.Write(bye, 0, bye.Length);
+                resp.Close();
+
+                ThreadPool.QueueUserWorkItem((_) =>
+                {
+                    Thread.Sleep(600);
+                    _exitEvent.Set();
+                });
+                return;
+            }
+
+            // 3. Version & Auto-Update API
+            if (rawUrl == "/api/version")
+            {
+                resp.StatusCode = 200;
+                resp.ContentType = "application/json; charset=utf-8";
+                string vPath = Path.Combine(_baseDir, "version.json");
+                byte[] vData;
+                if (File.Exists(vPath))
+                {
+                    vData = File.ReadAllBytes(vPath);
+                }
+                else
+                {
+                    vData = Encoding.UTF8.GetBytes(string.Format("{{\"version\":\"{0}\",\"name\":\"Barrierefreier Stundenplan LWL\"}}", GetLocalVersion()));
+                }
+                resp.OutputStream.Write(vData, 0, vData.Length);
+                resp.Close();
+                return;
+            }
+
+            if (rawUrl == "/api/update/check")
+            {
+                bool updated = CheckAndApplyUpdate();
+                string curVer = GetLocalVersion();
+                resp.StatusCode = 200;
+                resp.ContentType = "application/json; charset=utf-8";
+                byte[] resData = Encoding.UTF8.GetBytes(string.Format("{{\"updated\":{0},\"currentVersion\":\"{1}\"}}", updated ? "true" : "false", curVer));
+                resp.OutputStream.Write(resData, 0, resData.Length);
+                resp.Close();
+                return;
+            }
+
+            // 4. WebUntis API Proxy Endpoint
+            if (req.HttpMethod == "POST" && rawUrl.StartsWith("/api/webuntis"))
+            {
+                ProxyWebUntis(req, resp);
+                return;
+            }
+
+            // 5. Integrierte statische Dateien (HTML, CSS, JS) aus Disk oder EXE servieren
+            string filename = rawUrl.TrimStart('/');
+            if (string.IsNullOrEmpty(filename) || filename == "/")
+            {
+                filename = "index.html";
+            }
+
+            string contentType;
+            byte[] content = GetFileOrResourceBytes(filename, out contentType);
+            if (content != null)
+            {
+                resp.StatusCode = 200;
+                resp.ContentType = contentType;
+                resp.ContentLength64 = content.Length;
+                resp.OutputStream.Write(content, 0, content.Length);
+                resp.OutputStream.Flush();
+                resp.Close();
+            }
+            else
+            {
+                resp.StatusCode = 404;
+                byte[] notFound = Encoding.UTF8.GetBytes("Datei nicht gefunden");
+                resp.OutputStream.Write(notFound, 0, notFound.Length);
+                resp.Close();
+            }
+        }
+
+        private static byte[] GetFileOrResourceBytes(string filename, out string contentType)
+        {
+            contentType = "text/html; charset=utf-8";
+            string ext = Path.GetExtension(filename).ToLower();
+            if (ext == ".css") contentType = "text/css; charset=utf-8";
+            else if (ext == ".js") contentType = "application/javascript; charset=utf-8";
+            else if (ext == ".json") contentType = "application/json; charset=utf-8";
+            else if (ext == ".html") contentType = "text/html; charset=utf-8";
+
+            // Zuerst prüfen, ob die Datei im Ordner liegt
+            string diskPath = Path.Combine(_baseDir, filename);
+            if (File.Exists(diskPath))
+            {
+                try
+                {
+                    return File.ReadAllBytes(diskPath);
+                }
+                catch { }
+            }
+
+            // Falls nicht auf Disk: Direkt aus den Ressourcen der EXE laden
+            if (_assembly != null)
+            {
+                string resName = null;
+                foreach (string name in _assembly.GetManifestResourceNames())
+                {
+                    if (name.EndsWith(filename, StringComparison.OrdinalIgnoreCase))
+                    {
+                        resName = name;
+                        break;
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(resName))
+                {
+                    using (Stream stream = _assembly.GetManifestResourceStream(resName))
+                    {
+                        if (stream != null)
+                        {
+                            using (MemoryStream ms = new MemoryStream())
+                            {
+                                stream.CopyTo(ms);
+                                return ms.ToArray();
+                            }
+                        }
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static void ProxyWebUntis(HttpListenerRequest req, HttpListenerResponse resp)
+        {
+            try
+            {
+                string targetUrl = DEFAULT_WEBUNTIS_URL;
+                string schoolHeader = req.Headers["X-School"];
+                string serverHeader = req.Headers["X-Server"];
+                if (!string.IsNullOrEmpty(schoolHeader) && !string.IsNullOrEmpty(serverHeader))
+                {
+                    targetUrl = "https://" + serverHeader + "/WebUntis/jsonrpc.do?school=" + schoolHeader;
+                }
+
+                HttpWebRequest outReq = (HttpWebRequest)WebRequest.Create(targetUrl);
+                outReq.Method = "POST";
+                outReq.ContentType = "application/json; charset=utf-8";
+                outReq.Timeout = 15000;
+
+                string sessionId = req.Headers["X-JSESSIONID"];
+                outReq.CookieContainer = new CookieContainer();
+                if (!string.IsNullOrEmpty(sessionId))
+                {
+                    try
+                    {
+                        outReq.CookieContainer.Add(new Uri(targetUrl), new Cookie("JSESSIONID", sessionId));
+                    }
+                    catch { }
+
+                    string srv = !string.IsNullOrEmpty(serverHeader) ? serverHeader : "lwl-bk-soest.webuntis.com";
+                    string sch = !string.IsNullOrEmpty(schoolHeader) ? schoolHeader : "lwl-bk-soest";
+                    targetUrl = string.Format("https://{0}/WebUntis/jsonrpc.do;jsessionid={1}?school={2}", srv, sessionId, sch);
+                }
+
+                using (Stream inStream = req.InputStream)
+                using (Stream outStream = outReq.GetRequestStream())
+                {
+                    byte[] buffer = new byte[4096];
+                    int read;
+                    while ((read = inStream.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        outStream.Write(buffer, 0, read);
+                    }
+                }
+
+                using (HttpWebResponse outResp = (HttpWebResponse)outReq.GetResponse())
+                using (Stream respStream = outResp.GetResponseStream())
+                using (MemoryStream ms = new MemoryStream())
+                {
+                    respStream.CopyTo(ms);
+                    byte[] data = ms.ToArray();
+
+                    resp.StatusCode = (int)outResp.StatusCode;
+                    resp.ContentType = "application/json; charset=utf-8";
+
+                    string setCookie = outResp.Headers["Set-Cookie"];
+                    if (!string.IsNullOrEmpty(setCookie))
+                    {
+                        resp.Headers["X-Set-Cookie"] = setCookie;
+                    }
+
+                    resp.ContentLength64 = data.Length;
+                    resp.OutputStream.Write(data, 0, data.Length);
+                    resp.OutputStream.Flush();
+                    resp.Close();
+                }
+            }
+            catch (WebException webEx)
+            {
+                if (webEx.Response != null)
+                {
+                    using (HttpWebResponse errResp = (HttpWebResponse)webEx.Response)
+                    using (Stream errStream = errResp.GetResponseStream())
+                    using (MemoryStream ms = new MemoryStream())
+                    {
+                        errStream.CopyTo(ms);
+                        byte[] data = ms.ToArray();
+                        resp.StatusCode = (int)errResp.StatusCode;
+                        resp.ContentType = "application/json; charset=utf-8";
+                        resp.ContentLength64 = data.Length;
+                        resp.OutputStream.Write(data, 0, data.Length);
+                        resp.OutputStream.Flush();
+                        resp.Close();
+                        return;
+                    }
+                }
+
+                resp.StatusCode = 500;
+                byte[] err = Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"id\":\"err\",\"error\":{\"message\":\"" + webEx.Message.Replace("\"", "'") + "\",\"code\":-1}}");
+                resp.ContentType = "application/json; charset=utf-8";
+                resp.OutputStream.Write(err, 0, err.Length);
+                resp.Close();
+            }
+            catch (Exception ex)
+            {
+                resp.StatusCode = 500;
+                byte[] err = Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"id\":\"err\",\"error\":{\"message\":\"" + ex.Message.Replace("\"", "'") + "\",\"code\":-1}}");
+                resp.ContentType = "application/json; charset=utf-8";
+                resp.OutputStream.Write(err, 0, err.Length);
+                resp.Close();
+            }
+        }
+
+        private static void LaunchBestBrowser(string url)
+        {
+            // 1. Suche nach Microsoft Edge
+            string edge = FindPath(new string[] {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), @"Microsoft\Edge\Application\msedge.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"Microsoft\Edge\Application\msedge.exe")
+            });
+
+            if (!string.IsNullOrEmpty(edge))
+            {
+                try
+                {
+                    Process.Start(edge, string.Format("--app=\"{0}\"", url));
+                    return;
+                }
+                catch { }
+            }
+
+            // 2. Suche nach Google Chrome
+            string chrome = FindPath(new string[] {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"Google\Chrome\Application\chrome.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), @"Google\Chrome\Application\chrome.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Google\Chrome\Application\chrome.exe")
+            });
+
+            if (!string.IsNullOrEmpty(chrome))
+            {
+                try
+                {
+                    Process.Start(chrome, string.Format("--app=\"{0}\"", url));
+                    return;
+                }
+                catch { }
+            }
+
+            // 3. Fallback: Standard-Webbrowser
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = url,
+                    UseShellExecute = true
+                });
+            }
+            catch { }
+        }
+
+        private static string FindPath(string[] paths)
+        {
+            foreach (string p in paths)
+            {
+                if (!string.IsNullOrEmpty(p) && File.Exists(p)) return p;
+            }
+            return null;
+        }
+    }
+}

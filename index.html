@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Barrierefreier Stundenplan &amp; Prüfungen - LWL-Berufskolleg Soest (NVDA)</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="theme-light font-normal" id="app-body">
+
+  <!-- Live-Regionen für NVDA / JAWS Screenreader Mitteilungen -->
+  <div id="sr-live" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+  <div id="sr-live-assertive" class="sr-only" aria-live="assertive" aria-atomic="true"></div>
+
+  <!-- Schnellsprunglinks für Tastaturbedienung -->
+  <nav class="skip-links" aria-label="Schnellnavigation">
+    <a href="#main-nav-tabs" class="skip-link">Zur Menüauswahl springen (Tasten 1-3)</a>
+    <a href="#day-picker-bar" class="skip-link">Zur Tagesauswahl springen</a>
+    <a href="#view-content-area" class="skip-link">Direkt zum Hauptinhalt springen</a>
+  </nav>
+
+  <!-- =========================================================================
+       HEADER / KOPFZEILE
+       ========================================================================= -->
+  <header class="app-header" role="banner">
+    <div class="header-content">
+      <div class="brand">
+        <span class="app-icon emoji-icon" aria-hidden="true">🏫</span>
+        <div class="brand-text">
+          <h1>Mein Stundenplan &amp; Prüfungen</h1>
+          <span class="school-tag" id="header-school-name">LWL-Berufskolleg Soest • Live aus WebUntis</span>
+        </div>
+      </div>
+      <div class="header-controls">
+        <span id="live-sync-indicator" class="today-badge" style="border: 2px solid var(--accent-ok); background: rgba(21, 128, 61, 0.15);" aria-label="Synchronisationsstatus">
+          <span class="emoji-icon" aria-hidden="true">🟢 </span><span id="sync-status-text">WebUntis bereit</span>
+        </span>
+        <button type="button" class="btn btn-primary" id="btn-refresh" onclick="triggerManualSync()" title="Stundenplan jetzt von WebUntis aktualisieren (Taste A)">
+          <span class="emoji-icon" aria-hidden="true">🔄</span>
+          <span>Aktualisieren (A)</span>
+        </button>
+        <button type="button" class="btn btn-tts" onclick="readTodayTimetable()" title="Stundenplan laut vorlesen (Taste V)">
+          <span class="emoji-icon" aria-hidden="true">🔊</span>
+          <span>Vorlesen (V)</span>
+        </button>
+        <button type="button" class="btn btn-secondary" id="btn-header-logout" onclick="logoutUser()" title="Benutzer abmelden" style="display: none;">
+          <span class="emoji-icon" aria-hidden="true">🚪</span>
+          <span>Abmelden</span>
+        </button>
+        <button type="button" class="btn btn-secondary" id="btn-header-exit" onclick="exitApp()" title="Stundenplan-App komplett beenden">
+          <span class="emoji-icon" aria-hidden="true">❌</span>
+          <span>Beenden</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- =========================================================================
+       ANMELDE-MASKE (BEIM START FALLS NICHT ANGEMELDET)
+       ========================================================================= -->
+  <div id="view-login" class="login-view-container" style="display: none;">
+    <section class="section-card login-card" aria-labelledby="login-heading">
+      <div style="text-align: center; margin-bottom: 20px;">
+        <span class="emoji-icon" style="font-size: 48px;" aria-hidden="true">🔐</span>
+        <h2 id="login-heading" style="font-size: var(--font-size-xl); color: var(--text-primary); margin-top: 10px;">WebUntis Anmeldung</h2>
+        <p class="field-hint" style="font-size: var(--font-size-base); margin-top: 6px;">
+          LWL-Berufskolleg Soest (Förderschwerpunkt Sehen)
+        </p>
+      </div>
+
+      <p style="margin-bottom: 20px; font-size: 16px; color: var(--text-secondary);">
+        Melde dich mit deinem Schul-Benutzernamen und Passwort an. Die App ruft deinen persönlichen Stundenplan, Raumwechsel, Vertretungen und Prüfungen direkt über die WebUntis-Schnittstelle ab.
+      </p>
+
+      <form id="form-login" onsubmit="handleLoginSubmit(event)" class="accessible-form">
+        <div class="form-group">
+          <label for="login-username" class="field-label"><strong>Benutzername (WebUntis):</strong><span class="required-star">*</span></label>
+          <input type="text" id="login-username" class="large-input" placeholder="z. B. vorname.nachname oder Schüler-ID" required autocomplete="username">
+          <span class="field-hint">Dein offizieller Login am LWL-Berufskolleg Soest.</span>
+        </div>
+
+        <div class="form-group">
+          <label for="login-password" class="field-label"><strong>Passwort:</strong><span class="required-star">*</span></label>
+          <input type="password" id="login-password" class="large-input" placeholder="WebUntis Passwort" required autocomplete="current-password">
+          <span class="field-hint">Wird verschlüsselt nur lokal auf diesem Rechner verwendet.</span>
+        </div>
+
+        <div class="form-group" style="margin-top: 8px;">
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+            <input type="checkbox" id="login-remember" checked style="width: 24px; height: 24px;">
+            <span><strong>Zugangsdaten merken (automatische Anmeldung bei jedem Start)</strong></span>
+          </label>
+        </div>
+
+        <div class="form-actions" style="margin-top: 24px;">
+          <button type="submit" class="btn btn-primary" id="btn-login-submit" style="width: 100%; min-height: 54px; font-size: var(--font-size-lg);">
+            <span class="emoji-icon" aria-hidden="true">🚀 </span><strong>Anmelden &amp; Stundenplan laden</strong>
+          </button>
+        </div>
+      </form>
+
+      <div id="login-status-box" style="display: none; margin-top: 20px;"></div>
+
+      <!-- Schnellzugriff Barrierefreiheit direkt beim Login -->
+      <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+        <span style="font-size: 14px; font-weight: bold;">👁️ Schnellauswahl Kontrast:</span>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="btn btn-secondary" style="min-height: 38px; padding: 4px 10px; font-size: 13px;" onclick="setThemeDirect('theme-light')">Hell</button>
+          <button type="button" class="btn btn-secondary" style="min-height: 38px; padding: 4px 10px; font-size: 13px;" onclick="setThemeDirect('theme-dark')">Dunkel</button>
+          <button type="button" class="btn btn-secondary" style="min-height: 38px; padding: 4px 10px; font-size: 13px;" onclick="setThemeDirect('theme-high-contrast')">Gelb/Schwarz</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- =========================================================================
+       HAUPTNAVIGATION (3 TABS - TASTEN 1 BIS 3)
+       ========================================================================= -->
+  <nav class="nav-tabs-wrapper" aria-label="Hauptmenü" id="main-nav-tabs">
+    <div class="tab-list" role="tablist">
+      <button id="tab-overview" class="tab-btn active" role="tab" aria-selected="true" aria-controls="view-overview" onclick="switchTab('overview')" tabindex="0">
+        <span class="tab-key-hint" aria-hidden="true">1</span>
+        <span><span class="emoji-icon" aria-hidden="true">📅 </span><strong>Stundenplan &amp; Vertretung</strong></span>
+      </button>
+      <button id="tab-exams" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-exams" onclick="switchTab('exams')" tabindex="-1">
+        <span class="tab-key-hint" aria-hidden="true">2</span>
+        <span><span class="emoji-icon" aria-hidden="true">📝 </span><strong>Prüfungen &amp; Termine (Schuljahr)</strong></span>
+      </button>
+      <button id="tab-settings" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-settings" onclick="switchTab('settings')" tabindex="-1">
+        <span class="tab-key-hint" aria-hidden="true">3</span>
+        <span><span class="emoji-icon" aria-hidden="true">⚙️ </span><strong>Konto &amp; Einstellungen</strong></span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- =========================================================================
+       HAUPTINHALTSBEREICH
+       ========================================================================= -->
+  <main class="main-container" id="view-content-area" role="main">
+
+    <!-- =======================================================================
+         REITER 1: STUNDENPLAN & VERTRETUNGSPLAN (LIVE WEBUNTIS)
+         ======================================================================= -->
+    <div id="view-overview" class="view-panel active" role="tabpanel" aria-labelledby="tab-overview">
+
+      <div class="banner-header">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <h2 class="banner-title" id="timetable-view-title">Stundenplan &amp; Vertretungen</h2>
+            <p class="banner-subtitle">Echte Live-Daten aus WebUntis mit Räumen, Lehrkräften, Vertretungen und Entfällen.</p>
+          </div>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <span id="auto-refresh-timer-badge" class="field-hint" style="font-weight: bold;"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- HIGHLIGHT-KARTE: AKTUELL & NÄCHSTE STUNDE -->
+      <section class="now-next-card" aria-label="Aktueller Unterrichtsstatus">
+        <div class="status-box" id="box-now-lesson">
+          <div class="status-label">Lade aktuellen Status...</div>
+        </div>
+        <div class="status-box" id="box-next-lesson">
+          <div class="status-label">Lade nächste Stunde...</div>
+        </div>
+      </section>
+
+      <!-- TAGES- & WOCHENAUSWAHL -->
+      <section class="day-nav-bar" id="day-picker-bar" aria-label="Wochentag auswählen">
+        <div class="day-btn-group" role="group" aria-label="Tag filtern">
+          <button type="button" class="day-btn active" data-day="today" onclick="setDayFilter('today')">
+            <span class="emoji-icon" aria-hidden="true">📍 </span>Heute (H)
+          </button>
+          <button type="button" class="day-btn" data-day="tomorrow" onclick="setDayFilter('tomorrow')">
+            <span class="emoji-icon" aria-hidden="true">➡️ </span>Morgen
+          </button>
+          <button type="button" class="day-btn" data-day="1" onclick="setDayFilter(1)">Montag</button>
+          <button type="button" class="day-btn" data-day="2" onclick="setDayFilter(2)">Dienstag</button>
+          <button type="button" class="day-btn" data-day="3" onclick="setDayFilter(3)">Mittwoch</button>
+          <button type="button" class="day-btn" data-day="4" onclick="setDayFilter(4)">Donnerstag</button>
+          <button type="button" class="day-btn" data-day="5" onclick="setDayFilter(5)">Freitag</button>
+          <button type="button" class="day-btn" data-day="all" onclick="setDayFilter('all')">
+            <span class="emoji-icon" aria-hidden="true">🗓️ </span>Ganze Woche
+          </button>
+        </div>
+        <div>
+          <button type="button" class="btn btn-secondary" onclick="readTodayTimetable()" title="Diesen Tag laut vorlesen (Taste V)">
+            <span class="emoji-icon" aria-hidden="true">🔊 </span>Tag vorlesen (V)
+          </button>
+        </div>
+      </section>
+
+      <!-- STUNDENPLAN-LISTE -->
+      <section id="timetable-container" aria-live="polite">
+        <!-- Befüllt per JavaScript aus WebUntis -->
+      </section>
+
+    </div>
+
+    <!-- =======================================================================
+         REITER 2: PRÜFUNGEN, KLAUSUREN & TERMINE (GANZES SCHULJAHR)
+         ======================================================================= -->
+    <div id="view-exams" class="view-panel" role="tabpanel" aria-labelledby="tab-exams">
+
+      <div class="banner-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+        <div>
+          <h2 class="banner-title" id="exams-heading">Prüfungen, Klausuren &amp; Schultermine</h2>
+          <p class="banner-subtitle" id="exams-schoolyear-subtitle">Komplette Jahresübersicht aller Termine am LWL-Berufskolleg Soest für das gesamte Schuljahr.</p>
+        </div>
+        <div>
+          <button type="button" class="btn btn-secondary" onclick="readAllExamsAndEvents()" title="Alle anstehenden Termine laut vorlesen (Taste V)">
+            <span class="emoji-icon" aria-hidden="true">🔊 </span><span>Termine vorlesen</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Jahres-Statistik & Filterleiste -->
+      <section class="section-card" style="padding: 16px 20px; margin-bottom: 20px;" aria-label="Filter für Schuljahrstermine">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div class="exam-filter-group" role="group" aria-label="Termin-Filterauswahl">
+            <button type="button" class="btn btn-secondary filter-btn active" id="filter-all" onclick="setExamFilter('all')">
+              <span>📅 <strong>Alle Termine</strong> (<span id="count-all">0</span>)</span>
+            </button>
+            <button type="button" class="btn btn-secondary filter-btn" id="filter-exams" onclick="setExamFilter('exams')">
+              <span>📝 <strong>Prüfungen &amp; Klausuren</strong> (<span id="count-exams">0</span>)</span>
+            </button>
+            <button type="button" class="btn btn-secondary filter-btn" id="filter-holidays" onclick="setExamFilter('holidays')">
+              <span>🏖️ <strong>Ferien &amp; Feiertage</strong> (<span id="count-holidays">0</span>)</span>
+            </button>
+            <button type="button" class="btn btn-secondary filter-btn" id="filter-upcoming" onclick="setExamFilter('upcoming')">
+              <span>⏳ <strong>Nur anstehend</strong> (<span id="count-upcoming">0</span>)</span>
+            </button>
+          </div>
+          <div id="exams-schoolyear-badge" class="today-badge" style="font-size: 14px; font-weight: bold; background: rgba(2, 132, 199, 0.15); border: 2px solid var(--accent-info);">
+            Schuljahr 2026/2027
+          </div>
+        </div>
+      </section>
+
+      <!-- Container für Termine, gruppiert nach Monaten -->
+      <section id="exams-list-container" aria-live="polite" aria-label="Terminliste für das gesamte Schuljahr">
+        <!-- Befüllt per JavaScript aus WebUntis getExams & getHolidays -->
+      </section>
+
+    </div>
+
+    <!-- =======================================================================
+         REITER 3: KONTO, SYNCHRONISATION & EINSTELLUNGEN
+         ======================================================================= -->
+    <div id="view-settings" class="view-panel" role="tabpanel" aria-labelledby="tab-settings">
+
+      <div class="banner-header">
+        <h2 class="banner-title">Konto &amp; Einstellungen</h2>
+        <p class="banner-subtitle">WebUntis-Verbindung verwalten, Anmeldedaten anpassen und Barrierefreiheit einstellen.</p>
+      </div>
+
+      <!-- 1. WEBUNTIS KONTO STATUS -->
+      <section class="section-card" aria-labelledby="account-heading">
+        <h3 id="account-heading" style="font-size: var(--font-size-lg); margin-bottom: 8px;">👤 Angemeldetes WebUntis-Konto</h3>
+        <p class="field-hint">Informationen zu deiner aktuellen Verbindung zum LWL-Berufskolleg Soest:</p>
+
+        <div style="background: var(--bg-surface-elevated); border: 2px solid var(--border-color); border-radius: var(--radius-md); padding: 18px; margin-top: 14px;">
+          <p style="font-size: var(--font-size-base); margin-bottom: 6px;">
+            Schule: <strong>LWL-Berufskolleg Soest</strong> (<code>lwl-bk-soest.webuntis.com</code>)
+          </p>
+          <p style="font-size: var(--font-size-base); margin-bottom: 6px;">
+            Benutzername: <strong id="settings-username-display">-</strong>
+          </p>
+          <p style="font-size: var(--font-size-base); color: var(--accent-ok); font-weight: bold;" id="settings-sync-time-display">
+            Status: Verbunden &amp; aktiv
+          </p>
+        </div>
+
+        <div class="form-actions" style="margin-top: 16px;">
+          <button type="button" class="btn btn-primary" onclick="triggerManualSync()">
+            <span class="emoji-icon" aria-hidden="true">🔄 </span><strong>Jetzt synchronisieren (Taste A)</strong>
+          </button>
+          <button type="button" class="btn btn-danger" onclick="logoutUser()">
+            <span class="emoji-icon" aria-hidden="true">🚪 </span><strong>Abmelden / Benutzer wechseln</strong>
+          </button>
+          <button type="button" class="btn btn-secondary" onclick="openOfficialWebUntis()">
+            <span class="emoji-icon" aria-hidden="true">🌐 </span>WebUntis Soest im Browser öffnen
+          </button>
+        </div>
+      </section>
+
+      <!-- 2. BARRIEREFREIHEIT & DESIGN -->
+      <section class="section-card" aria-labelledby="a11y-cfg-heading">
+        <h3 id="a11y-cfg-heading" style="font-size: var(--font-size-lg); margin-bottom: 6px;">👁️ Barrierefreiheit &amp; Kontraste (WCAG 2.2 AAA)</h3>
+        <p class="field-hint">Optimiere Farben, Schriftgrößen und Sprachausgabe für deine Sehbedürfnisse:</p>
+
+        <div class="accessible-form" style="margin-top: 16px;">
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="cfg-theme" class="field-label"><strong>Farbschema &amp; Kontrast:</strong></label>
+              <select id="cfg-theme" class="large-select" onchange="saveSettings(event)">
+                <option value="theme-light">Standard Hell (Weiß / Dunkelblau)</option>
+                <option value="theme-dark">Dunkelmodus (Schonend für die Augen)</option>
+                <option value="theme-high-contrast">Gelb auf Schwarz (Maximaler Kontrast für Sehbehinderte)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="cfg-font-size" class="field-label"><strong>Schriftgröße:</strong></label>
+              <select id="cfg-font-size" class="large-select" onchange="saveSettings(event)">
+                <option value="font-normal">Normal (18 Pixel - Standard)</option>
+                <option value="font-large">Groß (22 Pixel - Gut lesbar)</option>
+                <option value="font-xlarge">Sehr groß (26 Pixel - Für Sehbehinderte)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="cfg-tts-rate" class="field-label"><strong>Sprachausgabe: Sprechtempo:</strong></label>
+              <select id="cfg-tts-rate" class="large-select" onchange="saveSettings(event)">
+                <option value="0.8">0.8x (Langsam &amp; sehr deutlich)</option>
+                <option value="1.0" selected>1.0x (Normal)</option>
+                <option value="1.2">1.2x (Zügig)</option>
+                <option value="1.5">1.5x (Schnell für Profis)</option>
+              </select>
+            </div>
+            <div class="form-group" style="display: flex; flex-direction: column; justify-content: center; gap: 8px;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="cfg-tts" checked onchange="saveSettings(event)" style="width: 22px; height: 22px;">
+                <span><strong>Sprachausgabe (TTS) aktivierbar</strong></span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                <input type="checkbox" id="cfg-text-only" onchange="saveSettings(event)" style="width: 22px; height: 22px;">
+                <span><strong>Reiner Textmodus (0 Emojis für NVDA / Braillezeile)</strong></span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. SOFTWARE-UPDATES & GITHUB -->
+      <section class="section-card" aria-labelledby="updates-heading">
+        <h3 id="updates-heading" style="font-size: var(--font-size-lg); margin-bottom: 6px;">🔄 Software-Updates &amp; GitHub (Auto-Updater)</h3>
+        <p class="field-hint">Die Anwendung prüft bei jedem Start und automatisch im Hintergrund auf neue Versionen:</p>
+
+        <div style="background: var(--bg-surface-elevated); border: 2px solid var(--border-color); border-radius: var(--radius-md); padding: 18px; margin-top: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <p style="font-size: var(--font-size-base); margin-bottom: 4px;">
+                Installierte Version: <strong id="app-version-display">v1.0.0</strong>
+              </p>
+              <p style="font-size: 14px; color: var(--text-muted);" id="update-status-detail">
+                Automatische Hintergrundaktualisierung über GitHub ist aktiv.
+              </p>
+            </div>
+            <div>
+              <span class="today-badge" style="background: rgba(21, 128, 61, 0.15); border: 2px solid var(--accent-ok); font-weight: bold;">
+                🟢 Auto-Update bereit
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-actions" style="margin-top: 16px;">
+          <button type="button" class="btn btn-primary" id="btn-check-update" onclick="checkSoftwareUpdate()">
+            <span class="emoji-icon" aria-hidden="true">🔍 </span><strong>Jetzt auf Updates prüfen</strong>
+          </button>
+          <a href="https://github.com/Lauju1909/BarrierefreierStundenplanLWL" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="text-decoration: none;">
+            <span class="emoji-icon" aria-hidden="true">🐙 </span>GitHub Repository aufrufen
+          </a>
+        </div>
+        <div id="update-result-box" style="display: none; margin-top: 14px;"></div>
+      </section>
+
+    </div>
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="app-footer">
+    <p><strong>Barrierefreier Stundenplan &amp; Prüfungen</strong> | Entwickelt für Schülerinnen und Schüler des LWL-Berufskollegs Soest</p>
+    <p style="margin-top: 4px;">Optimiert für NVDA, JAWS, Braillezeilen und Windows-Tastatursteuerung (WCAG 2.2 AAA)</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

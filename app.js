@@ -1,0 +1,1528 @@
+/**
+ * Barrierefreier Stundenplan & Prüfungsmanager
+ * Speziell für das LWL-Berufskolleg Soest (Förderschwerpunkt Sehen)
+ * 100% NVDA / JAWS optimiert, WCAG 2.2 AAA
+ * Reine WebUntis-API-Anbindung ohne manuelle Bearbeitung
+ */
+
+// =============================================================================
+// 1. STANDARD-DATEN & VORKONFIGURATION (LWL-BERUFSKOLLEG SOEST)
+// =============================================================================
+const DEFAULT_CONFIG = {
+  schoolName: 'LWL-Berufskolleg Soest',
+  schoolShort: 'lwl-bk-soest',
+  server: 'lwl-bk-soest.webuntis.com',
+  tenantId: '5238400',
+  username: '',
+  password: '',
+  rememberLogin: true,
+  theme: 'theme-light',
+  fontSize: 'font-normal',
+  ttsEnabled: true,
+  ttsRate: 1.0,
+  textOnlyMode: false
+};
+
+const DEFAULT_PERIODS = [
+  { period: 1, start: '07:45', end: '08:30' },
+  { period: 2, start: '08:30', end: '09:15' },
+  { period: 3, start: '09:35', end: '10:20' },
+  { period: 4, start: '10:20', end: '11:05' },
+  { period: 5, start: '11:25', end: '12:10' },
+  { period: 6, start: '12:10', end: '12:55' },
+  { period: 7, start: '13:40', end: '14:25' },
+  { period: 8, start: '14:25', end: '15:10' }
+];
+
+const DEFAULT_NRW_HOLIDAYS_2026_2027 = [
+  { id: 'hol-herbst-26', name: 'Herbstferien', longName: 'Herbstferien 2026 (NRW)', startDate: '2026-10-12', endDate: '2026-10-24', startDateNum: 20261012, endDateNum: 20261024, type: 'holiday' },
+  { id: 'hol-allerheiligen-26', name: 'Allerheiligen', longName: 'Allerheiligen (Feiertag)', startDate: '2026-11-01', endDate: '2026-11-01', startDateNum: 20261101, endDateNum: 20261101, type: 'holiday' },
+  { id: 'hol-weihnachten-26', name: 'Weihnachtsferien', longName: 'Weihnachtsferien 2026/2027 (NRW)', startDate: '2026-12-23', endDate: '2027-01-06', startDateNum: 20261223, endDateNum: 20270106, type: 'holiday' },
+  { id: 'hol-halbjahr-27', name: 'Zeugnisausgabe 1. Halbjahr', longName: 'Zeugnisausgabe zum Halbjahr', startDate: '2027-01-29', endDate: '2027-01-29', startDateNum: 20270129, endDateNum: 20270129, type: 'appointment' },
+  { id: 'hol-karneval-27', name: 'Rosenmontag', longName: 'Rosenmontag (beweglicher Ferientag)', startDate: '2027-02-08', endDate: '2027-02-08', startDateNum: 20270208, endDateNum: 20270208, type: 'holiday' },
+  { id: 'hol-ostern-27', name: 'Osterferien', longName: 'Osterferien 2027 (NRW)', startDate: '2027-03-22', endDate: '2027-04-03', startDateNum: 20270322, endDateNum: 20270403, type: 'holiday' },
+  { id: 'hol-arbeit-27', name: 'Tag der Arbeit', longName: 'Tag der Arbeit (Feiertag)', startDate: '2027-05-01', endDate: '2027-05-01', startDateNum: 20270501, endDateNum: 20270501, type: 'holiday' },
+  { id: 'hol-himmelfahrt-27', name: 'Christi Himmelfahrt', longName: 'Christi Himmelfahrt (Feiertag)', startDate: '2027-05-06', endDate: '2027-05-06', startDateNum: 20270506, endDateNum: 20270506, type: 'holiday' },
+  { id: 'hol-pfingsten-27', name: 'Pfingstferien', longName: 'Pfingstdienstag (Schulfrei NRW)', startDate: '2027-05-18', endDate: '2027-05-18', startDateNum: 20270518, endDateNum: 20270518, type: 'holiday' },
+  { id: 'hol-fronleichnam-27', name: 'Fronleichnam', longName: 'Fronleichnam (Feiertag)', startDate: '2027-05-27', endDate: '2027-05-27', startDateNum: 20270527, endDateNum: 20270527, type: 'holiday' },
+  { id: 'hol-zeugnis-27', name: 'Zeugnisausgabe Schuljahresende', longName: 'Zeugnisausgabe Schuljahresende', startDate: '2027-07-16', endDate: '2027-07-16', startDateNum: 20270716, endDateNum: 20270716, type: 'appointment' },
+  { id: 'hol-sommer-27', name: 'Sommerferien', longName: 'Sommerferien 2027 (NRW)', startDate: '2027-07-19', endDate: '2027-08-31', startDateNum: 20270719, endDateNum: 20270831, type: 'holiday' }
+];
+
+let appData = {
+  config: { ...DEFAULT_CONFIG },
+  periods: [...DEFAULT_PERIODS],
+  timetable: [],
+  exams: [],
+  holidays: [...DEFAULT_NRW_HOLIDAYS_2026_2027],
+  schoolYear: null,
+  examFilter: 'all'
+};
+
+let currentTab = 'overview';
+let selectedDay = 'today'; // 'today', 'tomorrow', 1..5, 'all'
+let speechSynth = window.speechSynthesis || null;
+let webuntisSessionId = null;
+let lastSyncTimestamp = null;
+let autoSyncIntervalTimer = null;
+let isSyncInProgress = false;
+
+// =============================================================================
+// 2. SPEICHERUNG & KONFIGURATION (LOCALSTORAGE)
+// =============================================================================
+function loadAppData() {
+  try {
+    const saved = localStorage.getItem('lwl_stundenplan_data_v2');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      appData = {
+        config: { ...DEFAULT_CONFIG, ...(parsed.config || {}) },
+        periods: parsed.periods || [...DEFAULT_PERIODS],
+        timetable: parsed.timetable || [],
+        exams: parsed.exams || [],
+        holidays: (parsed.holidays && parsed.holidays.length > 0) ? parsed.holidays : [...DEFAULT_NRW_HOLIDAYS_2026_2027],
+        schoolYear: parsed.schoolYear || null,
+        examFilter: 'all'
+      };
+
+      // Falsch gecachte Räume bereinigen
+      if (appData.timetable && Array.isArray(appData.timetable)) {
+        appData.timetable.forEach(l => {
+          if (l.room) {
+            const rNorm = l.room.toLowerCase().replace(/^raum\s+/i, '').trim();
+            const tNorm = (l.teacher || '').toLowerCase().trim();
+            if (rNorm === 'hanauer' || (tNorm && (rNorm === tNorm || tNorm.includes(rNorm)))) {
+              l.room = 'Raum wird bekanntgegeben';
+            }
+          }
+        });
+      }
+    }
+  } catch (e) {
+    console.error('Fehler beim Laden der Daten aus dem LocalStorage:', e);
+  }
+  applyConfig();
+}
+
+function saveAppData() {
+  try {
+    localStorage.setItem('lwl_stundenplan_data_v2', JSON.stringify(appData));
+  } catch (e) {
+    console.error('Fehler beim Speichern:', e);
+  }
+}
+
+function applyConfig() {
+  const body = document.body;
+  body.className = `${appData.config.theme} ${appData.config.fontSize}`;
+  if (appData.config.textOnlyMode) {
+    body.classList.add('text-only-mode');
+  } else {
+    body.classList.remove('text-only-mode');
+  }
+
+  // Header School Name
+  const schoolEl = document.getElementById('header-school-name');
+  if (schoolEl) schoolEl.textContent = `${appData.config.schoolName} • Live aus WebUntis`;
+
+  // Settings Felder aktualisieren
+  const cfgTheme = document.getElementById('cfg-theme');
+  if (cfgTheme) cfgTheme.value = appData.config.theme;
+  const cfgFont = document.getElementById('cfg-font-size');
+  if (cfgFont) cfgFont.value = appData.config.fontSize;
+  const cfgTextOnly = document.getElementById('cfg-text-only');
+  if (cfgTextOnly) cfgTextOnly.checked = !!appData.config.textOnlyMode;
+  const cfgTts = document.getElementById('cfg-tts');
+  if (cfgTts) cfgTts.checked = !!appData.config.ttsEnabled;
+  const cfgTtsRate = document.getElementById('cfg-tts-rate');
+  if (cfgTtsRate) cfgTtsRate.value = appData.config.ttsRate || 1.0;
+
+  // Account Display
+  const uDisp = document.getElementById('settings-username-display');
+  if (uDisp) uDisp.textContent = appData.config.username || 'Nicht angemeldet';
+}
+
+function saveSettings(e) {
+  if (e && e.preventDefault) e.preventDefault();
+
+  const cfgTheme = document.getElementById('cfg-theme');
+  if (cfgTheme) appData.config.theme = cfgTheme.value;
+
+  const cfgFont = document.getElementById('cfg-font-size');
+  if (cfgFont) appData.config.fontSize = cfgFont.value;
+
+  const cfgTts = document.getElementById('cfg-tts');
+  if (cfgTts) appData.config.ttsEnabled = cfgTts.checked;
+
+  const cfgTtsRate = document.getElementById('cfg-tts-rate');
+  if (cfgTtsRate) appData.config.ttsRate = parseFloat(cfgTtsRate.value) || 1.0;
+
+  const cfgTextOnly = document.getElementById('cfg-text-only');
+  if (cfgTextOnly) appData.config.textOnlyMode = cfgTextOnly.checked;
+
+  saveAppData();
+  applyConfig();
+  announceSR('Einstellungen gespeichert.', 'polite');
+}
+
+function setThemeDirect(themeName) {
+  appData.config.theme = themeName;
+  saveAppData();
+  applyConfig();
+  announceSR(`Farbschema geändert auf: ${themeName === 'theme-high-contrast' ? 'Gelb auf Schwarz' : themeName === 'theme-dark' ? 'Dunkelmodus' : 'Standard Hell'}`, 'polite');
+}
+
+// =============================================================================
+// 3. BARRIEREFREIE SPRACHAUSGABE & SCREENREADER (NVDA/JAWS)
+// =============================================================================
+function announceSR(message, priority = 'polite') {
+  const targetId = priority === 'assertive' ? 'sr-live-assertive' : 'sr-live';
+  const liveEl = document.getElementById(targetId);
+  if (!liveEl) return;
+  liveEl.textContent = '';
+  setTimeout(() => {
+    liveEl.textContent = message;
+  }, 50);
+}
+
+function speak(text, force = false) {
+  if (!speechSynth) return;
+  if (!appData.config.ttsEnabled && !force) return;
+
+  try {
+    speechSynth.cancel();
+    const cleanText = text.replace(/[\u{1F600}-\u{1F6FF}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '');
+    const utter = new SpeechSynthesisUtterance(cleanText);
+    utter.lang = 'de-DE';
+    utter.rate = appData.config.ttsRate || 1.0;
+    speechSynth.speak(utter);
+  } catch (e) {
+    console.warn('TTS Fehler:', e);
+  }
+}
+
+// =============================================================================
+// 4. NAVIGATION & REITER-WECHSEL (TASTEN 1 BIS 3)
+// =============================================================================
+function switchTab(tabId) {
+  currentTab = tabId;
+
+  const tabs = [
+    { id: 'overview', btn: 'tab-overview', view: 'view-overview' },
+    { id: 'exams', btn: 'tab-exams', view: 'view-exams' },
+    { id: 'settings', btn: 'tab-settings', view: 'view-settings' }
+  ];
+
+  tabs.forEach(t => {
+    const isTarget = t.id === tabId;
+    const btn = document.getElementById(t.btn);
+    const view = document.getElementById(t.view);
+
+    if (btn) {
+      btn.classList.toggle('active', isTarget);
+      btn.setAttribute('aria-selected', isTarget ? 'true' : 'false');
+      btn.setAttribute('tabindex', isTarget ? '0' : '-1');
+      if (isTarget) btn.focus();
+    }
+
+    if (view) {
+      view.classList.toggle('active', isTarget);
+    }
+  });
+
+  if (tabId === 'overview') {
+    renderTimetable();
+    announceSR('Reiter 1: Stundenplan und Vertretungsplan ausgewählt.', 'polite');
+  } else if (tabId === 'exams') {
+    renderExams();
+    announceSR('Reiter 2: Prüfungen und Termine für das gesamte Schuljahr ausgewählt.', 'polite');
+  } else if (tabId === 'settings') {
+    announceSR('Reiter 3: Konto und Einstellungen ausgewählt.', 'polite');
+  }
+}
+
+// =============================================================================
+// 5. ANMELDUNG & SITZUNGS-MANAGEMENT
+// =============================================================================
+function showLoginView() {
+  const loginView = document.getElementById('view-login');
+  const navTabs = document.getElementById('main-nav-tabs');
+  const contentArea = document.getElementById('view-content-area');
+  const logoutBtn = document.getElementById('btn-header-logout');
+
+  if (loginView) loginView.style.display = 'flex';
+  if (navTabs) navTabs.style.display = 'none';
+  if (contentArea) contentArea.style.display = 'none';
+  if (logoutBtn) logoutBtn.style.display = 'none';
+
+  const userInp = document.getElementById('login-username');
+  if (userInp) {
+    userInp.value = appData.config.username || '';
+    userInp.focus();
+  }
+
+  const passInp = document.getElementById('login-password');
+  if (passInp) {
+    passInp.value = appData.config.password || '';
+  }
+
+  const statusEl = document.getElementById('sync-status-text');
+  if (statusEl) statusEl.textContent = 'Bitte anmelden';
+
+  announceSR('Willkommen beim barrierefreien Stundenplan des LWL-Berufskollegs Soest. Bitte melde dich mit deinen WebUntis-Zugangsdaten an.', 'assertive');
+}
+
+function hideLoginView() {
+  const loginView = document.getElementById('view-login');
+  const navTabs = document.getElementById('main-nav-tabs');
+  const contentArea = document.getElementById('view-content-area');
+  const logoutBtn = document.getElementById('btn-header-logout');
+
+  if (loginView) loginView.style.display = 'none';
+  if (navTabs) navTabs.style.display = 'block';
+  if (contentArea) contentArea.style.display = 'block';
+  if (logoutBtn) logoutBtn.style.display = 'inline-flex';
+}
+
+async function handleLoginSubmit(e) {
+  if (e && e.preventDefault) e.preventDefault();
+
+  const userVal = document.getElementById('login-username').value.trim();
+  const passVal = document.getElementById('login-password').value;
+  const remVal = document.getElementById('login-remember').checked;
+  const statusBox = document.getElementById('login-status-box');
+  const submitBtn = document.getElementById('btn-login-submit');
+
+  if (!userVal || !passVal) {
+    announceSR('Bitte gib sowohl deinen Benutzernamen als auch dein Passwort ein.', 'assertive');
+    return;
+  }
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="emoji-icon">⏳</span> <strong>Verbinde mit WebUntis...</strong>';
+  }
+
+  if (statusBox) {
+    statusBox.style.display = 'block';
+    statusBox.innerHTML = `
+      <div style="background: rgba(2, 132, 199, 0.1); border: 2px solid var(--accent-info); padding: 14px; border-radius: 8px;">
+        <strong style="color: var(--accent-info);">🔄 Melde an WebUntis des LWL-Berufskollegs Soest an...</strong>
+      </div>
+    `;
+  }
+  announceSR('Melde an WebUntis an...', 'polite');
+
+  try {
+    const success = await performWebUntisSync(userVal, passVal);
+    if (success) {
+      appData.config.username = userVal;
+      if (remVal) {
+        appData.config.password = passVal;
+        appData.config.rememberLogin = true;
+      } else {
+        appData.config.password = '';
+        appData.config.rememberLogin = false;
+      }
+      saveAppData();
+      applyConfig();
+      hideLoginView();
+      switchTab('overview');
+      speak('Erfolgreich angemeldet. Dein Stundenplan wurde geladen.', true);
+    } else {
+      if (statusBox) {
+        statusBox.style.display = 'block';
+        statusBox.innerHTML = `
+          <div style="background: rgba(185, 28, 28, 0.1); border: 2px solid var(--accent-danger); padding: 14px; border-radius: 8px;">
+            <strong style="color: var(--accent-danger);">❌ Anmeldung fehlgeschlagen</strong>
+            <p style="margin-top: 4px; font-size: 14px;">Benutzername oder Passwort ist ungültig. Bitte überprüfe deine Eingabe.</p>
+          </div>
+        `;
+      }
+      announceSR('Anmeldung fehlgeschlagen: Der Benutzername oder das Passwort ist ungültig.', 'assertive');
+      document.getElementById('login-password').focus();
+    }
+  } catch (err) {
+    if (statusBox) {
+      statusBox.style.display = 'block';
+      statusBox.innerHTML = `
+        <div style="background: rgba(185, 28, 28, 0.1); border: 2px solid var(--accent-danger); padding: 14px; border-radius: 8px;">
+          <strong style="color: var(--accent-danger);">⚠️ Verbindung nicht möglich</strong>
+          <p style="margin-top: 4px; font-size: 14px;">Die lokale WebUntis-Brücke ist nicht erreichbar. Bitte starte Stundenplan_LWL.exe neu.</p>
+        </div>
+      `;
+    }
+    announceSR('Verbindungsfehler zur WebUntis-Brücke.', 'assertive');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<span class="emoji-icon">🚀</span> <strong>Anmelden &amp; Stundenplan laden</strong>';
+    }
+  }
+}
+
+function logoutUser() {
+  if (confirm('Möchtest du dich wirklich von WebUntis abmelden?')) {
+    appData.config.password = '';
+    saveAppData();
+    webuntisSessionId = null;
+    showLoginView();
+    announceSR('Du wurdest abgemeldet.', 'polite');
+  }
+}
+
+function exitApp() {
+  if (confirm('Möchtest du die Stundenplan-Anwendung und den Server wirklich beenden?')) {
+    announceSR('Stundenplan-App wird beendet. Auf Wiedersehen.', 'assertive');
+    fetch('/api/shutdown').catch(() => {}).finally(() => {
+      document.body.innerHTML = `
+        <div style="text-align: center; padding: 60px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+          <h1 style="font-size: 28px; margin-bottom: 16px;">✅ Stundenplan-App beendet</h1>
+          <p style="font-size: 18px; color: #4b5563;">Der lokale Dienst wurde ordnungsgemäß gestoppt.</p>
+          <p style="font-size: 16px; margin-top: 10px;">Du kannst diesen Browser-Tab nun schließen.</p>
+        </div>
+      `;
+      setTimeout(() => { window.close(); }, 800);
+    });
+  }
+}
+
+// =============================================================================
+// 6. WEBUNTIS JSON-RPC API CLIENT & SYNCHRONISATION
+// =============================================================================
+async function callWebUntisApi(method, params = {}) {
+  const payload = {
+    id: 'req-' + Date.now(),
+    method: method,
+    params: params,
+    jsonrpc: '2.0'
+  };
+
+  const endpoints = [];
+  if (window.location.origin && window.location.origin.startsWith('http')) {
+    endpoints.push(window.location.origin + '/api/webuntis');
+  }
+  endpoints.push('http://127.0.0.1:48250/api/webuntis');
+  endpoints.push('http://localhost:48250/api/webuntis');
+
+  let lastError = null;
+  for (const ep of endpoints) {
+    try {
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-School': appData.config.schoolShort || 'lwl-bk-soest',
+        'X-Server': appData.config.server || 'lwl-bk-soest.webuntis.com'
+      };
+      if (webuntisSessionId) {
+        headers['X-JSESSIONID'] = webuntisSessionId;
+      }
+
+      const res = await fetch(ep, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(payload)
+      });
+
+      const setCookie = res.headers.get('X-Set-Cookie');
+      if (setCookie && setCookie.includes('JSESSIONID=')) {
+        const m = setCookie.match(/JSESSIONID=([^;]+)/);
+        if (m) webuntisSessionId = m[1];
+      }
+
+      const data = await res.json();
+      return data;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+
+  throw lastError || new Error('Keine Verbindung zum WebUntis-Server möglich.');
+}
+
+function formatDateToUntis(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return parseInt(`${y}${m}${day}`);
+}
+
+function formatUntisTimeToStr(val) {
+  const s = String(val).padStart(4, '0');
+  return `${s.slice(0, 2)}:${s.slice(2, 4)}`;
+}
+
+function getSchoolYearRange() {
+  const now = new Date();
+  const curYear = now.getFullYear();
+  const curMonth = now.getMonth() + 1; // 1..12
+
+  let startYear = curYear;
+  let endYear = curYear + 1;
+
+  // In Deutschland beginnt das Schuljahr am 1. August
+  if (curMonth < 8) {
+    startYear = curYear - 1;
+    endYear = curYear;
+  }
+
+  const startDateNum = parseInt(`${startYear}0801`);
+  const endDateNum = parseInt(`${endYear}0731`);
+  const name = `${startYear}/${endYear}`;
+
+  return {
+    name,
+    startYear,
+    endYear,
+    startDateNum,
+    endDateNum,
+    startDate: new Date(startYear, 7, 1),
+    endDate: new Date(endYear, 6, 31)
+  };
+}
+
+async function performWebUntisSync(userOverride, passOverride) {
+  if (isSyncInProgress) return false;
+  isSyncInProgress = true;
+
+  const username = userOverride || appData.config.username;
+  const password = passOverride || appData.config.password;
+
+  if (!username || !password) {
+    isSyncInProgress = false;
+    showLoginView();
+    return false;
+  }
+
+  const syncStatusText = document.getElementById('sync-status-text');
+  const refreshBtn = document.getElementById('btn-refresh');
+
+  if (syncStatusText) syncStatusText.textContent = 'Synchronisiere...';
+  if (refreshBtn) refreshBtn.classList.add('loading');
+
+  try {
+    // 1. Authenticate
+    const authRes = await callWebUntisApi('authenticate', {
+      user: username,
+      password: password,
+      client: 'BarrierefreierStundenplanLWL'
+    });
+
+    if (!authRes || authRes.error) {
+      console.warn('WebUntis Login Error:', authRes ? authRes.error : 'Unbekannt');
+      isSyncInProgress = false;
+      if (syncStatusText) syncStatusText.textContent = 'Fehler beim Login';
+      if (refreshBtn) refreshBtn.classList.remove('loading');
+      return false;
+    }
+
+    const { sessionId, personId, personType } = authRes.result;
+    webuntisSessionId = sessionId;
+
+    // 2. Metadaten parallel abrufen (Fächer, Lehrer, Räume, Klassen)
+    const [subRes, teaRes, rooRes, klaRes] = await Promise.all([
+      callWebUntisApi('getSubjects').catch(() => ({})),
+      callWebUntisApi('getTeachers').catch(() => ({})),
+      callWebUntisApi('getRooms').catch(() => ({})),
+      callWebUntisApi('getKlassen').catch(() => ({}))
+    ]);
+
+    const subjectsMap = {};
+    if (subRes && subRes.result && Array.isArray(subRes.result)) {
+      subRes.result.forEach(s => {
+        subjectsMap[s.id] = s.longName || s.name;
+        if (s.name) subjectsMap[s.name] = s.longName || s.name;
+      });
+    }
+
+    const teachersMap = {};
+    if (teaRes && teaRes.result && Array.isArray(teaRes.result)) {
+      teaRes.result.forEach(t => {
+        const tName = `${t.foreName ? t.foreName + ' ' : ''}${t.longName || t.name}`;
+        teachersMap[t.id] = tName;
+        if (t.name) teachersMap[t.name] = tName;
+      });
+    }
+
+    const roomsMap = {};
+    if (rooRes && rooRes.result && Array.isArray(rooRes.result)) {
+      rooRes.result.forEach(r => {
+        let label = r.name || '';
+        if (r.longName && r.longName !== r.name) {
+          label = r.name ? `${r.name} (${r.longName})` : r.longName;
+        }
+        if (!label) label = r.name || r.longName || ('Raum ' + r.id);
+        roomsMap[r.id] = label;
+        if (r.name) roomsMap[r.name] = label;
+      });
+    }
+
+    const klassenMap = {};
+    if (klaRes && klaRes.result && Array.isArray(klaRes.result)) {
+      klaRes.result.forEach(k => {
+        const kName = k.longName || k.name || ('Klasse ' + k.id);
+        klassenMap[k.id] = kName;
+        if (k.name) klassenMap[k.name] = kName;
+      });
+    }
+
+    // 3. Datumsbereich: Aktuelle Schulwoche Mo-Fr (am Wochenende Folgewoche)
+    const now = new Date();
+    const curDay = now.getDay();
+    let diffToMonday = 1 - curDay;
+    if (curDay === 0) diffToMonday = 1; // Sonntag -> Montag
+    else if (curDay === 6) diffToMonday = 2; // Samstag -> Montag
+
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diffToMonday);
+    const friday = new Date(monday);
+    friday.setDate(monday.getDate() + 4);
+
+    const startNum = formatDateToUntis(monday);
+    const endNum = formatDateToUntis(friday);
+
+    // 4. Stundenplan mit expliziten Feldern für Raum, Klasse, Lehrer und Fach abrufen
+    const ttRes = await callWebUntisApi('getTimetable', {
+      options: {
+        element: { id: personId, type: personType },
+        startDate: startNum,
+        endDate: endNum,
+        showLsText: true,
+        showStudentgroup: true,
+        showInfo: true,
+        showSubstText: true,
+        showLsNumber: true,
+        showBooking: true,
+        klasseFields: ['id', 'name', 'longname'],
+        roomFields: ['id', 'name', 'longname'],
+        subjectFields: ['id', 'name', 'longname'],
+        teacherFields: ['id', 'name', 'longname']
+      }
+    });
+
+    // 5. Schuljahr ermitteln (WebUntis getSchoolyears oder dynamische Berechnung)
+    let syRange = getSchoolYearRange();
+    try {
+      const syRes = await callWebUntisApi('getSchoolyears', {});
+      if (syRes && syRes.result && Array.isArray(syRes.result) && syRes.result.length > 0) {
+        const todayNum = formatDateToUntis(now);
+        const activeSy = syRes.result.find(s => todayNum >= s.startDate && todayNum <= s.endDate) || syRes.result[syRes.result.length - 1];
+        if (activeSy) {
+          const sStr = String(activeSy.startDate);
+          const eStr = String(activeSy.endDate);
+          syRange = {
+            name: activeSy.name || `${sStr.slice(0, 4)}/${eStr.slice(0, 4)}`,
+            startYear: parseInt(sStr.slice(0, 4)),
+            endYear: parseInt(eStr.slice(0, 4)),
+            startDateNum: activeSy.startDate,
+            endDateNum: activeSy.endDate,
+            startDate: new Date(parseInt(sStr.slice(0, 4)), parseInt(sStr.slice(4, 6)) - 1, parseInt(sStr.slice(6, 8))),
+            endDate: new Date(parseInt(eStr.slice(0, 4)), parseInt(eStr.slice(4, 6)) - 1, parseInt(eStr.slice(6, 8)))
+          };
+        }
+      }
+    } catch (e) { }
+    appData.schoolYear = syRange;
+
+    // 6. Prüfungen für das GESAMTE Schuljahr abrufen (von Anfang August bis Ende Juli)
+    const examsRes = await callWebUntisApi('getExams', {
+      startDate: syRange.startDateNum,
+      endDate: syRange.endDateNum
+    }).catch(() => ({}));
+
+    // 7. Schulferien & offizielle Termine des LWL-Berufskollegs Soest abrufen
+    const holidaysRes = await callWebUntisApi('getHolidays', {}).catch(() => ({}));
+
+    // 8. Logout
+    try { await callWebUntisApi('logout', {}); } catch (e) { }
+    webuntisSessionId = null;
+
+    // 7. Stundenplan parsen
+    if (ttRes && ttRes.result && Array.isArray(ttRes.result)) {
+      const newTimetable = [];
+      ttRes.result.forEach((item, idx) => {
+        const dStr = String(item.date);
+        const itemDate = new Date(parseInt(dStr.slice(0, 4)), parseInt(dStr.slice(4, 6)) - 1, parseInt(dStr.slice(6, 8)));
+        const dayOfWeek = itemDate.getDay();
+        if (dayOfWeek < 1 || dayOfWeek > 5) return;
+
+        const startStr = formatUntisTimeToStr(item.startTime);
+        const endStr = formatUntisTimeToStr(item.endTime);
+
+        let periodNum = 1;
+        const matchedPeriod = appData.periods.find(p => p.start === startStr);
+        if (matchedPeriod) {
+          periodNum = matchedPeriod.period;
+        } else {
+          periodNum = idx + 1;
+        }
+
+        const subj = (item.su && item.su[0]) ? (subjectsMap[item.su[0].id] || item.su[0].name || item.su[0].longname || 'Unterricht') : 'Unterricht';
+        const teach = (item.te && item.te[0]) ? (teachersMap[item.te[0].id] || item.te[0].name || item.te[0].longname || 'Lehrkraft') : 'Lehrkraft';
+        const klasse = (item.kl && item.kl[0]) ? (klassenMap[item.kl[0].id] || item.kl[0].name || item.kl[0].longname || '') : '';
+
+        // -------------------------------------------------------------
+        // Saubere Raum-Erkennung & Absicherung gegen Lehrer-/Klassennamen
+        // -------------------------------------------------------------
+        let rm = '';
+
+        function isValidRoomCandidate(candidate) {
+          if (!candidate || typeof candidate !== 'string') return false;
+          const clean = candidate.trim().toLowerCase();
+          if (!clean || clean === 'raum' || clean === 'null' || clean === 'undefined') return false;
+          if (clean === 'unterricht' || clean === 'lehrkraft') return false;
+          if (clean === 'hanauer' || clean === 'raum hanauer') return false;
+          if (teach) {
+            const tLow = teach.trim().toLowerCase();
+            if (tLow && (clean === tLow || tLow.includes(clean) || clean.includes(tLow))) return false;
+          }
+          if (klasse) {
+            const kLow = klasse.trim().toLowerCase();
+            if (kLow && (clean === kLow || kLow.includes(clean) || clean.includes(kLow))) return false;
+          }
+          if (subj) {
+            const sLow = subj.trim().toLowerCase();
+            if (sLow && (clean === sLow || sLow.includes(clean))) return false;
+          }
+          return true;
+        }
+
+        function extractRoomFromObj(r) {
+          if (!r) return '';
+          if (typeof r === 'string' && isValidRoomCandidate(r)) return r.trim();
+          if (typeof r === 'number') {
+            if (roomsMap[r] && isValidRoomCandidate(roomsMap[r])) return roomsMap[r];
+            return '';
+          }
+          let candidate = r.name || r.longname || r.longName;
+          if (candidate && isValidRoomCandidate(candidate)) return candidate.trim();
+          if (r.id && roomsMap[r.id] && isValidRoomCandidate(roomsMap[r.id])) return roomsMap[r.id];
+          return '';
+        }
+
+        if (item.ro && Array.isArray(item.ro) && item.ro.length > 0) {
+          const roomParts = item.ro.map(extractRoomFromObj).filter(Boolean);
+          if (roomParts.length > 0) rm = roomParts.join(', ');
+        }
+
+        if (!rm && item.orgro && Array.isArray(item.orgro) && item.orgro.length > 0) {
+          const orgParts = item.orgro.map(extractRoomFromObj).filter(Boolean);
+          if (orgParts.length > 0) rm = orgParts.join(', ');
+        }
+
+        if (!rm && item.room) {
+          rm = extractRoomFromObj(item.room);
+        }
+
+        if (!rm) {
+          const combinedText = [item.substText, item.lstext, item.info, item.bkText].filter(Boolean).join(' ');
+          const matchRoom = combinedText.match(/\b(?:in\s+Raum|nach\s+Raum|Raum|Rm\.)\s+([A-Z0-9][A-Z0-9\.\-_/]*)/i);
+          if (matchRoom && isValidRoomCandidate(matchRoom[1])) {
+            rm = matchRoom[1];
+          }
+        }
+
+        if (!isValidRoomCandidate(rm)) {
+          rm = 'Raum wird bekanntgegeben';
+        } else {
+          let cleanRm = rm.trim();
+          if (!/^raum\b/i.test(cleanRm)) {
+            cleanRm = 'Raum ' + cleanRm;
+          }
+          rm = cleanRm;
+        }
+
+        let st = 'normal';
+        if (item.code === 'cancelled') st = 'cancelled';
+        else if (item.code === 'irregular') st = 'substitute';
+
+        newTimetable.push({
+          id: `untis-${item.id || idx}`,
+          day: dayOfWeek,
+          period: periodNum,
+          subject: subj,
+          teacher: teach,
+          klasse: klasse,
+          room: rm,
+          status: st,
+          notes: item.substText || item.lstext || ''
+        });
+      });
+
+      if (newTimetable.length > 0) {
+        appData.timetable = newTimetable;
+      }
+    }
+
+    // 8. Prüfungen für das gesamte Schuljahr parsen
+    if (examsRes && examsRes.result && Array.isArray(examsRes.result)) {
+      const newExams = [];
+      examsRes.result.forEach((ex, idx) => {
+        const dStr = String(ex.examDate);
+        const isoDate = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
+        const subj = (ex.subject) ? (subjectsMap[ex.subject] || ex.name || 'Klausur') : (ex.name || 'Klausur');
+
+        let exTeacher = 'Fachlehrkraft';
+        if (ex.teachers && Array.isArray(ex.teachers) && ex.teachers[0] && teachersMap[ex.teachers[0]]) {
+          exTeacher = teachersMap[ex.teachers[0]];
+        } else if (ex.teacher && teachersMap[ex.teacher]) {
+          exTeacher = teachersMap[ex.teacher];
+        }
+
+        let exRoom = 'Raum laut Plan';
+        if (ex.rooms && Array.isArray(ex.rooms) && ex.rooms[0] && roomsMap[ex.rooms[0]]) {
+          const rCandidate = roomsMap[ex.rooms[0]];
+          if (isValidRoomCandidate(rCandidate)) {
+            exRoom = formatRoomDisplay(rCandidate, exTeacher);
+          }
+        } else if (ex.room && isValidRoomCandidate(String(ex.room))) {
+          exRoom = formatRoomDisplay(String(ex.room), exTeacher);
+        }
+
+        newExams.push({
+          id: `untis-exam-${ex.id || idx}`,
+          subject: subj,
+          date: isoDate,
+          startTime: formatUntisTimeToStr(ex.startTime || 745),
+          endTime: formatUntisTimeToStr(ex.endTime || 915),
+          room: exRoom,
+          teacher: exTeacher,
+          topic: ex.name || 'Klausur laut WebUntis',
+          type: 'exam',
+          completed: false
+        });
+      });
+      appData.exams = newExams;
+    }
+
+    // 9. Schulferien und Termine parsen
+    if (holidaysRes && holidaysRes.result && Array.isArray(holidaysRes.result) && holidaysRes.result.length > 0) {
+      const newHolidays = [];
+      holidaysRes.result.forEach(h => {
+        const sStr = String(h.startDate);
+        const eStr = String(h.endDate);
+        const sIso = `${sStr.slice(0, 4)}-${sStr.slice(4, 6)}-${sStr.slice(6, 8)}`;
+        const eIso = `${eStr.slice(0, 4)}-${eStr.slice(4, 6)}-${eStr.slice(6, 8)}`;
+        newHolidays.push({
+          id: `untis-holiday-${h.id || Math.random()}`,
+          name: h.longName || h.name || 'Schulferien',
+          shortName: h.name || '',
+          startDate: sIso,
+          endDate: eIso,
+          startDateNum: h.startDate,
+          endDateNum: h.endDate,
+          type: 'holiday'
+        });
+      });
+      appData.holidays = newHolidays;
+    } else if (!appData.holidays || appData.holidays.length === 0) {
+      appData.holidays = [...DEFAULT_NRW_HOLIDAYS_2026_2027];
+    }
+
+    lastSyncTimestamp = new Date();
+    saveAppData();
+    renderTimetable();
+    renderExams();
+    updateSyncDisplay();
+
+    announceSR(`Stundenplan aktualisiert. ${appData.timetable.length} Stunden geladen.`, 'polite');
+    return true;
+  } catch (err) {
+    console.error('Fehler bei WebUntis Synchronisation:', err);
+    if (syncStatusText) syncStatusText.textContent = 'Sync fehlgeschlagen';
+    return false;
+  } finally {
+    isSyncInProgress = false;
+    if (refreshBtn) refreshBtn.classList.remove('loading');
+  }
+}
+
+function updateSyncDisplay() {
+  const syncStatusText = document.getElementById('sync-status-text');
+  const timerBadge = document.getElementById('auto-refresh-timer-badge');
+  const settingsTime = document.getElementById('settings-sync-time-display');
+
+  if (!lastSyncTimestamp) return;
+
+  const timeStr = lastSyncTimestamp.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  if (syncStatusText) syncStatusText.textContent = `Live: ${timeStr} Uhr`;
+  if (timerBadge) timerBadge.textContent = `Zuletzt aktualisiert: ${timeStr} Uhr (automatische Aktualisierung alle 5 Min)`;
+  if (settingsTime) settingsTime.textContent = `Status: Zuletzt erfolgreich aktualisiert um ${timeStr} Uhr`;
+}
+
+function triggerManualSync() {
+  announceSR('Synchronisiere Stundenplan mit WebUntis...', 'polite');
+  performWebUntisSync().then(ok => {
+    if (ok) {
+      speak('Stundenplan erfolgreich aktualisiert.');
+    }
+  });
+}
+
+function openOfficialWebUntis() {
+  const url = `https://${appData.config.server}/WebUntis/?school=${appData.config.schoolShort}`;
+  window.open(url, '_blank', 'noopener,noreferrer');
+  announceSR('Offizielles WebUntis des LWL-Berufskollegs Soest wird geöffnet.', 'polite');
+}
+
+// =============================================================================
+// 7. HILFSFUNKTIONEN & FORMATIERUNG
+// =============================================================================
+function getEffectiveDayIndex(dayChoice) {
+  if (dayChoice === 'today') {
+    const jsDay = new Date().getDay();
+    return (jsDay >= 1 && jsDay <= 5) ? jsDay : 1;
+  }
+  if (dayChoice === 'tomorrow') {
+    const jsDay = new Date().getDay();
+    const nextDay = jsDay + 1;
+    return (nextDay >= 1 && nextDay <= 5) ? nextDay : 1;
+  }
+  const num = parseInt(dayChoice);
+  if (!isNaN(num) && num >= 1 && num <= 5) {
+    return num;
+  }
+  return 1;
+}
+
+function getDayName(dayIndex) {
+  const names = ['', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
+  return names[dayIndex] || 'Unbekannt';
+}
+
+function updateTodayBadge() {
+  const now = new Date();
+  const options = { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' };
+  const str = now.toLocaleDateString('de-DE', options);
+  const badge = document.getElementById('today-date-text');
+  if (badge) badge.textContent = str;
+}
+
+function formatRoomDisplay(roomStr, teacherStr) {
+  if (!roomStr || typeof roomStr !== 'string') return 'Raum wird bekanntgegeben';
+  let clean = roomStr.trim();
+  const lower = clean.toLowerCase();
+  if (!clean || lower === 'raum' || lower === 'null' || lower === 'undefined' || lower === 'unterricht' || lower === 'lehrkraft') {
+    return 'Raum wird bekanntgegeben';
+  }
+  if (lower === 'hanauer' || lower === 'raum hanauer') {
+    return 'Raum wird bekanntgegeben';
+  }
+  if (teacherStr && typeof teacherStr === 'string') {
+    const tLower = teacherStr.trim().toLowerCase();
+    const cleanNoRaum = lower.replace(/^raum\s+/i, '').trim();
+    if (tLower && (cleanNoRaum === tLower || tLower.includes(cleanNoRaum) || cleanNoRaum.includes(tLower))) {
+      return 'Raum wird bekanntgegeben';
+    }
+  }
+  if (/^[0-9]+[a-zA-Z]?$/.test(clean)) return 'Raum ' + clean;
+  clean = clean.replace(/^raum\s+raum\s+/i, 'Raum ');
+  return clean;
+}
+
+// =============================================================================
+// 8. REITER 1: STUNDENPLAN & VERTRETUNGSPLAN
+// =============================================================================
+function setDayFilter(dayChoice) {
+  selectedDay = dayChoice;
+  document.querySelectorAll('.day-btn').forEach(btn => {
+    const isTarget = btn.getAttribute('data-day') === String(dayChoice);
+    btn.classList.toggle('active', isTarget);
+    btn.setAttribute('aria-pressed', isTarget ? 'true' : 'false');
+  });
+  renderTimetable();
+  announceSR(`Ansicht gewechselt auf: ${dayChoice === 'all' ? 'Ganze Schulwoche' : getDayName(getEffectiveDayIndex(dayChoice))}`, 'polite');
+}
+
+function renderTimetable() {
+  updateCurrentAndNextLesson();
+
+  const container = document.getElementById('timetable-container');
+  if (!container) return;
+
+  const dayIndex = getEffectiveDayIndex(selectedDay);
+  const isWeekView = selectedDay === 'all';
+
+  let lessons = [];
+  if (isWeekView) {
+    lessons = [...appData.timetable].sort((a, b) => a.day - b.day || a.period - b.period);
+  } else {
+    lessons = appData.timetable.filter(l => l.day === dayIndex).sort((a, b) => a.period - b.period);
+  }
+
+  const titleEl = document.getElementById('timetable-view-title');
+  if (titleEl) {
+    if (isWeekView) {
+      titleEl.textContent = 'Stundenplan für die gesamte Schulwoche (Montag bis Freitag)';
+    } else {
+      titleEl.textContent = `Stundenplan für ${getDayName(dayIndex)} (${selectedDay === 'today' ? 'Heute' : selectedDay === 'tomorrow' ? 'Morgen' : 'Wochentag'})`;
+    }
+  }
+
+  if (lessons.length === 0) {
+    container.innerHTML = `
+      <div class="status-box" style="padding: 28px; text-align: center;">
+        <span class="emoji-icon" style="font-size: 36px;" aria-hidden="true">🎉</span>
+        <p style="font-size: var(--font-size-lg); font-weight: bold; margin-top: 10px;">Kein Unterricht eingetragen!</p>
+        <p class="field-hint">Für diesen Tag liegen in WebUntis aktuell keine Stunden vor.</p>
+      </div>
+    `;
+    return;
+  }
+
+  let html = '<div class="timetable-list" role="list">';
+  lessons.forEach(l => {
+    const periodData = appData.periods.find(p => p.period === l.period) || { start: '--:--', end: '--:--' };
+    let statusClass = 'status-normal';
+    let badgeText = 'Regulär';
+    let badgeClass = 'badge-normal';
+    let srStatus = 'Regulärer Unterricht';
+
+    if (l.status === 'cancelled') {
+      statusClass = 'status-cancelled';
+      badgeText = 'Entfall';
+      badgeClass = 'badge-cancelled';
+      srStatus = 'Achtung: Stunde entfällt!';
+    } else if (l.status === 'substitute') {
+      statusClass = 'status-substitute';
+      badgeText = 'Vertretung';
+      badgeClass = 'badge-substitute';
+      srStatus = 'Hinweis: Vertretungsunterricht.';
+    } else if (l.status === 'roomchange') {
+      statusClass = 'status-roomchange';
+      badgeText = 'Raumwechsel';
+      badgeClass = 'badge-roomchange';
+      srStatus = 'Hinweis: Geänderter Raum.';
+    }
+
+    const dayPrefix = isWeekView ? `<strong>${getDayName(l.day)}:</strong> ` : '';
+    const roomDisplay = formatRoomDisplay(l.room, l.teacher);
+
+    html += `
+      <article class="lesson-card ${statusClass}" role="listitem" tabindex="0" aria-label="${dayPrefix}${l.period}. Stunde: ${l.subject}, ${roomDisplay}, Lehrkraft ${l.teacher}${l.klasse ? ', Klasse ' + l.klasse : ''}, Zeit: ${periodData.start} bis ${periodData.end} Uhr. Status: ${srStatus}">
+        <div class="lesson-time-box">
+          <div class="lesson-period">${l.period}. Std.</div>
+          <div class="lesson-clock">${periodData.start} - ${periodData.end}</div>
+          ${isWeekView ? `<div style="font-size: 13px; font-weight: bold; color: var(--accent-info); margin-top: 2px;">${getDayName(l.day)}</div>` : ''}
+        </div>
+        <div class="lesson-main">
+          <div class="lesson-subject-title">${l.subject}</div>
+          <div class="lesson-details-row">
+            <span>🚪 <strong>Raum:</strong> ${roomDisplay}</span>
+            <span>👨‍🏫 <strong>Lehrer:</strong> ${l.teacher}</span>
+            ${l.klasse ? `<span>🏫 <strong>Klasse:</strong> ${l.klasse}</span>` : ''}
+          </div>
+          ${l.notes ? `<div style="font-size: 14px; font-weight: bold; color: var(--accent-warn); margin-top: 4px;">ℹ️ ${l.notes}</div>` : ''}
+        </div>
+        <div class="lesson-badge-wrap">
+          <span class="status-badge ${badgeClass}">${badgeText}</span>
+        </div>
+      </article>
+    `;
+  });
+  html += '</div>';
+
+  container.innerHTML = html;
+}
+
+function updateCurrentAndNextLesson() {
+  const boxNow = document.getElementById('box-now-lesson');
+  const boxNext = document.getElementById('box-next-lesson');
+  if (!boxNow || !boxNext) return;
+
+  const now = new Date();
+  const currentJsDay = now.getDay();
+  const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+  if (currentJsDay < 1 || currentJsDay > 5) {
+    boxNow.innerHTML = `
+      <div class="status-label">Aktuell (Wochenende)</div>
+      <div class="status-content-title">Schönes Wochenende!</div>
+      <div class="status-meta">Am Montag geht die Schule wieder um 07:45 Uhr los.</div>
+    `;
+    const mondayFirst = appData.timetable.find(t => t.day === 1 && t.period === 1);
+    boxNext.innerHTML = `
+      <div class="status-label">Nächste Stunde (Montag 1. Std.)</div>
+      <div class="status-content-title">${mondayFirst ? mondayFirst.subject : 'Unterrichtsbeginn'}</div>
+      <div class="status-meta">${mondayFirst ? `Raum: ${formatRoomDisplay(mondayFirst.room, mondayFirst.teacher)} bei ${mondayFirst.teacher}` : '07:45 Uhr'}</div>
+    `;
+    return;
+  }
+
+  const todayLessons = appData.timetable.filter(l => l.day === currentJsDay).sort((a, b) => a.period - b.period);
+  let currentLesson = null;
+  let nextLesson = null;
+
+  for (let i = 0; i < todayLessons.length; i++) {
+    const l = todayLessons[i];
+    const p = appData.periods.find(per => per.period === l.period);
+    if (!p) continue;
+
+    if (currentTime >= p.start && currentTime <= p.end) {
+      currentLesson = { ...l, periodData: p };
+      nextLesson = todayLessons[i + 1] ? { ...todayLessons[i + 1], periodData: appData.periods.find(per => per.period === todayLessons[i + 1].period) } : null;
+      break;
+    } else if (currentTime < p.start && !nextLesson) {
+      nextLesson = { ...l, periodData: p };
+      break;
+    }
+  }
+
+  if (currentLesson) {
+    boxNow.classList.add('active-now');
+    boxNow.innerHTML = `
+      <div class="status-label">🔴 Aktuell läuft (${currentLesson.periodData.start} - ${currentLesson.periodData.end})</div>
+      <div class="status-content-title">${currentLesson.subject}</div>
+      <div class="status-meta">🚪 ${formatRoomDisplay(currentLesson.room, currentLesson.teacher)} | 👨‍🏫 ${currentLesson.teacher}${currentLesson.klasse ? ' | 🏫 ' + currentLesson.klasse : ''} ${currentLesson.status === 'cancelled' ? '<strong style="color: var(--accent-danger);">[ENTFALL]</strong>' : ''}</div>
+    `;
+  } else {
+    boxNow.classList.remove('active-now');
+    boxNow.innerHTML = `
+      <div class="status-label">Aktuell</div>
+      <div class="status-content-title">Kein laufender Unterricht</div>
+      <div class="status-meta">Aktuell ist Pause oder unterrichtsfreie Zeit.</div>
+    `;
+  }
+
+  if (nextLesson) {
+    boxNext.innerHTML = `
+      <div class="status-label">🔜 Nächste Stunde (${nextLesson.period}. Std. ab ${nextLesson.periodData.start} Uhr)</div>
+      <div class="status-content-title">${nextLesson.subject}</div>
+      <div class="status-meta">🚪 ${formatRoomDisplay(nextLesson.room, nextLesson.teacher)} | 👨‍🏫 ${nextLesson.teacher}${nextLesson.klasse ? ' | 🏫 ' + nextLesson.klasse : ''}</div>
+    `;
+  } else {
+    boxNext.innerHTML = `
+      <div class="status-label">Schultag beendet</div>
+      <div class="status-content-title">Schulschluss!</div>
+      <div class="status-meta">Für heute sind alle Stunden absolviert.</div>
+    `;
+  }
+}
+
+function readTodayTimetable() {
+  const dayIndex = getEffectiveDayIndex(selectedDay);
+  const dayName = getDayName(dayIndex);
+  const lessons = appData.timetable.filter(l => l.day === dayIndex).sort((a, b) => a.period - b.period);
+
+  if (lessons.length === 0) {
+    speak(`Für ${dayName} ist kein Unterricht eingetragen.`);
+    return;
+  }
+
+  let text = `Stundenplan für ${dayName}. Du hast ${lessons.length} Stunden. `;
+  lessons.forEach(l => {
+    const p = appData.periods.find(per => per.period === l.period);
+    const timeStr = p ? `von ${p.start} bis ${p.end} Uhr` : '';
+    let statusText = '';
+    if (l.status === 'cancelled') statusText = 'Diese Stunde entfällt!';
+    else if (l.status === 'substitute') statusText = `Vertretungsunterricht: ${l.notes || ''}`;
+    else if (l.status === 'roomchange') statusText = `Raumwechsel: ${l.notes || ''}`;
+
+    const rDisp = formatRoomDisplay(l.room, l.teacher);
+    text += `${l.period}. Stunde ${timeStr}: ${l.subject} in ${rDisp}, Lehrkraft ${l.teacher}${l.klasse ? ', Klasse ' + l.klasse : ''}. ${statusText}. `;
+  });
+
+  speak(text, true);
+}
+
+// =============================================================================
+// 9. REITER 2: PRÜFUNGEN, KLAUSUREN & TERMINE (GANZES SCHULJAHR)
+// =============================================================================
+function setExamFilter(filterType) {
+  appData.examFilter = filterType || 'all';
+
+  const buttons = document.querySelectorAll('.filter-btn');
+  buttons.forEach(btn => {
+    btn.classList.toggle('active', btn.id === `filter-${appData.examFilter}`);
+  });
+
+  renderExams();
+
+  const labels = {
+    all: 'Alle Termine und Prüfungen des Schuljahres',
+    exams: 'Nur Prüfungen und Klausuren',
+    holidays: 'Nur Ferien und Feiertage',
+    upcoming: 'Nur anstehende Termine'
+  };
+  announceSR(`Filter aktiviert: ${labels[appData.examFilter] || appData.examFilter}`, 'polite');
+}
+
+function renderExams() {
+  const container = document.getElementById('exams-list-container');
+  if (!container) return;
+
+  const schoolYearName = appData.schoolYear ? appData.schoolYear.name : '2026/2027';
+  const syBadge = document.getElementById('exams-schoolyear-badge');
+  if (syBadge) syBadge.textContent = `Schuljahr ${schoolYearName}`;
+
+  const subtitle = document.getElementById('exams-schoolyear-subtitle');
+  if (subtitle) subtitle.textContent = `Vollständige Jahresübersicht aller Klausuren, Arbeiten und Ferientermine für das Schuljahr ${schoolYearName} am LWL-Berufskolleg Soest.`;
+
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  // 1. Alle Termine & Klausuren zusammenführen
+  const allEvents = [];
+
+  // A. Prüfungen
+  if (appData.exams && Array.isArray(appData.exams)) {
+    appData.exams.forEach(ex => {
+      const dParts = ex.date.split('-');
+      const dObj = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]));
+      allEvents.push({
+        id: ex.id,
+        type: 'exam',
+        title: ex.subject,
+        subTitle: ex.topic || 'Klausur laut WebUntis',
+        dateStr: ex.date,
+        dateObj: dObj,
+        endDateObj: dObj,
+        timeStr: `${ex.startTime} - ${ex.endTime} Uhr`,
+        room: ex.room || 'Raum laut Plan',
+        teacher: ex.teacher || 'Fachlehrkraft',
+        isHoliday: false
+      });
+    });
+  }
+
+  // B. Schulferien & Termine
+  if (appData.holidays && Array.isArray(appData.holidays)) {
+    appData.holidays.forEach(h => {
+      const sParts = h.startDate.split('-');
+      const eParts = h.endDate.split('-');
+      const sObj = new Date(parseInt(sParts[0]), parseInt(sParts[1]) - 1, parseInt(sParts[2]));
+      const eObj = new Date(parseInt(eParts[0]), parseInt(eParts[1]) - 1, parseInt(eParts[2]));
+      allEvents.push({
+        id: h.id,
+        type: h.type || 'holiday',
+        title: h.name,
+        subTitle: h.longName || h.name,
+        dateStr: h.startDate,
+        endDateStr: h.endDate,
+        dateObj: sObj,
+        endDateObj: eObj,
+        timeStr: (h.startDate === h.endDate) ? 'Ganztägig (Schulfrei)' : `Vom ${formatGermanDate(sObj)} bis ${formatGermanDate(eObj)}`,
+        room: 'Schulfrei',
+        teacher: 'LWL-Berufskolleg Soest',
+        isHoliday: true
+      });
+    });
+  }
+
+  // Zähler für Filter-Buttons aktualisieren
+  const totalAll = allEvents.length;
+  const totalExams = allEvents.filter(e => e.type === 'exam').length;
+  const totalHolidays = allEvents.filter(e => e.type === 'holiday' || e.type === 'appointment').length;
+  const totalUpcoming = allEvents.filter(e => e.endDateObj >= todayStart).length;
+
+  const countAllEl = document.getElementById('count-all');
+  if (countAllEl) countAllEl.textContent = totalAll;
+  const countExamsEl = document.getElementById('count-exams');
+  if (countExamsEl) countExamsEl.textContent = totalExams;
+  const countHolidaysEl = document.getElementById('count-holidays');
+  if (countHolidaysEl) countHolidaysEl.textContent = totalHolidays;
+  const countUpcomingEl = document.getElementById('count-upcoming');
+  if (countUpcomingEl) countUpcomingEl.textContent = totalUpcoming;
+
+  // 2. Filter anwenden
+  const filter = appData.examFilter || 'all';
+  let filtered = allEvents;
+  if (filter === 'exams') {
+    filtered = allEvents.filter(e => e.type === 'exam');
+  } else if (filter === 'holidays') {
+    filtered = allEvents.filter(e => e.type === 'holiday' || e.type === 'appointment');
+  } else if (filter === 'upcoming') {
+    filtered = allEvents.filter(e => e.endDateObj >= todayStart);
+  }
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="status-box" style="padding: 32px; text-align: center;">
+        <span class="emoji-icon" style="font-size: 40px;" aria-hidden="true">📅</span>
+        <p style="font-size: var(--font-size-lg); font-weight: bold; margin-top: 12px;">Keine Einträge für diesen Filter</p>
+        <p class="field-hint">Für den gewählten Filter liegen im Schuljahr ${schoolYearName} derzeit keine Termine vor.</p>
+        <button type="button" class="btn btn-secondary" style="margin-top: 16px;" onclick="setExamFilter('all')">
+          Alle Termine des Schuljahres anzeigen
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  // 3. Chronologisch sortieren
+  filtered.sort((a, b) => a.dateObj - b.dateObj);
+
+  // 4. Nach Monat gruppieren
+  const monthGroups = {};
+  filtered.forEach(item => {
+    const mKey = `${item.dateObj.getFullYear()}-${String(item.dateObj.getMonth() + 1).padStart(2, '0')}`;
+    if (!monthGroups[mKey]) {
+      const monthName = item.dateObj.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+      monthGroups[mKey] = {
+        name: monthName,
+        items: []
+      };
+    }
+    monthGroups[mKey].items.push(item);
+  });
+
+  let html = '';
+  for (const mKey in monthGroups) {
+    const group = monthGroups[mKey];
+    const groupId = `month-${mKey}`;
+    html += `
+      <section class="month-section" aria-labelledby="${groupId}">
+        <h3 id="${groupId}" class="month-heading">
+          <span>📅 ${group.name}</span>
+          <span style="font-size: 14px; opacity: 0.85;">${group.items.length} ${group.items.length === 1 ? 'Eintrag' : 'Einträge'}</span>
+        </h3>
+        <div role="list">
+    `;
+
+    group.items.forEach(ev => {
+      const isPast = ev.endDateObj < todayStart;
+      const isToday = todayStart >= ev.dateObj && todayStart <= ev.endDateObj;
+      const daysDiff = Math.ceil((ev.dateObj.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24));
+
+      let countdownText = '';
+      let countdownClass = '';
+
+      if (isPast) {
+        countdownText = 'Bereits vergangen';
+        countdownClass = 'countdown-past';
+      } else if (isToday) {
+        countdownText = '🔴 HEUTE!';
+        countdownClass = 'countdown-urgent';
+      } else if (daysDiff === 1) {
+        countdownText = 'Morgen!';
+        countdownClass = 'countdown-urgent';
+      } else if (daysDiff <= 7) {
+        countdownText = `Noch ${daysDiff} Tage`;
+        countdownClass = 'countdown-soon';
+      } else if (daysDiff <= 30) {
+        const weeks = Math.floor(daysDiff / 7);
+        countdownText = `In ca. ${weeks} ${weeks === 1 ? 'Woche' : 'Wochen'}`;
+        countdownClass = 'countdown-normal';
+      } else {
+        countdownText = `In ${daysDiff} Tagen`;
+        countdownClass = 'countdown-normal';
+      }
+
+      let typeBadge = '';
+      let itemClass = '';
+      if (ev.type === 'exam') {
+        typeBadge = '<span class="event-type-badge type-exam">📝 Prüfung / Klausur</span>';
+        itemClass = 'exam-item';
+      } else if (ev.type === 'holiday') {
+        typeBadge = '<span class="event-type-badge type-holiday">🏖️ Schulferien / Frei</span>';
+        itemClass = 'holiday-item';
+      } else {
+        typeBadge = '<span class="event-type-badge type-appointment">📌 Schultermin</span>';
+        itemClass = 'appointment-item';
+      }
+
+      if (isPast) itemClass += ' past-event';
+
+      const dateLabel = (ev.endDateStr && ev.dateStr !== ev.endDateStr)
+        ? `${formatGermanDate(ev.dateObj)} bis ${formatGermanDate(ev.endDateObj)}`
+        : ev.dateObj.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+
+      const ariaLabelText = `${ev.type === 'exam' ? 'Prüfung' : 'Termin'}: ${ev.title}. Datum: ${dateLabel}. Zeit: ${ev.timeStr}. ${ev.type === 'exam' ? 'Raum: ' + ev.room + ', Lehrkraft: ' + ev.teacher : ''}. Status: ${countdownText}.`;
+
+      html += `
+        <article class="event-card ${itemClass}" role="listitem" tabindex="0" aria-label="${ariaLabelText}">
+          <div class="event-info">
+            <div class="event-header-row">
+              ${typeBadge}
+              <span class="exam-badge">WebUntis</span>
+            </div>
+            <h4 class="event-title">${ev.title}</h4>
+            <div class="event-meta-row">
+              <span class="event-meta-item">📅 <strong>${dateLabel}</strong></span>
+              <span class="event-meta-item">⏰ <strong>${ev.timeStr}</strong></span>
+              ${ev.type === 'exam' ? `<span class="event-meta-item">🚪 <strong>${ev.room}</strong></span>` : ''}
+              ${ev.type === 'exam' ? `<span class="event-meta-item">👨‍🏫 <strong>${ev.teacher}</strong></span>` : ''}
+            </div>
+            ${ev.subTitle && ev.subTitle !== ev.title ? `<div style="margin-top: 6px; font-size: 14px; color: var(--text-muted);">📋 ${ev.subTitle}</div>` : ''}
+          </div>
+          <div class="event-side-box">
+            <span class="countdown-pill ${countdownClass}" aria-hidden="true">${countdownText}</span>
+          </div>
+        </article>
+      `;
+    });
+
+    html += `
+        </div>
+      </section>
+    `;
+  }
+
+  container.innerHTML = html;
+}
+
+function formatGermanDate(d) {
+  if (!d) return '';
+  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function readAllExamsAndEvents() {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const upcomingExams = (appData.exams || []).filter(e => {
+    const parts = e.date.split('-');
+    const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    return d >= todayStart;
+  }).sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const upcomingHolidays = (appData.holidays || []).filter(h => {
+    const parts = h.endDate.split('-');
+    const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    return d >= todayStart;
+  }).sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+
+  const syName = appData.schoolYear ? appData.schoolYear.name : '2026/2027';
+
+  let text = `Jahresübersicht für das Schuljahr ${syName} am LWL-Berufskolleg Soest. `;
+  text += `Du hast insgesamt ${upcomingExams.length} anstehende Prüfungen und ${upcomingHolidays.length} anstehende Ferien- und Feiertage. `;
+
+  if (upcomingExams.length > 0) {
+    text += `Die nächste Prüfung ist ${upcomingExams[0].subject} am ${formatGermanDate(new Date(upcomingExams[0].date))} in ${upcomingExams[0].room}. `;
+  } else {
+    text += 'Es sind derzeit keine anstehenden Prüfungen eingetragen. ';
+  }
+
+  if (upcomingHolidays.length > 0) {
+    text += `Der nächste schulfreie Zeitraum ist ${upcomingHolidays[0].name} ab dem ${formatGermanDate(new Date(upcomingHolidays[0].startDate))}. `;
+  }
+
+  speak(text, true);
+}
+
+// =============================================================================
+// 10. INITIALISIERUNG & TASTEN-STEUERUNG
+// =============================================================================
+function initApp() {
+  loadAppData();
+  updateTodayBadge();
+
+  // Tastaturnavigation
+  window.addEventListener('keydown', e => {
+    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+
+    if (e.key === '1') {
+      e.preventDefault();
+      switchTab('overview');
+    } else if (e.key === '2') {
+      e.preventDefault();
+      switchTab('exams');
+    } else if (e.key === '3') {
+      e.preventDefault();
+      switchTab('settings');
+    } else if (e.key === 'h' || e.key === 'H') {
+      e.preventDefault();
+      setDayFilter('today');
+    } else if (e.key === 'v' || e.key === 'V') {
+      e.preventDefault();
+      readTodayTimetable();
+    } else if (e.key === 'a' || e.key === 'A') {
+      e.preventDefault();
+      triggerManualSync();
+    }
+  });
+
+  // Automatische Anmeldung & Synchronisation beim Start
+  if (appData.config.username && appData.config.password) {
+    hideLoginView();
+    renderTimetable();
+    renderExams();
+    performWebUntisSync();
+  } else {
+    showLoginView();
+  }
+
+  // Automatischer Hintergrund-Refresh alle 5 Minuten
+  if (autoSyncIntervalTimer) clearInterval(autoSyncIntervalTimer);
+  autoSyncIntervalTimer = setInterval(() => {
+    if (appData.config.username && appData.config.password) {
+      performWebUntisSync();
+    }
+  }, 5 * 60 * 1000);
+
+  // Wenn der Benutzer zum Fenster zurückkehrt (Fokus), prüfen ob Refresh nötig
+  window.addEventListener('focus', () => {
+    if (lastSyncTimestamp && (Date.now() - lastSyncTimestamp.getTime() > 3 * 60 * 1000)) {
+      if (appData.config.username && appData.config.password) {
+        performWebUntisSync();
+      }
+    }
+  });
+
+  // Version von lokalem Server abfragen
+  fetchInstalledVersion();
+}
+
+async function fetchInstalledVersion() {
+  try {
+    const res = await fetch('/api/version');
+    const data = await res.json();
+    const verEl = document.getElementById('app-version-display');
+    if (verEl && data.version) {
+      verEl.textContent = `v${data.version}`;
+    }
+  } catch (e) { }
+}
+
+async function checkSoftwareUpdate() {
+  const btn = document.getElementById('btn-check-update');
+  const box = document.getElementById('update-result-box');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="emoji-icon">⏳</span> <strong>Prüfe auf GitHub...</strong>';
+  }
+  announceSR('Prüfe auf GitHub nach neuen Updates...', 'polite');
+
+  try {
+    const res = await fetch('/api/update/check');
+    const data = await res.json();
+    if (box) {
+      box.style.display = 'block';
+      if (data.updated) {
+        box.innerHTML = `
+          <div style="background: rgba(21, 128, 61, 0.15); border: 2px solid var(--accent-ok); border-radius: 8px; padding: 14px;">
+            <strong style="color: var(--accent-ok);">🎉 Neues Update erfolgreich heruntergeladen!</strong>
+            <p style="margin-top: 6px; font-size: 14px;">Version ${data.currentVersion} wurde installiert. Die Seite wird jetzt neu geladen...</p>
+          </div>
+        `;
+        announceSR(`Ein neues Update auf Version ${data.currentVersion} wurde installiert. Seite lädt neu.`, 'assertive');
+        setTimeout(() => { window.location.reload(); }, 2000);
+      } else {
+        box.innerHTML = `
+          <div style="background: rgba(2, 132, 199, 0.1); border: 2px solid var(--accent-info); border-radius: 8px; padding: 14px;">
+            <strong style="color: var(--accent-info);">✅ Alles auf dem neuesten Stand!</strong>
+            <p style="margin-top: 6px; font-size: 14px;">Du nutzt bereits die aktuellste Version ${data.currentVersion}.</p>
+          </div>
+        `;
+        announceSR(`Du nutzt bereits die aktuellste Version ${data.currentVersion}. Keine Updates verfügbar.`, 'polite');
+      }
+    }
+  } catch (e) {
+    if (box) {
+      box.style.display = 'block';
+      box.innerHTML = `
+        <div style="background: rgba(185, 28, 28, 0.1); border: 2px solid var(--accent-danger); border-radius: 8px; padding: 14px;">
+          <strong style="color: var(--accent-danger);">⚠️ Update-Prüfung fehlgeschlagen</strong>
+          <p style="margin-top: 6px; font-size: 14px;">GitHub konnte nicht erreicht werden. Bitte prüfe deine Internetverbindung.</p>
+        </div>
+      `;
+    }
+    announceSR('Update-Prüfung fehlgeschlagen. Keine Verbindung zu GitHub.', 'assertive');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="emoji-icon">🔍</span> <strong>Jetzt auf Updates prüfen</strong>';
+    }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', initApp);
