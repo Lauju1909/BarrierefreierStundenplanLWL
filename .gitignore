@@ -1,7 +1,8 @@
-﻿# Logs & Temp
+# Logs & Temp
 *.log
 *.tmp
 *.bak
+Feedback_Archiv.txt
 Profile_App/
 __pycache__/
 *.pyc
