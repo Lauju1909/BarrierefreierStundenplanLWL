@@ -20,7 +20,11 @@ const DEFAULT_CONFIG = {
   fontSize: 'font-normal',
   ttsEnabled: true,
   ttsRate: 1.0,
-  textOnlyMode: false
+  textOnlyMode: false,
+  sponsorTitle: '📚 Schulbedarf, Fachbücher & Barrierefreie Lernmittel',
+  sponsorDesc: 'Entdecke hochwertige Hilfsmittel, Schreibwaren und Bücher für deinen Schulalltag am Berufskolleg.',
+  sponsorUrl: 'https://www.amazon.de/s?k=schulbedarf+fachb%C3%BCcher',
+  sponsorVisible: true
 };
 
 const DEFAULT_PERIODS = [
@@ -62,9 +66,13 @@ let appData = {
   periods: [...DEFAULT_PERIODS],
   timetable: [],
   exams: [],
+  homework: [],
+  absences: [],
+  classbook: [],
   holidays: [...DEFAULT_NRW_HOLIDAYS_2026_2027],
   schoolYear: null,
-  examFilter: 'all'
+  examFilter: 'all',
+  homeworkFilter: 'pending'
 };
 
 let currentTab = 'overview';
@@ -88,9 +96,13 @@ function loadAppData() {
         periods: parsed.periods || [...DEFAULT_PERIODS],
         timetable: parsed.timetable || [],
         exams: [],
+        homework: parsed.homework || [],
+        absences: parsed.absences || [],
+        classbook: parsed.classbook || [],
         holidays: (parsed.holidays && parsed.holidays.length > 0) ? parsed.holidays : [...DEFAULT_NRW_HOLIDAYS_2026_2027],
         schoolYear: parsed.schoolYear || null,
-        examFilter: 'all'
+        examFilter: 'all',
+        homeworkFilter: parsed.homeworkFilter || 'pending'
       };
 
       // Gecachte synthetische Fake-Prüfungen aus früheren Versionen restlos entfernen
@@ -168,6 +180,25 @@ function applyConfig() {
   const cfgTtsRate = document.getElementById('cfg-tts-rate');
   if (cfgTtsRate) cfgTtsRate.value = appData.config.ttsRate || 1.0;
 
+  // Partner / Sponsor Banner Einstellungen & Ansicht
+  const spArea = document.getElementById('sponsor-banner-area');
+  if (spArea) {
+    spArea.style.display = (appData.config.sponsorVisible !== false) ? 'block' : 'none';
+  }
+  const spTitleEl = document.getElementById('sponsor-banner-title');
+  if (spTitleEl) spTitleEl.textContent = appData.config.sponsorTitle || '💡 Partner-Empfehlung';
+  const spDescEl = document.getElementById('sponsor-banner-desc');
+  if (spDescEl) spDescEl.textContent = appData.config.sponsorDesc || '';
+
+  const cfgSpTitle = document.getElementById('cfg-sponsor-title');
+  if (cfgSpTitle) cfgSpTitle.value = appData.config.sponsorTitle || '';
+  const cfgSpDesc = document.getElementById('cfg-sponsor-desc');
+  if (cfgSpDesc) cfgSpDesc.value = appData.config.sponsorDesc || '';
+  const cfgSpUrl = document.getElementById('cfg-sponsor-url');
+  if (cfgSpUrl) cfgSpUrl.value = appData.config.sponsorUrl || '';
+  const cfgSpVis = document.getElementById('cfg-sponsor-visible');
+  if (cfgSpVis) cfgSpVis.checked = (appData.config.sponsorVisible !== false);
+
   // Account Display
   const uDisp = document.getElementById('settings-username-display');
   if (uDisp) uDisp.textContent = appData.config.username || 'Nicht angemeldet';
@@ -233,7 +264,7 @@ function speak(text, force = false) {
 }
 
 // =============================================================================
-// 4. NAVIGATION & REITER-WECHSEL (TASTEN 1 BIS 3)
+// 4. NAVIGATION & REITER-WECHSEL (TASTEN 1 BIS 5)
 // =============================================================================
 function switchTab(tabId) {
   currentTab = tabId;
@@ -241,6 +272,8 @@ function switchTab(tabId) {
   const tabs = [
     { id: 'overview', btn: 'tab-overview', view: 'view-overview' },
     { id: 'exams', btn: 'tab-exams', view: 'view-exams' },
+    { id: 'homework', btn: 'tab-homework', view: 'view-homework' },
+    { id: 'absences', btn: 'tab-absences', view: 'view-absences' },
     { id: 'settings', btn: 'tab-settings', view: 'view-settings' }
   ];
 
@@ -267,9 +300,15 @@ function switchTab(tabId) {
   } else if (tabId === 'exams') {
     renderExams();
     announceSR('Reiter 2: Prüfungen und Termine für das gesamte Schuljahr ausgewählt.', 'polite');
+  } else if (tabId === 'homework') {
+    renderHomework();
+    announceSR('Reiter 3: Hausaufgaben und Klassenbuch ausgewählt.', 'polite');
+  } else if (tabId === 'absences') {
+    renderAbsences();
+    announceSR('Reiter 4: Fehlzeiten und Entschuldigungen ausgewählt.', 'polite');
   } else if (tabId === 'settings') {
     loadFeedbackArchive();
-    announceSR('Reiter 3: Konto und Einstellungen ausgewählt.', 'polite');
+    announceSR('Reiter 5: Konto und Einstellungen ausgewählt.', 'polite');
   }
 }
 
@@ -843,21 +882,57 @@ async function performWebUntisSync(userOverride, passOverride) {
       );
     }
 
-    // REST-Endpunkte für Prüfungen & App-Daten (Untis Mobile Backend)
+    // 6b. Hausaufgaben-Abfragen (getHomeWork2017 für Schüler & Klasse + getHomeWorks)
+    const homeworkCalls = [
+      callWebUntisApi('getHomeWork2017', { id: personId, type: personType, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
+      callWebUntisApi('getHomeWork2017', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
+      callWebUntisApi('getHomeWorks', { id: personId, type: personType, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({}))
+    ];
+    if (detectedKlasseId) {
+      homeworkCalls.push(callWebUntisApi('getHomeWork2017', { id: detectedKlasseId, type: 1, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
+    }
+
+    // 6c. Fehlzeiten-Abfragen (getStudentAbsences2017, getTimetableWithAbsences & Gründe)
+    const absenceCalls = [
+      callWebUntisApi('getStudentAbsences2017', { id: personId, type: personType, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
+      callWebUntisApi('getStudentAbsences2017', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
+      callWebUntisApi('getTimetableWithAbsences', { id: personId, type: personType, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
+      callWebUntisApi('getAbsenceReasons', {}).catch(() => ({}))
+    ];
+
+    // REST-Endpunkte für Prüfungen, Hausaufgaben, Fehlzeiten & App-Daten (Untis Mobile Backend)
     const sIsoStr = `${String(syRange.startDateNum).slice(0, 4)}-${String(syRange.startDateNum).slice(4, 6)}-${String(syRange.startDateNum).slice(6, 8)}`;
     const eIsoStr = `${String(syRange.endDateNum).slice(0, 4)}-${String(syRange.endDateNum).slice(4, 6)}-${String(syRange.endDateNum).slice(6, 8)}`;
     const restExamsPromise = callWebUntisRest(`/api/exams?startDate=${sIsoStr}&endDate=${eIsoStr}`).catch(() => null);
     const restAppDataPromise = callWebUntisRest('/api/rest/view/v1/app/data').catch(() => null);
+    const restHomeworkPromise = callWebUntisRest(`/api/homeworks/lessons?startDate=${sIsoStr}&endDate=${eIsoStr}`).catch(() => null);
+    const restAbsencesPromise = callWebUntisRest(`/api/classreg/absences/students?startDate=${sIsoStr}&endDate=${eIsoStr}`).catch(() => null);
 
-    // 7. Schulferien, News, Prüfungen, Klassenbuch & REST-Daten parallel abrufen
-    const [examResponses, classregResponses, futureTtResults, holidaysRes, newsRes, restExamsRes, restAppDataRes] = await Promise.all([
+    // 7. Schulferien, News, Prüfungen, Klassenbuch, Hausaufgaben, Fehlzeiten & REST-Daten parallel abrufen
+    const [
+      examResponses,
+      classregResponses,
+      futureTtResults,
+      homeworkResponses,
+      absenceResponses,
+      holidaysRes,
+      newsRes,
+      restExamsRes,
+      restAppDataRes,
+      restHomeworkRes,
+      restAbsencesRes
+    ] = await Promise.all([
       Promise.all(examCalls),
       Promise.all(classregCalls),
       Promise.all(futureTtCalls),
+      Promise.all(homeworkCalls),
+      Promise.all(absenceCalls),
       callWebUntisApi('getHolidays', {}).catch(() => ({})),
       callWebUntisApi('getNewsWidgetData', {}).catch(() => callWebUntisApi('getNewsWidget', {}).catch(() => ({}))),
       restExamsPromise,
-      restAppDataPromise
+      restAppDataPromise,
+      restHomeworkPromise,
+      restAbsencesPromise
     ]);
 
     // 8. Logout
@@ -1014,16 +1089,25 @@ async function performWebUntisSync(userOverride, passOverride) {
         if (item.code === 'cancelled') st = 'cancelled';
         else if (item.code === 'irregular') st = 'substitute';
 
+        const dateIso = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
+        const lessonTopic = (item.lstext || item.lessonText || '').trim();
+
         newTimetable.push({
           id: `untis-${item.id || idx}`,
+          untisId: item.id,
           day: dayOfWeek,
+          dateStr: dateIso,
           period: periodNum,
+          startTime: startStr,
+          endTime: endStr,
           subject: subj,
           teacher: teach,
           klasse: klasse,
           room: rm,
           status: st,
-          notes: item.substText || item.lstext || ''
+          notes: item.substText || item.info || '',
+          lstext: lessonTopic,
+          homework: ''
         });
       });
 
@@ -1363,10 +1447,235 @@ async function performWebUntisSync(userOverride, passOverride) {
 
     appData.holidays = newHolidays;
 
+    // 12. Hausaufgaben parsen & zusammenführen
+    const preservedCompletedMap = {};
+    if (appData.homework && Array.isArray(appData.homework)) {
+      appData.homework.forEach(hw => {
+        if (hw.completed) preservedCompletedMap[hw.id] = true;
+      });
+    }
+
+    const newHomework = [];
+    const homeworkKeySet = new Set();
+
+    function addUniqueHomework(hwItem) {
+      if (!hwItem || !hwItem.text) return;
+      const key = `${hwItem.dueDate}_${(hwItem.subject || '').toLowerCase()}_${hwItem.text.toLowerCase().trim()}`;
+      if (!homeworkKeySet.has(key)) {
+        homeworkKeySet.add(key);
+        newHomework.push(hwItem);
+      }
+    }
+
+    // A. JSON-RPC Hausaufgaben (getHomeWork2017 / getHomeWorks)
+    if (homeworkResponses && Array.isArray(homeworkResponses)) {
+      homeworkResponses.forEach(res => {
+        if (!res || !res.result) return;
+        const rawList = Array.isArray(res.result) ? res.result : (res.result.homeworks || res.result.records || []);
+        rawList.forEach((hw, idx) => {
+          const rawDate = hw.dueDate || hw.endDate || hw.date;
+          let dueStr = '';
+          if (rawDate) {
+            const dStr = String(rawDate).replace(/-/g, '').trim();
+            if (dStr.length >= 8) dueStr = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
+          }
+          let subj = 'Hausaufgabe';
+          if (hw.subject && subjectsMap[hw.subject]) subj = subjectsMap[hw.subject];
+          else if (hw.subjectId && subjectsMap[hw.subjectId]) subj = subjectsMap[hw.subjectId];
+          else if (typeof hw.subject === 'string' && hw.subject.trim()) subj = hw.subject.trim();
+          else if (hw.lesson && hw.lesson.subject) subj = hw.lesson.subject;
+
+          let teach = 'Fachlehrkraft';
+          const tId = hw.teacher || hw.teacherId || (hw.lesson && hw.lesson.teacher);
+          if (tId && teachersMap[tId]) teach = teachersMap[tId];
+          else if (typeof tId === 'string' && tId.trim()) teach = tId.trim();
+
+          const hwId = String(hw.id || `hw-${idx}-${dueStr}`);
+          const isComp = !!(preservedCompletedMap[hwId] || hw.completed === true);
+
+          addUniqueHomework({
+            id: hwId,
+            subject: subj,
+            teacher: teach,
+            dueDate: dueStr || 'Ohne Frist',
+            text: hw.text || hw.remark || hw.description || 'Hausaufgabe laut WebUntis',
+            completed: isComp
+          });
+        });
+      });
+    }
+
+    // B. REST Hausaufgaben
+    if (restHomeworkRes) {
+      const restHwList = Array.isArray(restHomeworkRes) ? restHomeworkRes : (restHomeworkRes.data || restHomeworkRes.homeworks || []);
+      if (Array.isArray(restHwList)) {
+        restHwList.forEach((hw, idx) => {
+          const rawDate = hw.dueDate || hw.endDate || hw.date;
+          let dueStr = '';
+          if (rawDate) {
+            const dStr = String(rawDate).replace(/-/g, '').trim();
+            if (dStr.length >= 8) dueStr = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
+          }
+          let subj = hw.subject || (hw.lesson && hw.lesson.subject) || 'Hausaufgabe';
+          let teach = hw.teacher || (hw.lesson && hw.lesson.teacher) || 'Fachlehrkraft';
+          const hwId = String(hw.id || `rest-hw-${idx}`);
+          const isComp = !!(preservedCompletedMap[hwId] || hw.completed === true);
+
+          addUniqueHomework({
+            id: hwId,
+            subject: typeof subj === 'object' ? (subj.name || subj.longName || 'Hausaufgabe') : String(subj),
+            teacher: typeof teach === 'object' ? (teach.name || teach.longName || 'Fachlehrkraft') : String(teach),
+            dueDate: dueStr || 'Ohne Frist',
+            text: hw.text || hw.remark || hw.description || 'Hausaufgabe laut WebUntis',
+            completed: isComp
+          });
+        });
+      }
+    }
+
+    appData.homework = newHomework;
+
+    // 13. Fehlzeiten parsen & aggregieren
+    const newAbsences = [];
+    const absenceKeySet = new Set();
+
+    function addUniqueAbsence(absItem) {
+      if (!absItem || !absItem.startDate) return;
+      const key = `${absItem.startDate}_${absItem.startTime}_${(absItem.reason || '').toLowerCase().trim()}`;
+      if (!absenceKeySet.has(key)) {
+        absenceKeySet.add(key);
+        newAbsences.push(absItem);
+      }
+    }
+
+    if (absenceResponses && Array.isArray(absenceResponses)) {
+      absenceResponses.forEach(res => {
+        if (!res || !res.result) return;
+        const rawList = Array.isArray(res.result) ? res.result : (res.result.absences || []);
+        rawList.forEach((ab, idx) => {
+          const sRaw = ab.startDate || ab.date;
+          if (!sRaw) return;
+          const sStr = String(sRaw).replace(/-/g, '').trim();
+          if (sStr.length < 8) return;
+          const sIso = `${sStr.slice(0, 4)}-${sStr.slice(4, 6)}-${sStr.slice(6, 8)}`;
+
+          const eRaw = ab.endDate || ab.startDate || ab.date;
+          const eStr = String(eRaw).replace(/-/g, '').trim();
+          const eIso = (eStr.length >= 8) ? `${eStr.slice(0, 4)}-${eStr.slice(4, 6)}-${eStr.slice(6, 8)}` : sIso;
+
+          const isExc = !!(ab.isExcused || ab.excused || (ab.excuseStatus && String(ab.excuseStatus).toLowerCase() === 'excused'));
+          const reason = ab.reason || ab.text || ab.excuse || (isExc ? 'Entschuldigte Fehlzeit' : 'Unentschuldigt / Offen');
+          const startT = ab.startTime ? formatUntisTimeToStr(ab.startTime) : '07:45';
+          const endT = ab.endTime ? formatUntisTimeToStr(ab.endTime) : '15:10';
+
+          addUniqueAbsence({
+            id: String(ab.id || `abs-${idx}-${sIso}`),
+            startDate: sIso,
+            endDate: eIso,
+            startTime: startT,
+            endTime: endT,
+            reason: reason,
+            isExcused: isExc,
+            hours: ab.hours || ab.absentHours || 1
+          });
+        });
+      });
+    }
+
+    if (restAbsencesRes) {
+      const restAbsList = Array.isArray(restAbsencesRes) ? restAbsencesRes : (restAbsencesRes.data || restAbsencesRes.absences || []);
+      if (Array.isArray(restAbsList)) {
+        restAbsList.forEach((ab, idx) => {
+          const sRaw = ab.startDate || ab.date;
+          if (!sRaw) return;
+          const sStr = String(sRaw).replace(/-/g, '').trim();
+          if (sStr.length < 8) return;
+          const sIso = `${sStr.slice(0, 4)}-${sStr.slice(4, 6)}-${sStr.slice(6, 8)}`;
+          const isExc = !!(ab.isExcused || ab.excused || (ab.excuseStatus && String(ab.excuseStatus).toLowerCase() === 'excused'));
+          const reason = ab.reason || ab.text || (isExc ? 'Entschuldigt' : 'Offen');
+
+          addUniqueAbsence({
+            id: String(ab.id || `rest-abs-${idx}`),
+            startDate: sIso,
+            endDate: sIso,
+            startTime: ab.startTime ? String(ab.startTime).slice(0, 5) : '07:45',
+            endTime: ab.endTime ? String(ab.endTime).slice(0, 5) : '15:10',
+            reason: reason,
+            isExcused: isExc,
+            hours: ab.hours || 1
+          });
+        });
+      }
+    }
+
+    // Chronologisch absteigend sortieren (neueste zuerst)
+    newAbsences.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+    appData.absences = newAbsences;
+
+    // 14. Klassenbuch & Lehrstoff sammeln
+    const newClassbook = [];
+    const classbookKeySet = new Set();
+
+    function addUniqueClassbook(cbItem) {
+      if (!cbItem || !cbItem.topic) return;
+      const key = `${cbItem.date}_${cbItem.period}_${cbItem.subject.toLowerCase()}`;
+      if (!classbookKeySet.has(key)) {
+        classbookKeySet.add(key);
+        newClassbook.push(cbItem);
+      }
+    }
+
+    const allTtSource = [];
+    if (ttRes && ttRes.result && Array.isArray(ttRes.result)) allTtSource.push(...ttRes.result);
+    if (futureTtResults && Array.isArray(futureTtResults)) {
+      futureTtResults.forEach(f => {
+        if (f && f.result && Array.isArray(f.result)) allTtSource.push(...f.result);
+      });
+    }
+
+    allTtSource.forEach((item, idx) => {
+      const topicText = (item.lstext || item.lessonText || '').trim();
+      if (!topicText) return;
+      const dStr = String(item.date);
+      if (dStr.length !== 8) return;
+      const isoDate = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
+      const subj = (item.su && item.su[0]) ? (subjectsMap[item.su[0].id] || item.su[0].name || 'Unterricht') : 'Unterricht';
+      const teach = (item.te && item.te[0]) ? (teachersMap[item.te[0].id] || item.te[0].name || 'Fachlehrkraft') : 'Fachlehrkraft';
+
+      addUniqueClassbook({
+        id: `cb-${item.id || idx}-${isoDate}`,
+        date: isoDate,
+        period: item.startTime ? formatUntisTimeToStr(item.startTime) + ' Uhr' : '1. Std.',
+        subject: subj,
+        teacher: teach,
+        topic: topicText
+      });
+    });
+
+    newClassbook.sort((a, b) => new Date(b.date) - new Date(a.date));
+    appData.classbook = newClassbook;
+
+    // 15. Hausaufgaben mit Stunden im aktuellen Stundenplan verknüpfen
+    if (appData.timetable && appData.timetable.length > 0 && appData.homework.length > 0) {
+      appData.timetable.forEach(l => {
+        const matchingHw = appData.homework.find(h => {
+          if (!h.subject || !l.subject) return false;
+          const s1 = h.subject.toLowerCase().trim();
+          const s2 = l.subject.toLowerCase().trim();
+          return s1.includes(s2) || s2.includes(s1);
+        });
+        if (matchingHw) {
+          l.homework = matchingHw.text;
+        }
+      });
+    }
+
     lastSyncTimestamp = new Date();
     saveAppData();
     renderTimetable();
     renderExams();
+    renderHomework();
+    renderAbsences();
     updateSyncDisplay();
 
     announceSR(`Stundenplan aktualisiert. ${appData.timetable.length} Stunden geladen.`, 'polite');
@@ -1543,7 +1852,7 @@ function renderTimetable() {
     const roomDisplay = formatRoomDisplay(l.room, l.teacher);
 
     html += `
-      <article class="lesson-card ${statusClass}" role="listitem" tabindex="0" aria-label="${dayPrefix}${l.period}. Stunde: ${l.subject}, ${roomDisplay}, Lehrkraft ${l.teacher}${l.klasse ? ', Klasse ' + l.klasse : ''}, Zeit: ${periodData.start} bis ${periodData.end} Uhr. Status: ${srStatus}">
+      <article class="lesson-card interactive-lesson ${statusClass}" role="listitem" tabindex="0" onclick="openLessonDetails('${l.id}')" onkeydown="handleLessonKeydown(event, '${l.id}')" title="Klicken oder Enter drücken für Lehrstoff, Hausaufgaben &amp; Details" aria-label="${dayPrefix}${l.period}. Stunde: ${l.subject}, ${roomDisplay}, Lehrkraft ${l.teacher}${l.klasse ? ', Klasse ' + l.klasse : ''}, Zeit: ${periodData.start} bis ${periodData.end} Uhr. Status: ${srStatus}. Klicken für Details, Lehrstoff und Hausaufgaben.">
         <div class="lesson-time-box">
           <div class="lesson-period">${l.period}. Std.</div>
           <div class="lesson-clock">${periodData.start} - ${periodData.end}</div>
@@ -1556,10 +1865,13 @@ function renderTimetable() {
             <span>👨‍🏫 <strong>Lehrer:</strong> ${l.teacher}</span>
             ${l.klasse ? `<span>🏫 <strong>Klasse:</strong> ${l.klasse}</span>` : ''}
           </div>
-          ${l.notes ? `<div style="font-size: 14px; font-weight: bold; color: var(--accent-warn); margin-top: 4px;">ℹ️ ${l.notes}</div>` : ''}
+          ${l.lstext ? `<div style="font-size: 13px; color: var(--accent-info); font-weight: 600; margin-top: 4px;">📖 <strong>Lehrstoff:</strong> ${escapeHTML(l.lstext)}</div>` : ''}
+          ${l.homework ? `<div style="font-size: 13px; color: var(--accent-warn); font-weight: bold; margin-top: 2px;">📝 <strong>Hausaufgabe:</strong> ${escapeHTML(l.homework)}</div>` : ''}
+          ${l.notes && l.notes !== l.lstext ? `<div style="font-size: 13px; font-weight: bold; color: var(--accent-warn); margin-top: 2px;">ℹ️ ${escapeHTML(l.notes)}</div>` : ''}
         </div>
         <div class="lesson-badge-wrap">
           <span class="status-badge ${badgeClass}">${badgeText}</span>
+          <span style="font-size: 12px; color: var(--text-muted); font-weight: bold; margin-top: 4px; display: inline-block;">Details ↗</span>
         </div>
       </article>
     `;
@@ -1967,6 +2279,373 @@ function readAllExamsAndEvents() {
 }
 
 // =============================================================================
+// 9b. STUNDEN-DETAILS MODAL
+// =============================================================================
+function openLessonDetails(lessonId) {
+  const lesson = (appData.timetable || []).find(l => String(l.id) === String(lessonId));
+  if (!lesson) return;
+
+  const modal = document.getElementById('modal-lesson-details');
+  if (!modal) return;
+
+  // Titel
+  const titleEl = modal.querySelector('.modal-title') || modal.querySelector('h2');
+  if (titleEl) titleEl.textContent = lesson.subject || 'Stunde';
+
+  // Zeile: Zeit
+  const setDetail = (selector, value) => {
+    const el = modal.querySelector(selector);
+    if (el) el.textContent = value || '–';
+  };
+
+  const fmtTime = t => {
+    if (!t) return '–';
+    const s = String(t).padStart(4, '0');
+    return s.slice(0, 2) + ':' + s.slice(2);
+  };
+
+  setDetail('#detail-time',    `${fmtTime(lesson.startTime)} – ${fmtTime(lesson.endTime)}`);
+  setDetail('#detail-date',    lesson.dateStr || '–');
+  setDetail('#detail-room',    lesson.room    || '–');
+  setDetail('#detail-teacher', lesson.teacher || '–');
+  setDetail('#detail-subject', lesson.subject || '–');
+  setDetail('#detail-lstext',  lesson.lstext  || 'Kein Lehrstoff eingetragen.');
+  setDetail('#detail-homework', lesson.homework
+    ? (Array.isArray(lesson.homework)
+        ? lesson.homework.map(h => `${h.subject}: ${h.description}`).join(' | ')
+        : lesson.homework)
+    : 'Keine Hausaufgaben eingetragen.');
+
+  modal.style.display = 'flex';
+  modal.setAttribute('aria-hidden', 'false');
+
+  // Fokus auf Schließen-Button setzen
+  const closeBtn = modal.querySelector('.modal-close-btn, [data-action="close"]');
+  if (closeBtn) closeBtn.focus();
+  else modal.focus();
+}
+
+function closeLessonDetails() {
+  const modal = document.getElementById('modal-lesson-details');
+  if (!modal) return;
+  modal.style.display = 'none';
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+function handleLessonKeydown(event, lessonId) {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    openLessonDetails(lessonId);
+  }
+}
+
+function handleModalBackdropClick(event) {
+  const modal = document.getElementById('modal-lesson-details');
+  if (!modal) return;
+  // Schließen, wenn direkt auf den Backdrop (nicht auf die Karte) geklickt wurde
+  if (event.target === modal) {
+    closeLessonDetails();
+  }
+}
+
+function speakCurrentLessonDetails() {
+  const modal = document.getElementById('modal-lesson-details');
+  if (!modal || modal.style.display === 'none') return;
+
+  const get = sel => {
+    const el = modal.querySelector(sel);
+    return el ? el.textContent.trim() : '';
+  };
+
+  const subject  = get('.modal-title, h2');
+  const date     = get('#detail-date');
+  const time     = get('#detail-time');
+  const room     = get('#detail-room');
+  const teacher  = get('#detail-teacher');
+  const lstext   = get('#detail-lstext');
+  const homework = get('#detail-homework');
+
+  let text = `Stunden-Details: ${subject}. `;
+  if (date)     text += `Datum: ${date}. `;
+  if (time)     text += `Zeit: ${time}. `;
+  if (room)     text += `Raum: ${room}. `;
+  if (teacher)  text += `Lehrer: ${teacher}. `;
+  if (lstext)   text += `Lehrstoff: ${lstext}. `;
+  if (homework) text += `Hausaufgaben: ${homework}. `;
+
+  speak(text, true);
+}
+
+// =============================================================================
+// 9c. HAUSAUFGABEN RENDERN
+// =============================================================================
+function renderHomework() {
+  const container = document.getElementById('homework-list-container');
+  if (!container) return;
+
+  const filter = appData.homeworkFilter || 'all';
+  let items = appData.homework || [];
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  if (filter === 'pending') {
+    items = items.filter(h => !h.completed);
+  } else if (filter === 'completed') {
+    items = items.filter(h => h.completed);
+  } else if (filter === 'overdue') {
+    items = items.filter(h => {
+      if (h.completed) return false;
+      if (!h.dueDate) return false;
+      return new Date(h.dueDate) < today;
+    });
+  }
+  // 'all' → alles
+
+  // Klassenbuch-Einträge anhängen (falls vorhanden)
+  const classbook = appData.classbook || [];
+
+  // Filter-Button-Zustand aktualisieren
+  document.querySelectorAll('.hw-filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.filter === filter);
+    btn.setAttribute('aria-pressed', String(btn.dataset.filter === filter));
+  });
+
+  if (items.length === 0 && classbook.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state" role="status" aria-live="polite">
+        <span aria-hidden="true">📚</span>
+        <p>Keine Hausaufgaben vorhanden.</p>
+        <p class="empty-hint">Hausaufgaben werden automatisch aus WebUntis geladen.</p>
+      </div>`;
+    return;
+  }
+
+  let html = '';
+
+  // Hausaufgaben
+  if (items.length > 0) {
+    html += `<h3 class="section-subheading">Hausaufgaben (${items.length})</h3>`;
+    items.forEach(hw => {
+      const dueStr = hw.dueDate ? formatGermanDate(new Date(hw.dueDate)) : 'Kein Datum';
+      const assignedStr = hw.date ? formatGermanDate(new Date(hw.date)) : '';
+      const isOverdue = !hw.completed && hw.dueDate && new Date(hw.dueDate) < today;
+      const checkId = `hw-check-${hw.id}`;
+      html += `
+        <article class="homework-card${hw.completed ? ' completed' : ''}${isOverdue ? ' overdue' : ''}"
+                 role="article" aria-label="Hausaufgabe: ${escHtml(hw.subject || 'Unbekannt')}">
+          <div class="homework-header">
+            <span class="homework-date-badge${isOverdue ? ' overdue' : ''}" aria-label="Fällig am ${dueStr}">
+              📅 ${dueStr}${isOverdue ? ' – Überfällig!' : ''}
+            </span>
+            <span class="homework-subject">${escHtml(hw.subject || 'Allgemein')}</span>
+            ${assignedStr ? `<span class="homework-assigned">Aufgegeben: ${assignedStr}</span>` : ''}
+          </div>
+          <p class="homework-desc">${escHtml(hw.description || 'Keine Beschreibung')}</p>
+          ${hw.details ? `<p class="homework-details">${escHtml(hw.details)}</p>` : ''}
+          <label class="homework-toggle-label" for="${checkId}">
+            <input type="checkbox" id="${checkId}" class="homework-checkbox"
+                   ${hw.completed ? 'checked' : ''}
+                   aria-label="Als erledigt markieren: ${escHtml(hw.subject || '')}"
+                   onchange="toggleHomeworkCompleted('${hw.id}')">
+            ${hw.completed ? 'Erledigt ✓' : 'Als erledigt markieren'}
+          </label>
+        </article>`;
+    });
+  }
+
+  // Klassenbuch
+  if (classbook.length > 0) {
+    html += `<h3 class="section-subheading" style="margin-top:1.5rem;">Klassenbuch / Lehrstoff (${classbook.length})</h3>`;
+    classbook.slice(0, 50).forEach(entry => {
+      const dateStr = entry.date ? formatGermanDate(new Date(String(entry.date).slice(0,4) + '-' + String(entry.date).slice(4,6) + '-' + String(entry.date).slice(6,8))) : '';
+      html += `
+        <article class="homework-card classbook-entry" role="article" aria-label="Lehrstoff: ${escHtml(entry.subject || 'Unbekannt')}">
+          <div class="homework-header">
+            ${dateStr ? `<span class="homework-date-badge">📅 ${dateStr}</span>` : ''}
+            <span class="homework-subject">${escHtml(entry.subject || 'Allgemein')}</span>
+          </div>
+          <p class="homework-desc">${escHtml(entry.text || 'Kein Text')}</p>
+        </article>`;
+    });
+  }
+
+  container.innerHTML = html;
+}
+
+function setHomeworkFilter(filterType) {
+  appData.homeworkFilter = filterType;
+  saveAppData();
+  renderHomework();
+}
+
+function toggleHomeworkCompleted(hwId) {
+  const hw = (appData.homework || []).find(h => String(h.id) === String(hwId));
+  if (!hw) return;
+  hw.completed = !hw.completed;
+  saveAppData();
+  renderHomework();
+  speak(hw.completed ? 'Als erledigt markiert.' : 'Als nicht erledigt markiert.', false);
+}
+
+function readHomeworkSummary() {
+  const all    = appData.homework || [];
+  const pending = all.filter(h => !h.completed);
+  const today   = new Date(); today.setHours(0,0,0,0);
+  const overdue = pending.filter(h => h.dueDate && new Date(h.dueDate) < today);
+
+  let text = `Hausaufgaben-Übersicht: Du hast insgesamt ${all.length} Hausaufgabe${all.length !== 1 ? 'n' : ''}`;
+  text += `, davon ${pending.length} ausstehend`;
+  if (overdue.length > 0) text += ` und ${overdue.length} überfällig`;
+  text += '. ';
+
+  if (pending.length > 0) {
+    const next = pending.sort((a, b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0))[0];
+    if (next) {
+      const dueStr = next.dueDate ? formatGermanDate(new Date(next.dueDate)) : 'ohne Datum';
+      text += `Die nächste Hausaufgabe ist ${next.subject || 'Unbekannt'}: ${next.description || ''}, fällig am ${dueStr}. `;
+    }
+  }
+
+  const cbCount = (appData.classbook || []).length;
+  if (cbCount > 0) text += `Es gibt außerdem ${cbCount} Klassenbuch-Einträge.`;
+
+  speak(text, true);
+}
+
+// =============================================================================
+// 9d. FEHLZEITEN RENDERN
+// =============================================================================
+function renderAbsences() {
+  const container = document.getElementById('absences-list-container');
+  if (!container) return;
+
+  const absences = appData.absences || [];
+
+  // Statistik-Karten aktualisieren
+  const totalEl    = document.getElementById('abs-stat-total');
+  const excusedEl  = document.getElementById('abs-stat-excused');
+  const openEl     = document.getElementById('abs-stat-open');
+  const minutesEl  = document.getElementById('abs-stat-minutes');
+
+  const total    = absences.length;
+  const excused  = absences.filter(a => a.isExcused).length;
+  const open     = total - excused;
+  const minutes  = absences.reduce((sum, a) => {
+    if (a.startTime && a.endTime) {
+      const [sh, sm] = String(a.startTime).padStart(4,'0').match(/../g).map(Number);
+      const [eh, em] = String(a.endTime).padStart(4,'0').match(/../g).map(Number);
+      return sum + ((eh * 60 + em) - (sh * 60 + sm));
+    }
+    return sum + 45; // Annahme: 1 Stunde = 45 min
+  }, 0);
+
+  if (totalEl)    totalEl.textContent    = String(total);
+  if (excusedEl)  excusedEl.textContent  = String(excused);
+  if (openEl)     openEl.textContent     = String(open);
+  if (minutesEl)  minutesEl.textContent  = minutes >= 60
+    ? `${Math.floor(minutes/60)}h ${minutes%60}min`
+    : `${minutes} min`;
+
+  if (absences.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state" role="status" aria-live="polite">
+        <span aria-hidden="true">✅</span>
+        <p>Keine Fehlzeiten vorhanden.</p>
+        <p class="empty-hint">Fehlzeiten werden automatisch aus WebUntis geladen.</p>
+      </div>`;
+    return;
+  }
+
+  const fmtTime = t => {
+    if (!t) return '–';
+    const s = String(t).padStart(4,'0');
+    return s.slice(0,2) + ':' + s.slice(2);
+  };
+
+  let html = '';
+  absences.forEach(abs => {
+    const dateStr = abs.date
+      ? formatGermanDate(new Date(
+          String(abs.date).slice(0,4) + '-' +
+          String(abs.date).slice(4,6) + '-' +
+          String(abs.date).slice(6,8)))
+      : (abs.startDate ? formatGermanDate(new Date(abs.startDate)) : '–');
+
+    const timeStr = (abs.startTime || abs.endTime)
+      ? `${fmtTime(abs.startTime)} – ${fmtTime(abs.endTime)}`
+      : 'Ganztägig';
+
+    const statusLabel = abs.isExcused ? '✅ Entschuldigt' : '⚠️ Unentschuldigt';
+    const statusClass = abs.isExcused ? 'excused' : 'unexcused';
+
+    html += `
+      <article class="absence-item ${statusClass}" role="article"
+               aria-label="Fehlzeit am ${dateStr}, ${statusLabel}">
+        <div class="absence-header">
+          <span class="absence-date">📅 ${dateStr}</span>
+          <span class="absence-time">⏰ ${timeStr}</span>
+          <span class="absence-status ${statusClass}">${statusLabel}</span>
+        </div>
+        ${abs.subject ? `<span class="absence-subject">📘 ${escHtml(abs.subject)}</span>` : ''}
+        ${abs.reason  ? `<span class="absence-reason">Grund: ${escHtml(abs.reason)}</span>`  : ''}
+      </article>`;
+  });
+
+  container.innerHTML = html;
+}
+
+function readAbsencesSummary() {
+  const absences = appData.absences || [];
+  const total   = absences.length;
+  const excused = absences.filter(a => a.isExcused).length;
+  const open    = total - excused;
+
+  let text = `Fehlzeiten-Übersicht: Du hast insgesamt ${total} Fehlzeit${total !== 1 ? 'en' : ''}`;
+  if (total > 0) {
+    text += `, davon ${excused} entschuldigt und ${open} unentschuldigt`;
+  }
+  text += '. ';
+
+  if (open > 0) {
+    text += `Du hast noch ${open} unentschuldigte Fehlzeit${open !== 1 ? 'en' : ''}. `;
+  } else if (total > 0) {
+    text += 'Alle Fehlzeiten sind entschuldigt. ';
+  }
+
+  speak(text, true);
+}
+
+// =============================================================================
+// 9e. PARTNER-BANNER & EINSTELLUNGEN
+// =============================================================================
+function openSponsorLink() {
+  const url = (appData.config.sponsorUrl || '').trim();
+  if (!url) return;
+  try {
+    fetch('/api/open_url?url=' + encodeURIComponent(url)).catch(() => {
+      window.open(url, '_blank', 'noopener');
+    });
+  } catch (_) {
+    window.open(url, '_blank', 'noopener');
+  }
+}
+
+function saveSponsorSettings() {
+  const titleEl   = document.getElementById('sponsor-title-input');
+  const descEl    = document.getElementById('sponsor-desc-input');
+  const urlEl     = document.getElementById('sponsor-url-input');
+  const visibleEl = document.getElementById('sponsor-visible-toggle');
+
+  if (titleEl)   appData.config.sponsorTitle   = titleEl.value.trim();
+  if (descEl)    appData.config.sponsorDesc    = descEl.value.trim();
+  if (urlEl)     appData.config.sponsorUrl     = urlEl.value.trim();
+  if (visibleEl) appData.config.sponsorVisible = visibleEl.checked;
+
+  saveAppData();
+  applyConfig();
+  speak('Partner-Banner-Einstellungen gespeichert.', false);
+}
+
+// =============================================================================
 // 10. INITIALISIERUNG & TASTEN-STEUERUNG
 // =============================================================================
 function initApp() {
@@ -2020,16 +2699,36 @@ function initApp() {
       switchTab('exams');
     } else if (e.key === '3') {
       e.preventDefault();
+      switchTab('homework');
+    } else if (e.key === '4') {
+      e.preventDefault();
+      switchTab('absences');
+    } else if (e.key === '5') {
+      e.preventDefault();
       switchTab('settings');
     } else if (e.key === 'h' || e.key === 'H') {
       e.preventDefault();
       setDayFilter('today');
     } else if (e.key === 'v' || e.key === 'V') {
       e.preventDefault();
-      readTodayTimetable();
+      // Vorlesen kontextabhängig je nach aktivem Tab und Modal
+      const modal = document.getElementById('modal-lesson-details');
+      if (modal && modal.style.display !== 'none') {
+        speakCurrentLessonDetails();
+      } else if (currentTab === 'overview') {
+        readTodayTimetable();
+      } else if (currentTab === 'exams') {
+        readAllExamsAndEvents();
+      } else if (currentTab === 'homework') {
+        readHomeworkSummary();
+      } else if (currentTab === 'absences') {
+        readAbsencesSummary();
+      }
     } else if (e.key === 'a' || e.key === 'A') {
       e.preventDefault();
       triggerManualSync();
+    } else if (e.key === 'Escape') {
+      closeLessonDetails();
     }
   });
 
@@ -2038,6 +2737,8 @@ function initApp() {
     hideLoginView();
     renderTimetable();
     renderExams();
+    renderHomework();
+    renderAbsences();
     performWebUntisSync();
   } else {
     showLoginView();

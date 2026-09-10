@@ -114,7 +114,7 @@
   </div>
 
   <!-- =========================================================================
-       HAUPTNAVIGATION (3 TABS - TASTEN 1 BIS 3)
+       HAUPTNAVIGATION (5 TABS - TASTEN 1 BIS 5)
        ========================================================================= -->
   <nav class="nav-tabs-wrapper" aria-label="Hauptmenü" id="main-nav-tabs">
     <div class="tab-list" role="tablist">
@@ -124,10 +124,18 @@
       </button>
       <button id="tab-exams" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-exams" onclick="switchTab('exams')" tabindex="-1">
         <span class="tab-key-hint" aria-hidden="true">2</span>
-        <span><span class="emoji-icon" aria-hidden="true">📝 </span><strong>Prüfungen &amp; Termine (Schuljahr)</strong></span>
+        <span><span class="emoji-icon" aria-hidden="true">📝 </span><strong>Prüfungen &amp; Termine</strong></span>
+      </button>
+      <button id="tab-homework" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-homework" onclick="switchTab('homework')" tabindex="-1">
+        <span class="tab-key-hint" aria-hidden="true">3</span>
+        <span><span class="emoji-icon" aria-hidden="true">📚 </span><strong>Hausaufgaben &amp; Klassenbuch</strong></span>
+      </button>
+      <button id="tab-absences" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-absences" onclick="switchTab('absences')" tabindex="-1">
+        <span class="tab-key-hint" aria-hidden="true">4</span>
+        <span><span class="emoji-icon" aria-hidden="true">⏱️ </span><strong>Fehlzeiten</strong></span>
       </button>
       <button id="tab-settings" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-settings" onclick="switchTab('settings')" tabindex="-1">
-        <span class="tab-key-hint" aria-hidden="true">3</span>
+        <span class="tab-key-hint" aria-hidden="true">5</span>
         <span><span class="emoji-icon" aria-hidden="true">⚙️ </span><strong>Konto &amp; Einstellungen</strong></span>
       </button>
     </div>
@@ -245,7 +253,99 @@
     </div>
 
     <!-- =======================================================================
-         REITER 3: KONTO, SYNCHRONISATION & EINSTELLUNGEN
+         REITER 3: HAUSAUFGABEN & KLASSENBUCH (LEHRSTOFF)
+         ======================================================================= -->
+    <div id="view-homework" class="view-panel" role="tabpanel" aria-labelledby="tab-homework">
+
+      <div class="banner-header">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <h2 class="banner-title">Hausaufgaben &amp; Klassenbuch</h2>
+            <p class="banner-subtitle">Hausaufgaben zum Abhaken und durchgenommener Lehrstoff deiner Fächer aus WebUntis.</p>
+          </div>
+          <div>
+            <button type="button" class="btn btn-secondary" onclick="readHomeworkSummary()">
+              <span class="emoji-icon" aria-hidden="true">🔊 </span>Hausaufgaben vorlesen (V)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- FILTERLEISTE FÜR HAUSAUFGABEN -->
+      <section class="filter-card" aria-label="Hausaufgaben Filter und Ansichten">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div class="exam-filter-group" role="group" aria-label="Hausaufgaben-Filter">
+            <button type="button" class="btn btn-secondary filter-btn active" id="hw-filter-pending" onclick="setHomeworkFilter('pending')">
+              <span>⏳ <strong>Offene Aufgaben</strong> (<span id="hw-count-pending">0</span>)</span>
+            </button>
+            <button type="button" class="btn btn-secondary filter-btn" id="hw-filter-all" onclick="setHomeworkFilter('all')">
+              <span>📝 <strong>Alle Hausaufgaben</strong> (<span id="hw-count-all">0</span>)</span>
+            </button>
+            <button type="button" class="btn btn-secondary filter-btn" id="hw-filter-completed" onclick="setHomeworkFilter('completed')">
+              <span>✅ <strong>Erledigt</strong> (<span id="hw-count-completed">0</span>)</span>
+            </button>
+            <button type="button" class="btn btn-secondary filter-btn" id="hw-filter-classbook" onclick="setHomeworkFilter('classbook')">
+              <span>📖 <strong>Klassenbuch (Lehrstoff)</strong> (<span id="hw-count-classbook">0</span>)</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Container für Hausaufgaben & Lehrstoff -->
+      <section id="homework-list-container" aria-live="polite" aria-label="Hausaufgaben und Lehrstoffliste">
+        <!-- Befüllt per JavaScript -->
+      </section>
+
+    </div>
+
+    <!-- =======================================================================
+         REITER 4: FEHLZEITEN & ENTSCHULDIGUNGEN
+         ======================================================================= -->
+    <div id="view-absences" class="view-panel" role="tabpanel" aria-labelledby="tab-absences">
+
+      <div class="banner-header">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <h2 class="banner-title">Fehlzeiten &amp; Entschuldigungen</h2>
+            <p class="banner-subtitle">Übersicht aller Fehltage, Fehlstunden und Entschuldigungsstatus aus WebUntis.</p>
+          </div>
+          <div>
+            <button type="button" class="btn btn-secondary" onclick="readAbsencesSummary()">
+              <span class="emoji-icon" aria-hidden="true">🔊 </span>Fehlzeiten vorlesen (V)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- STATISTIK-KARTEN -->
+      <div class="absence-stats-grid" id="absence-stats-container">
+        <div class="absence-stat-card">
+          <div class="absence-stat-number" id="stat-absence-days">0</div>
+          <div class="absence-stat-label">📅 Fehltage gesamt</div>
+        </div>
+        <div class="absence-stat-card">
+          <div class="absence-stat-number" id="stat-absence-hours">0</div>
+          <div class="absence-stat-label">⏱️ Fehlstunden gesamt</div>
+        </div>
+        <div class="absence-stat-card">
+          <div class="absence-stat-number" id="stat-absence-excused" style="color: var(--accent-ok);">0</div>
+          <div class="absence-stat-label">🟢 Entschuldigt</div>
+        </div>
+        <div class="absence-stat-card">
+          <div class="absence-stat-number" id="stat-absence-unexcused" style="color: var(--accent-danger);">0</div>
+          <div class="absence-stat-label">🔴 Unentschuldigt / Offen</div>
+        </div>
+      </div>
+
+      <!-- LISTE DER FEHLZEITEN -->
+      <section id="absences-list-container" aria-live="polite" aria-label="Liste der Fehlzeiten">
+        <!-- Befüllt per JavaScript -->
+      </section>
+
+    </div>
+
+    <!-- =======================================================================
+         REITER 5: KONTO, SYNCHRONISATION & EINSTELLUNGEN
          ======================================================================= -->
     <div id="view-settings" class="view-panel" role="tabpanel" aria-labelledby="tab-settings">
 
@@ -431,15 +531,84 @@
         </div>
       </section>
 
+      <!-- 4. WERBUNG / PARTNER-BANNER EINSTELLUNGEN -->
+      <section class="section-card" aria-labelledby="sponsor-cfg-heading">
+        <h3 id="sponsor-cfg-heading" style="font-size: var(--font-size-lg); margin-bottom: 6px;">💡 Partner-Banner &amp; Werbeeinstellungen</h3>
+        <p class="field-hint">Hier kannst du den Werbebereich ganz unten auf der Seite steuern oder deinen eigenen Partner-/Affiliate-Link (z. B. Amazon PartnerNet, Awin oder deinen eigenen Sponsor) eintragen, um Provisionen zu erhalten:</p>
+
+        <div class="accessible-form" style="margin-top: 14px;">
+          <div class="form-group">
+            <label for="cfg-sponsor-title" class="field-label"><strong>Banner-Titel:</strong></label>
+            <input type="text" id="cfg-sponsor-title" class="large-input" value="📚 Schulbedarf, Fachbücher &amp; Barrierefreie Lernmittel" onchange="saveSponsorSettings()">
+          </div>
+          <div class="form-group">
+            <label for="cfg-sponsor-desc" class="field-label"><strong>Banner-Beschreibung:</strong></label>
+            <input type="text" id="cfg-sponsor-desc" class="large-input" value="Entdecke hochwertige Hilfsmittel, Schreibwaren und Bücher für deinen Schulalltag am Berufskolleg." onchange="saveSponsorSettings()">
+          </div>
+          <div class="form-group">
+            <label for="cfg-sponsor-url" class="field-label"><strong>Partner- / Affiliate-Ziel-URL:</strong></label>
+            <input type="url" id="cfg-sponsor-url" class="large-input" value="https://www.amazon.de/s?k=schulbedarf+fachb%C3%BCcher" onchange="saveSponsorSettings()">
+            <span class="field-hint">Klick auf das Banner öffnet diesen Link direkt und sicher im Standard-Browser.</span>
+          </div>
+          <div class="form-group">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="checkbox" id="cfg-sponsor-visible" checked onchange="saveSponsorSettings()" style="width: 22px; height: 22px;">
+              <span><strong>Partner-Banner am Seitenende anzeigen</strong></span>
+            </label>
+          </div>
+        </div>
+      </section>
+
     </div>
 
   </main>
+
+  <!-- =========================================================================
+       DEZENTER PARTNER- & WERBEBEREICH (AM SEITENENDE, NICHT STÖREND)
+       ========================================================================= -->
+  <aside class="sponsor-banner-container" aria-label="Partner-Empfehlung und Bildungsangebote" id="sponsor-banner-area">
+    <div class="sponsor-banner-card">
+      <div class="sponsor-badge" aria-hidden="true">💡 Empfehlung</div>
+      <div class="sponsor-content">
+        <div class="sponsor-text-group">
+          <strong id="sponsor-banner-title">📚 Schulbedarf, Fachbücher &amp; Barrierefreie Lernmittel</strong>
+          <p id="sponsor-banner-desc" class="sponsor-desc">Entdecke hochwertige Hilfsmittel, Schreibwaren und Bücher für deinen Schulalltag am Berufskolleg.</p>
+        </div>
+        <button type="button" class="btn btn-secondary sponsor-btn" id="btn-sponsor-open" onclick="openSponsorLink()">
+          <span>Zum Angebot ↗</span>
+        </button>
+      </div>
+    </div>
+  </aside>
 
   <!-- FOOTER -->
   <footer class="app-footer">
     <p><strong>Barrierefreier Stundenplan &amp; Prüfungen</strong> | Entwickelt für Schülerinnen und Schüler des LWL-Berufskollegs Soest</p>
     <p style="margin-top: 4px;">Optimiert für NVDA, JAWS, Braillezeilen und Windows-Tastatursteuerung (WCAG 2.2 AAA)</p>
   </footer>
+
+  <!-- =========================================================================
+       MODAL: STUNDEN-DETAILS (LEHRSTOFF, HAUSAUFGABEN & RAUM)
+       ========================================================================= -->
+  <div id="modal-lesson-details" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-lesson-title" style="display: none;" onclick="handleModalBackdropClick(event)">
+    <div class="modal-card" role="document">
+      <div class="modal-header">
+        <h3 id="modal-lesson-title" class="modal-title">Stunden-Details</h3>
+        <button type="button" class="modal-close-btn" onclick="closeLessonDetails()" aria-label="Details schließen (Taste Esc)">✕</button>
+      </div>
+      <div class="modal-body" id="modal-lesson-body">
+        <!-- Dynamisch befüllt -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" id="btn-modal-speak" onclick="speakCurrentLessonDetails()">
+          <span class="emoji-icon" aria-hidden="true">🔊 </span>Details vorlesen (Taste V)
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="closeLessonDetails()">
+          Schließen (Esc)
+        </button>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>

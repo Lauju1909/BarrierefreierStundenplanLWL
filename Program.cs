@@ -502,6 +502,33 @@ namespace BarrierefreierStundenplan
                 return;
             }
 
+            // 3b. Externe URLs sicher im Standard-Browser öffnen
+            if (rawUrl.StartsWith("/api/open_url"))
+            {
+                string url = req.QueryString["url"];
+                if (!string.IsNullOrEmpty(url) && (url.StartsWith("http://") || url.StartsWith("https://")))
+                {
+                    ThreadPool.QueueUserWorkItem((_) =>
+                    {
+                        try
+                        {
+                            Process.Start(new ProcessStartInfo
+                            {
+                                FileName = url,
+                                UseShellExecute = true
+                            });
+                        }
+                        catch { }
+                    });
+                }
+                resp.StatusCode = 200;
+                resp.ContentType = "application/json";
+                byte[] okData = Encoding.UTF8.GetBytes("{\"status\":\"opened\"}");
+                resp.OutputStream.Write(okData, 0, okData.Length);
+                resp.Close();
+                return;
+            }
+
             // 4. Feedback & Archiv API (Lokal & E-Mail Weiterleitung an lauju1909@gmail.com)
             if (req.HttpMethod == "POST" && rawUrl == "/api/send_feedback")
             {
