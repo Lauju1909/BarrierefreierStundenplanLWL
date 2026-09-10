@@ -55,6 +55,17 @@ namespace BarrierefreierStundenplan
             _baseDir = AppDomain.CurrentDomain.BaseDirectory;
             _assembly = Assembly.GetExecutingAssembly();
 
+            // Vorherige temporäre Update-Dateien bereinigen
+            try
+            {
+                string exePath = Process.GetCurrentProcess().MainModule.FileName;
+                string oldPath = exePath + ".old";
+                if (File.Exists(oldPath)) File.Delete(oldPath);
+                string updPath = Path.Combine(_baseDir, "Stundenplan_LWL_Update.exe");
+                if (File.Exists(updPath)) File.Delete(updPath);
+            }
+            catch { }
+
             // 2. Prüfen, ob bereits eine Instanz auf Port 48250 lauscht
             if (IsPortInUse(DEFAULT_PORT))
             {
@@ -228,43 +239,39 @@ namespace BarrierefreierStundenplan
                     string remoteVer = m.Groups[1].Value.Trim();
                     if (IsNewerVersion(remoteVer, localVer))
                     {
-                        string[] filesToUpdate = new string[] { "index.html", "style.css", "app.js" };
-                        Dictionary<string, string> downloadedContent = new Dictionary<string, string>();
+                        string currentExe = Process.GetCurrentProcess().MainModule.FileName;
+                        string tempExe = Path.Combine(_baseDir, "Stundenplan_LWL_Update.exe");
+                        string oldExe = currentExe + ".old";
 
-                        foreach (string f in filesToUpdate)
+                        string downloadUrl = "https://github.com/" + GITHUB_REPO + "/releases/latest/download/Stundenplan_LWL.exe";
+                        client.DownloadFile(downloadUrl, tempExe);
+
+                        FileInfo fi = new FileInfo(tempExe);
+                        if (fi.Exists && fi.Length > 25000)
                         {
-                            try
+                            if (File.Exists(oldExe))
                             {
-                                string fileUrl = GITHUB_RAW_BASE + "/" + f + "?t=" + ticks;
-                                string content = client.DownloadString(fileUrl);
-                                if (!string.IsNullOrEmpty(content) && content.Length > 200)
-                                {
-                                    downloadedContent[f] = content;
-                                }
-                                else
-                                {
-                                    return false;
-                                }
-                            }
-                            catch
-                            {
-                                return false;
-                            }
-                        }
-
-                        if (downloadedContent.Count == filesToUpdate.Length)
-                        {
-                            foreach (var kvp in downloadedContent)
-                            {
-                                string targetPath = Path.Combine(_baseDir, kvp.Key);
-                                string tmpPath = targetPath + ".tmp";
-                                File.WriteAllText(tmpPath, kvp.Value, Encoding.UTF8);
-                                File.Copy(tmpPath, targetPath, true);
-                                try { File.Delete(tmpPath); } catch { }
+                                try { File.Delete(oldExe); } catch { }
                             }
 
-                            string verTarget = Path.Combine(_baseDir, "version.json");
-                            File.WriteAllText(verTarget, remoteJson, Encoding.UTF8);
+                            // 1. Laufende EXE umbenennen (unter Windows NTFS bei laufendem Prozess erlaubt)
+                            File.Move(currentExe, oldExe);
+
+                            // 2. Neue EXE an die Originalstelle setzen
+                            File.Move(tempExe, currentExe);
+
+                            // 3. Im Hintergrund nach kurzer Pause neu starten
+                            ThreadPool.QueueUserWorkItem((_) =>
+                            {
+                                try
+                                {
+                                    Thread.Sleep(1500);
+                                    Process.Start(currentExe);
+                                    Environment.Exit(0);
+                                }
+                                catch { }
+                            });
+
                             return true;
                         }
                     }
@@ -536,18 +543,7 @@ namespace BarrierefreierStundenplan
             else if (ext == ".json") contentType = "application/json; charset=utf-8";
             else if (ext == ".html") contentType = "text/html; charset=utf-8";
 
-            // Zuerst prüfen, ob die Datei im Ordner liegt
-            string diskPath = Path.Combine(_baseDir, filename);
-            if (File.Exists(diskPath))
-            {
-                try
-                {
-                    return File.ReadAllBytes(diskPath);
-                }
-                catch { }
-            }
-
-            // Falls nicht auf Disk: Direkt aus den Ressourcen der EXE laden
+            // 1. Direkt aus den internen Ressourcen der EXE laden (100% autark)
             if (_assembly != null)
             {
                 string resName = null;
@@ -574,6 +570,17 @@ namespace BarrierefreierStundenplan
                         }
                     }
                 }
+            }
+
+            // 2. Fallback: Datei im Ordner prüfen
+            string diskPath = Path.Combine(_baseDir, filename);
+            if (File.Exists(diskPath))
+            {
+                try
+                {
+                    return File.ReadAllBytes(diskPath);
+                }
+                catch { }
             }
 
             return null;
