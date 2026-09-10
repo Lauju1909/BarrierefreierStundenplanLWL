@@ -347,6 +347,9 @@
           const cleanJson = text.replace(/'/g, '"');
           const data = JSON.parse(cleanJson);
           if (data.Absender) parsed.sender = data.Absender;
+          if ((!parsed.sender || parsed.sender === 'Schüler / Nutzer' || parsed.sender === 'App-Nutzer') && data.WebUntisBenutzer) {
+            parsed.sender = data.WebUntisBenutzer;
+          }
           if (data.Datum) parsed.dateStr = data.Datum;
           if (data.Email && data.Email !== 'Keine E-Mail angegeben') parsed.email = data.Email;
           if (data.Kategorie) parsed.typeKind = data.Kategorie;
@@ -362,6 +365,11 @@
       lines.forEach(line => {
         if (line.startsWith('Absender:')) {
           parsed.sender = line.replace('Absender:', '').trim() || parsed.sender;
+        } else if (line.startsWith('WebUntis-Benutzer:')) {
+          const u = line.replace('WebUntis-Benutzer:', '').trim();
+          if (u && (!parsed.sender || parsed.sender === 'Schüler / Nutzer' || parsed.sender === 'App-Nutzer')) {
+            parsed.sender = u;
+          }
         } else if (line.startsWith('Datum:')) {
           parsed.dateStr = line.replace('Datum:', '').trim();
         } else if (line.startsWith('E-Mail:') || line.startsWith('Email:')) {

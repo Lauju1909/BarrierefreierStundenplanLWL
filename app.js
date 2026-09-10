@@ -153,6 +153,15 @@ function applyConfig() {
   // Account Display
   const uDisp = document.getElementById('settings-username-display');
   if (uDisp) uDisp.textContent = appData.config.username || 'Nicht angemeldet';
+
+  // Feedback-Absender automatisch mit WebUntis-Benutzernamen vorbelegen
+  const authorEl = document.getElementById('feedback-author');
+  if (authorEl && appData.config.username) {
+    if (!authorEl.value || authorEl.dataset.autofilled === 'true') {
+      authorEl.value = appData.config.username;
+      authorEl.dataset.autofilled = 'true';
+    }
+  }
 }
 
 function saveSettings(e) {
@@ -1898,11 +1907,14 @@ async function sendUserFeedback(e) {
   }
 
   const category = catEl ? catEl.value : '💡 Vorschlag / Feedback';
-  const author = (authorEl && authorEl.value.trim()) ? authorEl.value.trim() : (appData.config.username || 'Schüler / Nutzer');
+  const rawAuthor = (authorEl && authorEl.value.trim()) ? authorEl.value.trim() : '';
+  const loggedInUser = (appData.config.username || '').trim();
+  // Wenn der Nutzer nichts weiter angegeben hat, IMMER den WebUntis-Benutzernamen nehmen und übertragen!
+  const author = rawAuthor || loggedInUser || 'WebUntis-Nutzer';
   const email = (emailEl && emailEl.value.trim()) ? emailEl.value.trim() : 'Keine E-Mail angegeben';
   const message = textEl.value.trim();
   const now = new Date().toLocaleString('de-DE');
-  const appVer = document.getElementById('app-version-display') ? document.getElementById('app-version-display').textContent : 'v1.0.0';
+  const appVer = document.getElementById('app-version-display') ? document.getElementById('app-version-display').textContent : 'v1.2.0';
 
   if (submitBtn) {
     submitBtn.disabled = true;
@@ -1914,13 +1926,13 @@ async function sendUserFeedback(e) {
     _template: 'table',
     _captcha: 'false',
     Absender: author,
+    WebUntisBenutzer: loggedInUser || author,
     Kategorie: category,
     Email: email,
     Nachricht: message,
     Datum: now,
     AppVersion: appVer,
-    Schule: 'LWL-Berufskolleg Soest',
-    WebUntisBenutzer: appData.config.username || 'Nicht angemeldet'
+    Schule: appData.config.schoolName || 'LWL-Berufskolleg Soest'
   };
 
   try {
@@ -1936,7 +1948,7 @@ async function sendUserFeedback(e) {
 
   // 2. Ntfy Push-Benachrichtigung an den Entwickler
   const nl = '\n';
-  const ntfyBody = `Absender: ${author}${nl}Kategorie: ${category}${nl}E-Mail: ${email}${nl}Datum: ${now}${nl}${nl}Nachricht:${nl}${message}`;
+  const ntfyBody = `Absender: ${author}${loggedInUser && loggedInUser !== author ? ' (WebUntis: ' + loggedInUser + ')' : ''}${nl}WebUntis-Benutzer: ${loggedInUser || author}${nl}Kategorie: ${category}${nl}E-Mail: ${email}${nl}Datum: ${now}${nl}${nl}Nachricht:${nl}${message}`;
   try {
     await fetch('https://ntfy.sh/lauju_stundenplan_feedback', {
       method: 'POST',
@@ -2032,7 +2044,7 @@ async function loadFeedbackArchive() {
 
       if (parsed) {
         category = parsed.Kategorie || parsed._subject || category;
-        author = parsed.Absender || author;
+        author = parsed.Absender || parsed.WebUntisBenutzer || author;
         email = (parsed.Email && parsed.Email !== 'Keine E-Mail angegeben') ? parsed.Email : '';
         msg = parsed.Nachricht || bodyStr;
       }
