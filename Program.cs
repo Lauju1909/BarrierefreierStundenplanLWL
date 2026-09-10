@@ -458,6 +458,41 @@ namespace BarrierefreierStundenplan
                 return;
             }
 
+            if (rawUrl == "/api/open_feedback_zentrale")
+            {
+                ThreadPool.QueueUserWorkItem((_) =>
+                {
+                    try
+                    {
+                        string exePath = Path.Combine(_baseDir, "Feedback_Zentrale.exe");
+                        if (File.Exists(exePath))
+                        {
+                            Process.Start(new ProcessStartInfo
+                            {
+                                FileName = exePath,
+                                UseShellExecute = true
+                            });
+                        }
+                        else
+                        {
+                            string htmlPath = Path.Combine(_baseDir, "Feedback_Inbox.html");
+                            if (File.Exists(htmlPath))
+                            {
+                                LaunchBestBrowser("file:///" + htmlPath.Replace('\\', '/'));
+                            }
+                        }
+                    }
+                    catch { }
+                });
+
+                resp.StatusCode = 200;
+                resp.ContentType = "application/json; charset=utf-8";
+                byte[] okData = Encoding.UTF8.GetBytes("{\"status\":\"launched\"}");
+                resp.OutputStream.Write(okData, 0, okData.Length);
+                resp.Close();
+                return;
+            }
+
             // 5. WebUntis API Proxy Endpoint
             if (req.HttpMethod == "POST" && rawUrl.StartsWith("/api/webuntis"))
             {

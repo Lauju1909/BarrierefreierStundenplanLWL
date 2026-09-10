@@ -10,6 +10,7 @@
     "Umfassende Schultermin-, News- und Ferienübersicht mit Monatsgruppierung und Schnellfiltern",
     "In-App Feedback-System mit lokaler Archivierung (Feedback_Archiv.txt) und E-Mail-Weiterleitung",
     "Direktes In-App Feedback-Archiv in den Einstellungen",
+    "Separate Feedback_Zentrale.exe Begleit-App mit Cloud- & Live-Sync",
     "100% Tastatur- und Screenreader-optimiert (NVDA / JAWS, WCAG 2.2 AAA)",
     "Integrierter Auto-Updater über GitHub"
   ]

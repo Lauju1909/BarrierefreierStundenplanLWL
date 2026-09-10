@@ -1896,4 +1896,18 @@ async function clearFeedbackArchive() {
   }
 }
 
+async function openFeedbackZentraleApp() {
+  announceSR('Öffne Feedback-Zentrale...', 'polite');
+  try {
+    const res = await fetch('/api/open_feedback_zentrale');
+    if (res.ok) {
+      announceSR('Feedback-Zentrale wurde erfolgreich gestartet.', 'polite');
+      return;
+    }
+  } catch (e) { }
+
+  // Fallback: Im Browser öffnen
+  window.open('/Feedback_Inbox.html', '_blank');
+}
+
 document.addEventListener('DOMContentLoaded', initApp);

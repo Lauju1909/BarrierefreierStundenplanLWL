@@ -399,9 +399,12 @@
             <textarea id="feedback-text" class="large-input" rows="4" placeholder="Beschreibe deinen Vorschlag oder das Problem so genau wie möglich..." required style="resize: vertical; font-family: inherit; font-size: inherit;"></textarea>
           </div>
 
-          <div class="form-actions" style="margin-top: 16px;">
+          <div class="form-actions" style="margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap;">
             <button type="submit" class="btn btn-primary" id="btn-submit-feedback">
-              <span class="emoji-icon" aria-hidden="true">📤 </span><strong>Feedback &amp; Nachricht absenden</strong>
+              <span class="emoji-icon" aria-hidden="true">🚀 </span><strong>Vorschlag / Feedback absenden</strong>
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="openFeedbackZentraleApp()" title="Separate Feedback_Zentrale.exe starten">
+              <span class="emoji-icon" aria-hidden="true">📬 </span><strong>Feedback_Zentrale.exe öffnen</strong>
             </button>
           </div>
         </form>
@@ -412,12 +415,15 @@
         <div style="margin-top: 32px; border-top: 2px solid var(--border-subtle); padding-top: 24px;">
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
             <div>
-              <h4 style="font-size: var(--font-size-base); font-weight: bold; margin-bottom: 4px;">📬 Gesendetes Feedback-Archiv</h4>
+              <h4 style="font-size: var(--font-size-base); font-weight: bold; margin-bottom: 4px;">📬 Feedback &amp; Nachrichten-Zentrale</h4>
               <p class="field-hint">Alle aus dieser App versendeten Nachrichten und Vorschläge auf einen Blick:</p>
             </div>
-            <div style="display: flex; gap: 8px;">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button type="button" class="btn btn-secondary" onclick="openFeedbackZentraleApp()" title="Als eigenes Fenster öffnen">
+                <span class="emoji-icon" aria-hidden="true">🖥️ </span>In Feedback_Zentrale.exe öffnen
+              </button>
               <button type="button" class="btn btn-secondary" onclick="loadFeedbackArchive()" title="Archiv neu laden">
-                <span class="emoji-icon" aria-hidden="true">🔄 </span>Archiv aktualisieren
+                <span class="emoji-icon" aria-hidden="true">🔄 </span>Aktualisieren
               </button>
               <button type="button" class="btn btn-secondary" onclick="clearFeedbackArchive()" title="Archiv leeren">
                 <span class="emoji-icon" aria-hidden="true">🗑️ </span>Archiv leeren
