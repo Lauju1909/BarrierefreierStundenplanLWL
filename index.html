@@ -367,6 +367,70 @@
         <div id="update-result-box" style="display: none; margin-top: 14px;"></div>
       </section>
 
+      <!-- 4. FEEDBACK, WÜNSCHE & PROBLEM MELDEN -->
+      <section class="section-card" aria-labelledby="feedback-heading">
+        <h3 id="feedback-heading" style="font-size: var(--font-size-lg); margin-bottom: 6px;">💬 Feedback, Wünsche &amp; Fehler melden</h3>
+        <p class="field-hint">Hast du eine Idee, einen Wunsch oder ein Problem? Sende dein Feedback direkt an den Entwickler (<code>lauju1909@gmail.com</code>). Deine Rückmeldungen werden sofort übertragen und im Archiv gespeichert:</p>
+
+        <form id="feedback-form" onsubmit="sendUserFeedback(event)" class="accessible-form" style="margin-top: 16px;">
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="feedback-category" class="field-label"><strong>Art des Feedbacks:</strong></label>
+              <select id="feedback-category" class="large-select" required>
+                <option value="💡 Neue Idee / Verbesserungsvorschlag">💡 Neue Idee / Verbesserungsvorschlag</option>
+                <option value="🐛 Problem / Fehler melden">🐛 Problem / Fehler melden</option>
+                <option value="⭐ Lob &amp; Zufriedenheit">⭐ Lob &amp; Zufriedenheit</option>
+                <option value="❓ Frage zur Stundenplan-App">❓ Frage zur Stundenplan-App</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="feedback-author" class="field-label"><strong>Dein Name / Absender (optional):</strong></label>
+              <input type="text" id="feedback-author" class="large-input" placeholder="z. B. Schüler / Klasse 11">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="feedback-email" class="field-label"><strong>Deine E-Mail-Adresse (optional für Rückfragen):</strong></label>
+            <input type="email" id="feedback-email" class="large-input" placeholder="name@beispiel.de">
+          </div>
+
+          <div class="form-group">
+            <label for="feedback-text" class="field-label"><strong>Deine Nachricht / Beschreibung:</strong> <span style="color: var(--accent-danger);">*</span></label>
+            <textarea id="feedback-text" class="large-input" rows="4" placeholder="Beschreibe deinen Vorschlag oder das Problem so genau wie möglich..." required style="resize: vertical; font-family: inherit; font-size: inherit;"></textarea>
+          </div>
+
+          <div class="form-actions" style="margin-top: 16px;">
+            <button type="submit" class="btn btn-primary" id="btn-submit-feedback">
+              <span class="emoji-icon" aria-hidden="true">📤 </span><strong>Feedback &amp; Nachricht absenden</strong>
+            </button>
+          </div>
+        </form>
+
+        <div id="feedback-status-box" style="display: none; margin-top: 16px;"></div>
+
+        <!-- IN-APP FEEDBACK ARCHIV -->
+        <div style="margin-top: 32px; border-top: 2px solid var(--border-subtle); padding-top: 24px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
+            <div>
+              <h4 style="font-size: var(--font-size-base); font-weight: bold; margin-bottom: 4px;">📬 Gesendetes Feedback-Archiv</h4>
+              <p class="field-hint">Alle aus dieser App versendeten Nachrichten und Vorschläge auf einen Blick:</p>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button type="button" class="btn btn-secondary" onclick="loadFeedbackArchive()" title="Archiv neu laden">
+                <span class="emoji-icon" aria-hidden="true">🔄 </span>Archiv aktualisieren
+              </button>
+              <button type="button" class="btn btn-secondary" onclick="clearFeedbackArchive()" title="Archiv leeren">
+                <span class="emoji-icon" aria-hidden="true">🗑️ </span>Archiv leeren
+              </button>
+            </div>
+          </div>
+
+          <div id="feedback-archive-list" aria-live="polite" style="margin-top: 10px;">
+            <p class="field-hint" style="font-style: italic;">Lade Archiv...</p>
+          </div>
+        </div>
+      </section>
+
     </div>
 
   </main>

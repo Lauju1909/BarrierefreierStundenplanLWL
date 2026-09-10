@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -368,7 +368,97 @@ namespace BarrierefreierStundenplan
                 return;
             }
 
-            // 4. WebUntis API Proxy Endpoint
+            // 4. Feedback & Archiv API (Lokal & E-Mail Weiterleitung an lauju1909@gmail.com)
+            if (req.HttpMethod == "POST" && rawUrl == "/api/send_feedback")
+            {
+                string body = "";
+                try
+                {
+                    using (var reader = new StreamReader(req.InputStream, req.ContentEncoding))
+                    {
+                        body = reader.ReadToEnd();
+                    }
+
+                    // 1. Lokales Archiv in Feedback_Archiv.txt speichern
+                    string logPath = Path.Combine(_baseDir, "Feedback_Archiv.txt");
+                    string entry = "\r\n[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "]\r\n" + body + "\r\n----------------------------------\r\n";
+                    File.AppendAllText(logPath, entry, Encoding.UTF8);
+
+                    // 2. E-Mail Versand an lauju1909@gmail.com über formsubmit.co
+                    ThreadPool.QueueUserWorkItem((_) =>
+                    {
+                        try
+                        {
+                            using (var wbMail = new WebClient())
+                            {
+                                wbMail.Headers[HttpRequestHeader.ContentType] = "application/json";
+                                wbMail.Headers[HttpRequestHeader.Accept] = "application/json";
+                                wbMail.Headers["User-Agent"] = "StundenplanLWL-Feedback";
+                                wbMail.Encoding = Encoding.UTF8;
+                                wbMail.UploadString("https://formsubmit.co/ajax/lauju1909@gmail.com", body);
+                            }
+                        }
+                        catch { }
+                    });
+
+                    resp.StatusCode = 200;
+                    resp.ContentType = "application/json; charset=utf-8";
+                    byte[] okData = Encoding.UTF8.GetBytes("{\"status\":\"success\",\"message\":\"Feedback erfolgreich gespeichert und übertragen.\"}");
+                    resp.OutputStream.Write(okData, 0, okData.Length);
+                }
+                catch (Exception ex)
+                {
+                    resp.StatusCode = 500;
+                    byte[] errData = Encoding.UTF8.GetBytes("{\"status\":\"error\",\"message\":\"" + EscapeJsonString(ex.Message) + "\"}");
+                    resp.OutputStream.Write(errData, 0, errData.Length);
+                }
+                resp.Close();
+                return;
+            }
+
+            if (req.HttpMethod == "GET" && rawUrl == "/api/feedback_archive")
+            {
+                string logPath = Path.Combine(_baseDir, "Feedback_Archiv.txt");
+                string logContent = "";
+                if (File.Exists(logPath))
+                {
+                    try
+                    {
+                        logContent = File.ReadAllText(logPath, Encoding.UTF8);
+                    }
+                    catch { }
+                }
+
+                resp.StatusCode = 200;
+                resp.ContentType = "application/json; charset=utf-8";
+                string escaped = EscapeJsonString(logContent);
+                byte[] archData = Encoding.UTF8.GetBytes("{\"content\":\"" + escaped + "\"}");
+                resp.OutputStream.Write(archData, 0, archData.Length);
+                resp.Close();
+                return;
+            }
+
+            if (req.HttpMethod == "POST" && rawUrl == "/api/feedback_archive/clear")
+            {
+                string logPath = Path.Combine(_baseDir, "Feedback_Archiv.txt");
+                try
+                {
+                    if (File.Exists(logPath))
+                    {
+                        File.WriteAllText(logPath, "", Encoding.UTF8);
+                    }
+                }
+                catch { }
+
+                resp.StatusCode = 200;
+                resp.ContentType = "application/json; charset=utf-8";
+                byte[] okData = Encoding.UTF8.GetBytes("{\"status\":\"cleared\"}");
+                resp.OutputStream.Write(okData, 0, okData.Length);
+                resp.Close();
+                return;
+            }
+
+            // 5. WebUntis API Proxy Endpoint
             if (req.HttpMethod == "POST" && rawUrl.StartsWith("/api/webuntis"))
             {
                 ProxyWebUntis(req, resp);
@@ -609,6 +699,16 @@ namespace BarrierefreierStundenplan
                 if (!string.IsNullOrEmpty(p) && File.Exists(p)) return p;
             }
             return null;
+        }
+
+        private static string EscapeJsonString(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            return s.Replace("\\", "\\\\")
+                    .Replace("\"", "\\\"")
+                    .Replace("\r", "\\r")
+                    .Replace("\n", "\\n")
+                    .Replace("\t", "\\t");
         }
     }
 }

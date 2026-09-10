@@ -237,6 +237,7 @@ function switchTab(tabId) {
     renderExams();
     announceSR('Reiter 2: Prüfungen und Termine für das gesamte Schuljahr ausgewählt.', 'polite');
   } else if (tabId === 'settings') {
+    loadFeedbackArchive();
     announceSR('Reiter 3: Konto und Einstellungen ausgewählt.', 'polite');
   }
 }
@@ -518,13 +519,23 @@ async function performWebUntisSync(userOverride, passOverride) {
     const { sessionId, personId, personType } = authRes.result;
     webuntisSessionId = sessionId;
 
-    // 2. Metadaten parallel abrufen (Fächer, Lehrer, Räume, Klassen)
-    const [subRes, teaRes, rooRes, klaRes] = await Promise.all([
+    // 2. Metadaten parallel abrufen (Fächer, Lehrer, Räume, Klassen, Prüfungsarten)
+    const [subRes, teaRes, rooRes, klaRes, examTypesRes] = await Promise.all([
       callWebUntisApi('getSubjects').catch(() => ({})),
       callWebUntisApi('getTeachers').catch(() => ({})),
       callWebUntisApi('getRooms').catch(() => ({})),
-      callWebUntisApi('getKlassen').catch(() => ({}))
+      callWebUntisApi('getKlassen').catch(() => ({})),
+      callWebUntisApi('getExamTypes').catch(() => ({}))
     ]);
+
+    const examTypesMap = {};
+    if (examTypesRes && examTypesRes.result && Array.isArray(examTypesRes.result)) {
+      examTypesRes.result.forEach(et => {
+        const lbl = et.longName || et.name;
+        examTypesMap[et.id] = lbl;
+        if (et.name) examTypesMap[et.name] = lbl;
+      });
+    }
 
     const subjectsMap = {};
     if (subRes && subRes.result && Array.isArray(subRes.result)) {
@@ -580,24 +591,49 @@ async function performWebUntisSync(userOverride, passOverride) {
     const startNum = formatDateToUntis(monday);
     const endNum = formatDateToUntis(friday);
 
-    // 4. Stundenplan mit expliziten Feldern für Raum, Klasse, Lehrer und Fach abrufen
-    const ttRes = await callWebUntisApi('getTimetable', {
-      options: {
-        element: { id: personId, type: personType },
-        startDate: startNum,
-        endDate: endNum,
-        showLsText: true,
-        showStudentgroup: true,
-        showInfo: true,
-        showSubstText: true,
-        showLsNumber: true,
-        showBooking: true,
-        klasseFields: ['id', 'name', 'longname'],
-        roomFields: ['id', 'name', 'longname'],
-        subjectFields: ['id', 'name', 'longname'],
-        teacherFields: ['id', 'name', 'longname']
-      }
-    });
+    // Zusätzlicher Bereich für zukünftige 4 Wochen zum Aufspüren von Klassenarbeiten/Klausuren im Stundenplan
+    const futureMonday = new Date(friday);
+    futureMonday.setDate(futureMonday.getDate() + 3);
+    const futureFriday = new Date(futureMonday);
+    futureFriday.setDate(futureMonday.getDate() + 25);
+
+    // 4. Stundenplan für aktuelle Woche und Folgewochen abrufen
+    const [ttRes, futureTtRes] = await Promise.all([
+      callWebUntisApi('getTimetable', {
+        options: {
+          element: { id: personId, type: personType },
+          startDate: startNum,
+          endDate: endNum,
+          showLsText: true,
+          showStudentgroup: true,
+          showInfo: true,
+          showSubstText: true,
+          showLsNumber: true,
+          showBooking: true,
+          klasseFields: ['id', 'name', 'longname'],
+          roomFields: ['id', 'name', 'longname'],
+          subjectFields: ['id', 'name', 'longname'],
+          teacherFields: ['id', 'name', 'longname']
+        }
+      }).catch(() => ({})),
+      callWebUntisApi('getTimetable', {
+        options: {
+          element: { id: personId, type: personType },
+          startDate: formatDateToUntis(futureMonday),
+          endDate: formatDateToUntis(futureFriday),
+          showLsText: true,
+          showStudentgroup: true,
+          showInfo: true,
+          showSubstText: true,
+          showLsNumber: true,
+          showBooking: true,
+          klasseFields: ['id', 'name', 'longname'],
+          roomFields: ['id', 'name', 'longname'],
+          subjectFields: ['id', 'name', 'longname'],
+          teacherFields: ['id', 'name', 'longname']
+        }
+      }).catch(() => ({}))
+    ]);
 
     // 5. Schuljahr ermitteln (WebUntis getSchoolyears oder dynamische Berechnung)
     let syRange = getSchoolYearRange();
@@ -623,23 +659,115 @@ async function performWebUntisSync(userOverride, passOverride) {
     } catch (e) { }
     appData.schoolYear = syRange;
 
-    // 6. Prüfungen für das GESAMTE Schuljahr abrufen (von Anfang August bis Ende Juli)
-    const examsRes = await callWebUntisApi('getExams', {
-      startDate: syRange.startDateNum,
-      endDate: syRange.endDateNum
-    }).catch(() => ({}));
+    // 6. Prüfungen für das GESAMTE Schuljahr lückenlos abrufen (in 4 Quartalen, da WebUntis lange Zeiträume oft kappt)
+    const q1Start = parseInt(`${syRange.startYear}0801`);
+    const q1End   = parseInt(`${syRange.startYear}1031`);
+    const q2Start = parseInt(`${syRange.startYear}1101`);
+    const q2End   = parseInt(`${syRange.endYear}0131`);
+    const q3Start = parseInt(`${syRange.endYear}0201`);
+    const q3End   = parseInt(`${syRange.endYear}0430`);
+    const q4Start = parseInt(`${syRange.endYear}0501`);
+    const q4End   = parseInt(`${syRange.endYear}0731`);
 
-    // 7. Schulferien & offizielle Termine des LWL-Berufskollegs Soest abrufen
-    const holidaysRes = await callWebUntisApi('getHolidays', {}).catch(() => ({}));
+    const quarters = [
+      { start: q1Start, end: q1End },
+      { start: q2Start, end: q2End },
+      { start: q3Start, end: q3End },
+      { start: q4Start, end: q4End }
+    ];
+
+    const examCalls = [
+      callWebUntisApi('getExams', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
+      callWebUntisApi('getExams', {}).catch(() => ({})),
+      ...quarters.map(q => callWebUntisApi('getExams', { startDate: q.start, endDate: q.end }).catch(() => ({})))
+    ];
+
+    const examResponses = await Promise.all(examCalls);
+    const rawExamsList = [];
+    examResponses.forEach(res => {
+      if (res && res.result && Array.isArray(res.result)) {
+        rawExamsList.push(...res.result);
+      }
+    });
+
+    // 7. Schulferien, News & offizielle Termine des LWL-Berufskollegs Soest abrufen
+    const [holidaysRes, newsRes] = await Promise.all([
+      callWebUntisApi('getHolidays', {}).catch(() => ({})),
+      callWebUntisApi('getNewsWidgetData', {}).catch(() => callWebUntisApi('getNewsWidget', {}).catch(() => ({})))
+    ]);
 
     // 8. Logout
     try { await callWebUntisApi('logout', {}); } catch (e) { }
     webuntisSessionId = null;
 
-    // 7. Stundenplan parsen
+    // -------------------------------------------------------------
+    // Hilfsfunktionen für Raum- und Prüfungsvalidierung
+    // -------------------------------------------------------------
+    function isValidRoomCandidate(candidate) {
+      if (!candidate || typeof candidate !== 'string') return false;
+      const clean = candidate.trim().toLowerCase();
+      if (!clean || clean === 'raum' || clean === 'null' || clean === 'undefined') return false;
+      if (clean === 'unterricht' || clean === 'lehrkraft') return false;
+      if (clean === 'hanauer' || clean === 'raum hanauer') return false;
+      return true;
+    }
+
+    function extractRoomFromObj(r) {
+      if (!r) return '';
+      if (typeof r === 'string' && isValidRoomCandidate(r)) return r.trim();
+      if (typeof r === 'number') {
+        if (roomsMap[r] && isValidRoomCandidate(roomsMap[r])) return roomsMap[r];
+        return '';
+      }
+      let candidate = r.name || r.longname || r.longName;
+      if (candidate && isValidRoomCandidate(candidate)) return candidate.trim();
+      if (r.id && roomsMap[r.id] && isValidRoomCandidate(roomsMap[r.id])) return roomsMap[r.id];
+      return '';
+    }
+
+    // 9. Stundenplan der aktuellen Schulwoche parsen
+    const timetableExams = [];
+    function scanItemForExam(item, idx) {
+      if (!item) return;
+      const notes = [item.substText, item.lstext, item.info, item.bkText].filter(Boolean).join(' ');
+      const isExamCode = (item.code === 'exam' || item.activityType === 'exam');
+      const isExamText = /\b(klausur|klassenarbeit|prüfung|pruefung|arbeit|test|leistungsnachweis|nachschreib|abschlussprüfung|zentrale\s+prüfung|zk|facharbeit)\b/i.test(notes);
+
+      if (isExamCode || isExamText) {
+        const dStr = String(item.date);
+        if (dStr.length === 8) {
+          const isoDate = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
+          const subj = (item.su && item.su[0]) ? (subjectsMap[item.su[0].id] || item.su[0].name || 'Klausur') : 'Klausur';
+          const teach = (item.te && item.te[0]) ? (teachersMap[item.te[0].id] || item.te[0].name || 'Fachlehrkraft') : 'Fachlehrkraft';
+
+          let rm = 'Raum laut Plan';
+          if (item.ro && Array.isArray(item.ro) && item.ro[0]) {
+            rm = extractRoomFromObj(item.ro[0]);
+          }
+          if (!isValidRoomCandidate(rm)) rm = 'Raum laut Plan';
+          else rm = formatRoomDisplay(rm, teach);
+
+          timetableExams.push({
+            id: `tt-exam-${item.id || dStr + '-' + (item.startTime || idx)}`,
+            subject: subj,
+            date: isoDate,
+            startTime: formatUntisTimeToStr(item.startTime || 745),
+            endTime: formatUntisTimeToStr(item.endTime || 915),
+            room: rm,
+            teacher: teach,
+            topic: notes || 'Klausur laut Stundenplan',
+            type: 'exam',
+            completed: false
+          });
+        }
+      }
+    }
+
     if (ttRes && ttRes.result && Array.isArray(ttRes.result)) {
       const newTimetable = [];
       ttRes.result.forEach((item, idx) => {
+        scanItemForExam(item, idx);
+
         const dStr = String(item.date);
         const itemDate = new Date(parseInt(dStr.slice(0, 4)), parseInt(dStr.slice(4, 6)) - 1, parseInt(dStr.slice(6, 8)));
         const dayOfWeek = itemDate.getDay();
@@ -660,59 +788,18 @@ async function performWebUntisSync(userOverride, passOverride) {
         const teach = (item.te && item.te[0]) ? (teachersMap[item.te[0].id] || item.te[0].name || item.te[0].longname || 'Lehrkraft') : 'Lehrkraft';
         const klasse = (item.kl && item.kl[0]) ? (klassenMap[item.kl[0].id] || item.kl[0].name || item.kl[0].longname || '') : '';
 
-        // -------------------------------------------------------------
-        // Saubere Raum-Erkennung & Absicherung gegen Lehrer-/Klassennamen
-        // -------------------------------------------------------------
         let rm = '';
-
-        function isValidRoomCandidate(candidate) {
-          if (!candidate || typeof candidate !== 'string') return false;
-          const clean = candidate.trim().toLowerCase();
-          if (!clean || clean === 'raum' || clean === 'null' || clean === 'undefined') return false;
-          if (clean === 'unterricht' || clean === 'lehrkraft') return false;
-          if (clean === 'hanauer' || clean === 'raum hanauer') return false;
-          if (teach) {
-            const tLow = teach.trim().toLowerCase();
-            if (tLow && (clean === tLow || tLow.includes(clean) || clean.includes(tLow))) return false;
-          }
-          if (klasse) {
-            const kLow = klasse.trim().toLowerCase();
-            if (kLow && (clean === kLow || kLow.includes(clean) || clean.includes(kLow))) return false;
-          }
-          if (subj) {
-            const sLow = subj.trim().toLowerCase();
-            if (sLow && (clean === sLow || sLow.includes(clean))) return false;
-          }
-          return true;
-        }
-
-        function extractRoomFromObj(r) {
-          if (!r) return '';
-          if (typeof r === 'string' && isValidRoomCandidate(r)) return r.trim();
-          if (typeof r === 'number') {
-            if (roomsMap[r] && isValidRoomCandidate(roomsMap[r])) return roomsMap[r];
-            return '';
-          }
-          let candidate = r.name || r.longname || r.longName;
-          if (candidate && isValidRoomCandidate(candidate)) return candidate.trim();
-          if (r.id && roomsMap[r.id] && isValidRoomCandidate(roomsMap[r.id])) return roomsMap[r.id];
-          return '';
-        }
-
         if (item.ro && Array.isArray(item.ro) && item.ro.length > 0) {
           const roomParts = item.ro.map(extractRoomFromObj).filter(Boolean);
           if (roomParts.length > 0) rm = roomParts.join(', ');
         }
-
         if (!rm && item.orgro && Array.isArray(item.orgro) && item.orgro.length > 0) {
           const orgParts = item.orgro.map(extractRoomFromObj).filter(Boolean);
           if (orgParts.length > 0) rm = orgParts.join(', ');
         }
-
         if (!rm && item.room) {
           rm = extractRoomFromObj(item.room);
         }
-
         if (!rm) {
           const combinedText = [item.substText, item.lstext, item.info, item.bkText].filter(Boolean).join(' ');
           const matchRoom = combinedText.match(/\b(?:in\s+Raum|nach\s+Raum|Raum|Rm\.)\s+([A-Z0-9][A-Z0-9\.\-_/]*)/i);
@@ -753,70 +840,146 @@ async function performWebUntisSync(userOverride, passOverride) {
       }
     }
 
-    // 8. Prüfungen für das gesamte Schuljahr parsen
-    if (examsRes && examsRes.result && Array.isArray(examsRes.result)) {
-      const newExams = [];
-      examsRes.result.forEach((ex, idx) => {
-        const dStr = String(ex.examDate);
-        const isoDate = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
-        const subj = (ex.subject) ? (subjectsMap[ex.subject] || ex.name || 'Klausur') : (ex.name || 'Klausur');
+    // Zusätzliche Prüfungen aus den kommenden 4 Wochen erfassen
+    if (futureTtRes && futureTtRes.result && Array.isArray(futureTtRes.result)) {
+      futureTtRes.result.forEach((item, idx) => scanItemForExam(item, idx + 1000));
+    }
 
-        let exTeacher = 'Fachlehrkraft';
-        if (ex.teachers && Array.isArray(ex.teachers) && ex.teachers[0] && teachersMap[ex.teachers[0]]) {
-          exTeacher = teachersMap[ex.teachers[0]];
-        } else if (ex.teacher && teachersMap[ex.teacher]) {
-          exTeacher = teachersMap[ex.teacher];
+    // 10. Prüfungen zusammenführen & deduplizieren
+    const examKeySet = new Set();
+    const newExams = [];
+
+    function addUniqueExam(exItem) {
+      if (!exItem || !exItem.date || !exItem.subject) return;
+      const key = `${exItem.date}_${exItem.startTime}_${exItem.subject.toLowerCase().trim()}`;
+      if (!examKeySet.has(key)) {
+        examKeySet.add(key);
+        newExams.push(exItem);
+      }
+    }
+
+    rawExamsList.forEach((ex, idx) => {
+      const dStr = String(ex.examDate);
+      if (dStr.length !== 8) return;
+      const isoDate = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
+      const subj = (ex.subject) ? (subjectsMap[ex.subject] || ex.name || 'Klausur') : (ex.name || 'Klausur');
+
+      let exTeacher = 'Fachlehrkraft';
+      if (ex.teachers && Array.isArray(ex.teachers) && ex.teachers[0] && teachersMap[ex.teachers[0]]) {
+        exTeacher = teachersMap[ex.teachers[0]];
+      } else if (ex.teacher && teachersMap[ex.teacher]) {
+        exTeacher = teachersMap[ex.teacher];
+      }
+
+      let exRoom = 'Raum laut Plan';
+      if (ex.rooms && Array.isArray(ex.rooms) && ex.rooms[0] && roomsMap[ex.rooms[0]]) {
+        const rCandidate = roomsMap[ex.rooms[0]];
+        if (isValidRoomCandidate(rCandidate)) {
+          exRoom = formatRoomDisplay(rCandidate, exTeacher);
         }
+      } else if (ex.room && isValidRoomCandidate(String(ex.room))) {
+        exRoom = formatRoomDisplay(String(ex.room), exTeacher);
+      }
 
-        let exRoom = 'Raum laut Plan';
-        if (ex.rooms && Array.isArray(ex.rooms) && ex.rooms[0] && roomsMap[ex.rooms[0]]) {
-          const rCandidate = roomsMap[ex.rooms[0]];
-          if (isValidRoomCandidate(rCandidate)) {
-            exRoom = formatRoomDisplay(rCandidate, exTeacher);
-          }
-        } else if (ex.room && isValidRoomCandidate(String(ex.room))) {
-          exRoom = formatRoomDisplay(String(ex.room), exTeacher);
-        }
+      let topicName = ex.name || '';
+      if (ex.examType && examTypesMap[ex.examType]) {
+        topicName = `${examTypesMap[ex.examType]}${topicName ? ' - ' + topicName : ''}`;
+      } else if (ex.examTypeId && examTypesMap[ex.examTypeId]) {
+        topicName = `${examTypesMap[ex.examTypeId]}${topicName ? ' - ' + topicName : ''}`;
+      }
+      if (!topicName) topicName = 'Klausur laut WebUntis';
 
-        newExams.push({
-          id: `untis-exam-${ex.id || idx}`,
-          subject: subj,
-          date: isoDate,
-          startTime: formatUntisTimeToStr(ex.startTime || 745),
-          endTime: formatUntisTimeToStr(ex.endTime || 915),
-          room: exRoom,
-          teacher: exTeacher,
-          topic: ex.name || 'Klausur laut WebUntis',
-          type: 'exam',
-          completed: false
-        });
+      addUniqueExam({
+        id: `untis-exam-${ex.id || idx}`,
+        subject: subj,
+        date: isoDate,
+        startTime: formatUntisTimeToStr(ex.startTime || 745),
+        endTime: formatUntisTimeToStr(ex.endTime || 915),
+        room: exRoom,
+        teacher: exTeacher,
+        topic: topicName,
+        type: 'exam',
+        completed: false
       });
+    });
+
+    timetableExams.forEach(addUniqueExam);
+
+    if (newExams.length > 0) {
       appData.exams = newExams;
     }
 
-    // 9. Schulferien und Termine parsen
-    if (holidaysRes && holidaysRes.result && Array.isArray(holidaysRes.result) && holidaysRes.result.length > 0) {
-      const newHolidays = [];
+    // 11. Schulferien und Termine parsen & mit Schulkalender anreichern
+    const newHolidays = [];
+    const holidayKeySet = new Set();
+
+    if (holidaysRes && holidaysRes.result && Array.isArray(holidaysRes.result)) {
       holidaysRes.result.forEach(h => {
         const sStr = String(h.startDate);
         const eStr = String(h.endDate);
+        if (sStr.length !== 8 || eStr.length !== 8) return;
         const sIso = `${sStr.slice(0, 4)}-${sStr.slice(4, 6)}-${sStr.slice(6, 8)}`;
         const eIso = `${eStr.slice(0, 4)}-${eStr.slice(4, 6)}-${eStr.slice(6, 8)}`;
-        newHolidays.push({
-          id: `untis-holiday-${h.id || Math.random()}`,
-          name: h.longName || h.name || 'Schulferien',
-          shortName: h.name || '',
-          startDate: sIso,
-          endDate: eIso,
-          startDateNum: h.startDate,
-          endDateNum: h.endDate,
-          type: 'holiday'
-        });
+        const key = `${sIso}_${eIso}_${(h.name || '').toLowerCase()}`;
+        if (!holidayKeySet.has(key)) {
+          holidayKeySet.add(key);
+          newHolidays.push({
+            id: `untis-holiday-${h.id || Math.random()}`,
+            name: h.longName || h.name || 'Schulferien',
+            shortName: h.name || '',
+            startDate: sIso,
+            endDate: eIso,
+            startDateNum: h.startDate,
+            endDateNum: h.endDate,
+            type: 'holiday'
+          });
+        }
       });
-      appData.holidays = newHolidays;
-    } else if (!appData.holidays || appData.holidays.length === 0) {
-      appData.holidays = [...DEFAULT_NRW_HOLIDAYS_2026_2027];
     }
+
+    // Termine aus WebUntis NewsWidget / Schwarzes Brett hinzufügen
+    if (newsRes && newsRes.result) {
+      const articles = newsRes.result.articles || newsRes.result.newsOfTheDay || (Array.isArray(newsRes.result) ? newsRes.result : []);
+      articles.forEach((art, idx) => {
+        const title = art.topic || art.subject || art.name || '';
+        const text = art.text || '';
+        if (!title && !text) return;
+        let dStr = String(art.date || art.publishDate || art.startDate || '');
+        if (dStr.length === 8) {
+          const sIso = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
+          let eStr = String(art.expireDate || art.endDate || dStr);
+          let eIso = (eStr.length === 8) ? `${eStr.slice(0, 4)}-${eStr.slice(4, 6)}-${eStr.slice(6, 8)}` : sIso;
+          const key = `news_${sIso}_${title.toLowerCase()}`;
+          if (!holidayKeySet.has(key)) {
+            holidayKeySet.add(key);
+            newHolidays.push({
+              id: `untis-news-${art.id || idx}`,
+              name: title || 'Schultermin',
+              shortName: title || '',
+              longName: text ? `${title}: ${text}` : title,
+              startDate: sIso,
+              endDate: eIso,
+              startDateNum: parseInt(dStr),
+              endDateNum: parseInt(eStr.length === 8 ? eStr : dStr),
+              type: 'appointment'
+            });
+          }
+        }
+      });
+    }
+
+    // Standard NRW Termine & Zeugnistage als Fallback/Ergänzung einbinden, damit kein Termin fehlt
+    DEFAULT_NRW_HOLIDAYS_2026_2027.forEach(defH => {
+      const key = `${defH.startDate}_${defH.endDate}_${(defH.name || '').toLowerCase()}`;
+      const nameKey = (defH.name || '').toLowerCase();
+      const alreadyExists = newHolidays.some(h => (h.name || '').toLowerCase().includes(nameKey) || nameKey.includes((h.name || '').toLowerCase()));
+      if (!alreadyExists && !holidayKeySet.has(key)) {
+        holidayKeySet.add(key);
+        newHolidays.push(defH);
+      }
+    });
+
+    appData.holidays = newHolidays;
 
     lastSyncTimestamp = new Date();
     saveAppData();
@@ -1460,6 +1623,9 @@ function initApp() {
 
   // Version von lokalem Server abfragen
   fetchInstalledVersion();
+
+  // Feedback-Archiv initial laden
+  loadFeedbackArchive();
 }
 
 async function fetchInstalledVersion() {
@@ -1522,6 +1688,211 @@ async function checkSoftwareUpdate() {
       btn.disabled = false;
       btn.innerHTML = '<span class="emoji-icon">🔍</span> <strong>Jetzt auf Updates prüfen</strong>';
     }
+  }
+}
+
+// =============================================================================
+// 11. FEEDBACK-SYSTEM & IN-APP ARCHIV
+// =============================================================================
+function escapeHTML(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function sendUserFeedback(e) {
+  if (e && e.preventDefault) e.preventDefault();
+
+  const catEl = document.getElementById('feedback-category');
+  const authorEl = document.getElementById('feedback-author');
+  const emailEl = document.getElementById('feedback-email');
+  const textEl = document.getElementById('feedback-text');
+  const statusBox = document.getElementById('feedback-status-box');
+  const submitBtn = document.getElementById('btn-submit-feedback');
+
+  if (!textEl || !textEl.value.trim()) {
+    announceSR('Bitte gib eine Nachricht für dein Feedback ein.', 'assertive');
+    return;
+  }
+
+  const category = catEl ? catEl.value : '💡 Vorschlag / Feedback';
+  const author = (authorEl && authorEl.value.trim()) ? authorEl.value.trim() : (appData.config.username || 'Schüler / Nutzer');
+  const email = (emailEl && emailEl.value.trim()) ? emailEl.value.trim() : 'Keine E-Mail angegeben';
+  const message = textEl.value.trim();
+  const now = new Date().toLocaleString('de-DE');
+  const appVer = document.getElementById('app-version-display') ? document.getElementById('app-version-display').textContent : 'v1.0.0';
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="emoji-icon">⏳</span> <strong>Wird gesendet...</strong>';
+  }
+
+  const payload = {
+    _subject: `Stundenplan LWL: ${category} von ${author}`,
+    _template: 'table',
+    _captcha: 'false',
+    Absender: author,
+    Kategorie: category,
+    Email: email,
+    Nachricht: message,
+    Datum: now,
+    AppVersion: appVer,
+    Schule: 'LWL-Berufskolleg Soest',
+    WebUntisBenutzer: appData.config.username || 'Nicht angemeldet'
+  };
+
+  try {
+    // 1. Lokaler Server (speichert in Feedback_Archiv.txt & versendet an lauju1909@gmail.com)
+    await fetch('/api/send_feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+  } catch (err) {
+    console.warn('Fehler beim lokalen Speichern:', err);
+  }
+
+  // 2. Ntfy Push-Benachrichtigung an den Entwickler
+  const nl = '\n';
+  const ntfyBody = `Absender: ${author}${nl}Kategorie: ${category}${nl}E-Mail: ${email}${nl}Datum: ${now}${nl}${nl}Nachricht:${nl}${message}`;
+  try {
+    await fetch('https://ntfy.sh/lauju_stundenplan_feedback', {
+      method: 'POST',
+      headers: {
+        'Title': 'Stundenplan LWL Feedback',
+        'Priority': 'default',
+        'Tags': 'school,bulb,speech_balloon'
+      },
+      body: ntfyBody
+    });
+  } catch (err) {
+    try {
+      await fetch('https://ntfy.sh/lauju_stundenplan_feedback', {
+        method: 'POST',
+        mode: 'no-cors',
+        body: ntfyBody
+      });
+    } catch (err2) { }
+  }
+
+  if (textEl) textEl.value = '';
+
+  if (statusBox) {
+    statusBox.style.display = 'block';
+    statusBox.innerHTML = `
+      <div style="background: rgba(21, 128, 61, 0.15); border: 2px solid var(--accent-ok); border-radius: var(--radius-md); padding: 16px;">
+        <strong style="color: var(--accent-ok); font-size: 16px;">✅ Vielen Dank für deine Rückmeldung!</strong>
+        <p style="margin-top: 6px; font-size: 14px;">Dein Feedback wurde erfolgreich an den Entwickler übermittelt und direkt hier im Archiv gespeichert.</p>
+      </div>
+    `;
+  }
+
+  announceSR('Vielen Dank! Dein Feedback wurde erfolgreich übertragen und im Archiv gespeichert.', 'polite');
+
+  if (submitBtn) {
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = '<span class="emoji-icon">📤</span> <strong>Feedback &amp; Nachricht absenden</strong>';
+  }
+
+  // Archiv in der App sofort aktualisieren
+  loadFeedbackArchive();
+}
+
+async function loadFeedbackArchive() {
+  const container = document.getElementById('feedback-archive-list');
+  if (!container) return;
+
+  try {
+    const res = await fetch('/api/feedback_archive');
+    const data = await res.json();
+    const raw = data.content || '';
+
+    if (!raw.trim()) {
+      container.innerHTML = `
+        <div style="background: var(--bg-surface); border: 2px dashed var(--border-subtle); border-radius: var(--radius-md); padding: 22px; text-align: center;">
+          <p style="color: var(--text-muted); font-size: 15px;">📭 Noch keine gesendeten Feedback-Nachrichten im Archiv vorhanden.</p>
+        </div>
+      `;
+      return;
+    }
+
+    const chunks = raw.split('----------------------------------').map(c => c.trim()).filter(Boolean);
+    if (chunks.length === 0) {
+      container.innerHTML = `
+        <div style="background: var(--bg-surface); border: 2px dashed var(--border-subtle); border-radius: var(--radius-md); padding: 22px; text-align: center;">
+          <p style="color: var(--text-muted); font-size: 15px;">📭 Noch keine gesendeten Feedback-Nachrichten im Archiv vorhanden.</p>
+        </div>
+      `;
+      return;
+    }
+
+    let html = '<div role="list" aria-label="Liste aller bisher gesendeten Rückmeldungen">';
+    // Neueste Nachrichten zuerst anzeigen
+    chunks.reverse().forEach(chunk => {
+      const matchTime = chunk.match(/^\[(.*?)\]\s*([\s\S]*)$/);
+      let timeStr = 'Datum unbekannt';
+      let bodyStr = chunk;
+
+      if (matchTime) {
+        timeStr = matchTime[1];
+        bodyStr = matchTime[2].trim();
+      }
+
+      let parsed = null;
+      try {
+        parsed = JSON.parse(bodyStr);
+      } catch (e) { }
+
+      let category = '💬 Feedback / Nachricht';
+      let author = 'App-Nutzer';
+      let email = '';
+      let msg = bodyStr;
+
+      if (parsed) {
+        category = parsed.Kategorie || parsed._subject || category;
+        author = parsed.Absender || author;
+        email = (parsed.Email && parsed.Email !== 'Keine E-Mail angegeben') ? parsed.Email : '';
+        msg = parsed.Nachricht || bodyStr;
+      }
+
+      html += `
+        <article class="feedback-card" role="listitem" tabindex="0" aria-label="Feedback vom ${escapeHTML(timeStr)}: ${escapeHTML(category)} von ${escapeHTML(author)}">
+          <div class="feedback-header">
+            <span class="feedback-type-badge">${escapeHTML(category)}</span>
+            <span class="feedback-timestamp">🕒 ${escapeHTML(timeStr)}</span>
+          </div>
+          <div class="feedback-sender">
+            👤 <strong>Absender:</strong> ${escapeHTML(author)} ${email ? `| ✉️ ${escapeHTML(email)}` : ''}
+          </div>
+          <div class="feedback-message">${escapeHTML(msg)}</div>
+        </article>
+      `;
+    });
+    html += '</div>';
+
+    container.innerHTML = html;
+  } catch (err) {
+    container.innerHTML = `
+      <div style="background: rgba(185, 28, 28, 0.1); border: 2px solid var(--accent-danger); border-radius: var(--radius-md); padding: 14px;">
+        <span style="color: var(--accent-danger);">⚠️ Archiv konnte nicht geladen werden.</span>
+      </div>
+    `;
+  }
+}
+
+async function clearFeedbackArchive() {
+  if (!confirm('Möchtest du das Feedback-Archiv auf diesem Rechner wirklich leeren?')) return;
+
+  try {
+    await fetch('/api/feedback_archive/clear', { method: 'POST' });
+    announceSR('Das Feedback-Archiv wurde geleert.', 'polite');
+    loadFeedbackArchive();
+  } catch (e) {
+    alert('Fehler beim Leeren des Feedback-Archivs.');
   }
 }
 

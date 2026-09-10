@@ -1,13 +1,15 @@
-﻿{
-  "version": "1.0.0",
+{
+  "version": "1.1.0",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-10",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
     "Reine WebUntis-API-Anbindung für das LWL-Berufskolleg Soest",
     "Automatische Synchronisation alle 5 Minuten und bei jedem Start",
-    "Prüfungen & Klausuren für das gesamte Schuljahr (365 Tage)",
-    "Umfassende Schultermin- und Ferienübersicht mit Monatsgruppierung und Schnellfiltern",
+    "Lückenlose Prüfungen & Klausuren für das gesamte Schuljahr über 4-Quartals-API und Stundenplan-Scan",
+    "Umfassende Schultermin-, News- und Ferienübersicht mit Monatsgruppierung und Schnellfiltern",
+    "In-App Feedback-System mit lokaler Archivierung (Feedback_Archiv.txt) und E-Mail-Weiterleitung",
+    "Direktes In-App Feedback-Archiv in den Einstellungen",
     "100% Tastatur- und Screenreader-optimiert (NVDA / JAWS, WCAG 2.2 AAA)",
     "Integrierter Auto-Updater über GitHub"
   ]
