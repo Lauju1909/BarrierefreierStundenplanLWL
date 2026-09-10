@@ -4,6 +4,7 @@
 *.bak
 Feedback_Archiv.txt
 Profile_App/
+Profile_Feedback/
 __pycache__/
 *.pyc
 

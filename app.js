@@ -85,6 +85,19 @@ function loadAppData() {
         examFilter: 'all'
       };
 
+      // Historische Alt-Ferien (2020-2025) aus Cache bereinigen, falls vorhanden
+      if (appData.holidays && Array.isArray(appData.holidays)) {
+        const sy = appData.schoolYear || getSchoolYearRange();
+        appData.holidays = appData.holidays.filter(h => {
+          const sNum = h.startDateNum || (h.startDate ? parseInt(h.startDate.replace(/-/g, '')) : 0);
+          const eNum = h.endDateNum || (h.endDate ? parseInt(h.endDate.replace(/-/g, '')) : sNum);
+          return eNum >= sy.startDateNum && sNum <= sy.endDateNum;
+        });
+        if (appData.holidays.length === 0) {
+          appData.holidays = [...DEFAULT_NRW_HOLIDAYS_2026_2027];
+        }
+      }
+
       // Falsch gecachte Räume bereinigen
       if (appData.timetable && Array.isArray(appData.timetable)) {
         appData.timetable.forEach(l => {
@@ -519,13 +532,14 @@ async function performWebUntisSync(userOverride, passOverride) {
     const { sessionId, personId, personType } = authRes.result;
     webuntisSessionId = sessionId;
 
-    // 2. Metadaten parallel abrufen (Fächer, Lehrer, Räume, Klassen, Prüfungsarten)
-    const [subRes, teaRes, rooRes, klaRes, examTypesRes] = await Promise.all([
+    // 2. Metadaten parallel abrufen (Fächer, Lehrer, Räume, Klassen, Prüfungsarten, Klassenbuch-Kategorien)
+    const [subRes, teaRes, rooRes, klaRes, examTypesRes, classregCatsRes] = await Promise.all([
       callWebUntisApi('getSubjects').catch(() => ({})),
       callWebUntisApi('getTeachers').catch(() => ({})),
       callWebUntisApi('getRooms').catch(() => ({})),
       callWebUntisApi('getKlassen').catch(() => ({})),
-      callWebUntisApi('getExamTypes').catch(() => ({}))
+      callWebUntisApi('getExamTypes').catch(() => ({})),
+      callWebUntisApi('getClassregCategories').catch(() => ({}))
     ]);
 
     const examTypesMap = {};
@@ -534,6 +548,17 @@ async function performWebUntisSync(userOverride, passOverride) {
         const lbl = et.longName || et.name;
         examTypesMap[et.id] = lbl;
         if (et.name) examTypesMap[et.name] = lbl;
+      });
+    }
+
+    const classregCatsMap = {};
+    if (classregCatsRes && classregCatsRes.result && Array.isArray(classregCatsRes.result)) {
+      classregCatsRes.result.forEach(c => {
+        const lbl = c.longname || c.name || c.text;
+        if (lbl) {
+          classregCatsMap[c.id] = lbl;
+          if (c.name) classregCatsMap[c.name] = lbl;
+        }
       });
     }
 
@@ -591,49 +616,38 @@ async function performWebUntisSync(userOverride, passOverride) {
     const startNum = formatDateToUntis(monday);
     const endNum = formatDateToUntis(friday);
 
-    // Zusätzlicher Bereich für zukünftige 4 Wochen zum Aufspüren von Klassenarbeiten/Klausuren im Stundenplan
-    const futureMonday = new Date(friday);
-    futureMonday.setDate(futureMonday.getDate() + 3);
-    const futureFriday = new Date(futureMonday);
-    futureFriday.setDate(futureMonday.getDate() + 25);
+    // 4. Stundenplan für aktuelle Schulwoche abrufen
+    const ttRes = await callWebUntisApi('getTimetable', {
+      options: {
+        element: { id: personId, type: personType },
+        startDate: startNum,
+        endDate: endNum,
+        showLsText: true,
+        showStudentgroup: true,
+        showInfo: true,
+        showSubstText: true,
+        showLsNumber: true,
+        showBooking: true,
+        klasseFields: ['id', 'name', 'longname'],
+        roomFields: ['id', 'name', 'longname'],
+        subjectFields: ['id', 'name', 'longname'],
+        teacherFields: ['id', 'name', 'longname']
+      }
+    }).catch(() => ({}));
 
-    // 4. Stundenplan für aktuelle Woche und Folgewochen abrufen
-    const [ttRes, futureTtRes] = await Promise.all([
-      callWebUntisApi('getTimetable', {
-        options: {
-          element: { id: personId, type: personType },
-          startDate: startNum,
-          endDate: endNum,
-          showLsText: true,
-          showStudentgroup: true,
-          showInfo: true,
-          showSubstText: true,
-          showLsNumber: true,
-          showBooking: true,
-          klasseFields: ['id', 'name', 'longname'],
-          roomFields: ['id', 'name', 'longname'],
-          subjectFields: ['id', 'name', 'longname'],
-          teacherFields: ['id', 'name', 'longname']
+    // Schülerklasse ermitteln (für klassenspezifische Prüfungen & Termine)
+    let detectedKlasseId = null;
+    if (ttRes && ttRes.result && Array.isArray(ttRes.result)) {
+      for (const item of ttRes.result) {
+        if (item.kl && Array.isArray(item.kl) && item.kl[0] && item.kl[0].id) {
+          detectedKlasseId = item.kl[0].id;
+          break;
         }
-      }).catch(() => ({})),
-      callWebUntisApi('getTimetable', {
-        options: {
-          element: { id: personId, type: personType },
-          startDate: formatDateToUntis(futureMonday),
-          endDate: formatDateToUntis(futureFriday),
-          showLsText: true,
-          showStudentgroup: true,
-          showInfo: true,
-          showSubstText: true,
-          showLsNumber: true,
-          showBooking: true,
-          klasseFields: ['id', 'name', 'longname'],
-          roomFields: ['id', 'name', 'longname'],
-          subjectFields: ['id', 'name', 'longname'],
-          teacherFields: ['id', 'name', 'longname']
-        }
-      }).catch(() => ({}))
-    ]);
+      }
+    }
+    if (!detectedKlasseId && personType === 1) {
+      detectedKlasseId = personId;
+    }
 
     // 5. Schuljahr ermitteln (WebUntis getSchoolyears oder dynamische Berechnung)
     let syRange = getSchoolYearRange();
@@ -641,8 +655,11 @@ async function performWebUntisSync(userOverride, passOverride) {
       const syRes = await callWebUntisApi('getSchoolyears', {});
       if (syRes && syRes.result && Array.isArray(syRes.result) && syRes.result.length > 0) {
         const todayNum = formatDateToUntis(now);
-        const activeSy = syRes.result.find(s => todayNum >= s.startDate && todayNum <= s.endDate) || syRes.result[syRes.result.length - 1];
-        if (activeSy) {
+        // Sicherstellen, dass das aktive oder neueste zutreffende Schuljahr gewählt wird
+        const activeSy = syRes.result.find(s => todayNum >= s.startDate && todayNum <= s.endDate)
+          || syRes.result.find(s => s.endDate >= todayNum)
+          || syRes.result[syRes.result.length - 1];
+        if (activeSy && activeSy.endDate >= 20260801) {
           const sStr = String(activeSy.startDate);
           const eStr = String(activeSy.endDate);
           syRange = {
@@ -659,7 +676,39 @@ async function performWebUntisSync(userOverride, passOverride) {
     } catch (e) { }
     appData.schoolYear = syRange;
 
-    // 6. Prüfungen für das GESAMTE Schuljahr lückenlos abrufen (in 4 Quartalen, da WebUntis lange Zeiträume oft kappt)
+    // Mehrere Zukunfts-Monate im Stundenplan scannen nach Klausuren/Arbeiten (bis zu 4 Monate)
+    const futureRanges = [];
+    for (let offset = 7; offset <= 112; offset += 28) {
+      const dS = new Date(monday);
+      dS.setDate(monday.getDate() + offset);
+      const dE = new Date(dS);
+      dE.setDate(dS.getDate() + 27);
+      const sN = formatDateToUntis(dS);
+      const eN = formatDateToUntis(dE);
+      if (sN <= syRange.endDateNum) {
+        futureRanges.push({ start: sN, end: Math.min(eN, syRange.endDateNum) });
+      }
+    }
+
+    const futureTtCalls = futureRanges.map(r => callWebUntisApi('getTimetable', {
+      options: {
+        element: { id: personId, type: personType },
+        startDate: r.start,
+        endDate: r.end,
+        showLsText: true,
+        showStudentgroup: true,
+        showInfo: true,
+        showSubstText: true,
+        showLsNumber: true,
+        showBooking: true,
+        klasseFields: ['id', 'name', 'longname'],
+        roomFields: ['id', 'name', 'longname'],
+        subjectFields: ['id', 'name', 'longname'],
+        teacherFields: ['id', 'name', 'longname']
+      }
+    }).catch(() => ({})));
+
+    // 6. Quartale für Schuljahr definieren (WebUntis kappt lange Zeiträume oft bei 90 Tagen)
     const q1Start = parseInt(`${syRange.startYear}0801`);
     const q1End   = parseInt(`${syRange.startYear}1031`);
     const q2Start = parseInt(`${syRange.startYear}1101`);
@@ -678,20 +727,45 @@ async function performWebUntisSync(userOverride, passOverride) {
 
     const examCalls = [
       callWebUntisApi('getExams', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
+      callWebUntisApi('getExams', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, id: personId, type: personType }).catch(() => ({})),
       callWebUntisApi('getExams', {}).catch(() => ({})),
-      ...quarters.map(q => callWebUntisApi('getExams', { startDate: q.start, endDate: q.end }).catch(() => ({})))
+      ...quarters.flatMap(q => [
+        callWebUntisApi('getExams', { startDate: q.start, endDate: q.end }).catch(() => ({})),
+        callWebUntisApi('getExams', { startDate: q.start, endDate: q.end, id: personId, type: personType }).catch(() => ({}))
+      ])
     ];
 
-    const examResponses = await Promise.all(examCalls);
-    const rawExamsList = [];
-    examResponses.forEach(res => {
-      if (res && res.result && Array.isArray(res.result)) {
-        rawExamsList.push(...res.result);
-      }
-    });
+    if (detectedKlasseId) {
+      examCalls.push(
+        callWebUntisApi('getExams', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, id: detectedKlasseId, type: 1 }).catch(() => ({})),
+        ...quarters.map(q => callWebUntisApi('getExams', { startDate: q.start, endDate: q.end, id: detectedKlasseId, type: 1 }).catch(() => ({})))
+      );
+    }
 
-    // 7. Schulferien, News & offizielle Termine des LWL-Berufskollegs Soest abrufen
-    const [holidaysRes, newsRes] = await Promise.all([
+    // Klassenbuch-Termine & Ereignisse (für vollständige Parität mit der offiziellen WebUntis App)
+    const classregCalls = [
+      callWebUntisApi('getClassregEvents', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
+      callWebUntisApi('getClassregEvents', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, id: personId, type: personType }).catch(() => ({})),
+      callWebUntisApi('getClassregEvents', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, element: { id: personId, type: personType } }).catch(() => ({})),
+      ...quarters.flatMap(q => [
+        callWebUntisApi('getClassregEvents', { startDate: q.start, endDate: q.end }).catch(() => ({})),
+        callWebUntisApi('getClassregEvents', { startDate: q.start, endDate: q.end, id: personId, type: personType }).catch(() => ({}))
+      ])
+    ];
+
+    if (detectedKlasseId) {
+      classregCalls.push(
+        callWebUntisApi('getClassregEvents', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, id: detectedKlasseId, type: 1 }).catch(() => ({})),
+        callWebUntisApi('getClassregEvents', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, element: { id: detectedKlasseId, type: 1 } }).catch(() => ({})),
+        ...quarters.map(q => callWebUntisApi('getClassregEvents', { startDate: q.start, endDate: q.end, id: detectedKlasseId, type: 1 }).catch(() => ({})))
+      );
+    }
+
+    // 7. Schulferien, News, Prüfungen & Klassenbuch parallel abrufen
+    const [examResponses, classregResponses, futureTtResults, holidaysRes, newsRes] = await Promise.all([
+      Promise.all(examCalls),
+      Promise.all(classregCalls),
+      Promise.all(futureTtCalls),
       callWebUntisApi('getHolidays', {}).catch(() => ({})),
       callWebUntisApi('getNewsWidgetData', {}).catch(() => callWebUntisApi('getNewsWidget', {}).catch(() => ({})))
     ]);
@@ -736,6 +810,9 @@ async function performWebUntisSync(userOverride, passOverride) {
       if (isExamCode || isExamText) {
         const dStr = String(item.date);
         if (dStr.length === 8) {
+          const dateNum = parseInt(dStr);
+          if (dateNum < syRange.startDateNum || dateNum > syRange.endDateNum) return;
+
           const isoDate = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
           const subj = (item.su && item.su[0]) ? (subjectsMap[item.su[0].id] || item.su[0].name || 'Klausur') : 'Klausur';
           const teach = (item.te && item.te[0]) ? (teachersMap[item.te[0].id] || item.te[0].name || 'Fachlehrkraft') : 'Fachlehrkraft';
@@ -840,9 +917,13 @@ async function performWebUntisSync(userOverride, passOverride) {
       }
     }
 
-    // Zusätzliche Prüfungen aus den kommenden 4 Wochen erfassen
-    if (futureTtRes && futureTtRes.result && Array.isArray(futureTtRes.result)) {
-      futureTtRes.result.forEach((item, idx) => scanItemForExam(item, idx + 1000));
+    // Zusätzliche Prüfungen aus den kommenden Wochen/Monaten erfassen
+    if (futureTtResults && Array.isArray(futureTtResults)) {
+      futureTtResults.forEach((fRes, fIdx) => {
+        if (fRes && fRes.result && Array.isArray(fRes.result)) {
+          fRes.result.forEach((item, idx) => scanItemForExam(item, (fIdx + 1) * 1000 + idx));
+        }
+      });
     }
 
     // 10. Prüfungen zusammenführen & deduplizieren
@@ -858,43 +939,65 @@ async function performWebUntisSync(userOverride, passOverride) {
       }
     }
 
+    // A. WebUntis getExams parsen
+    const rawExamsList = [];
+    examResponses.forEach(res => {
+      if (res && res.result && Array.isArray(res.result)) {
+        rawExamsList.push(...res.result);
+      }
+    });
+
     rawExamsList.forEach((ex, idx) => {
-      const dStr = String(ex.examDate);
+      // WICHTIG: WebUntis liefert ex.date ODER ex.examDate ODER ex.startDate
+      const rawDate = ex.date || ex.examDate || ex.startDate;
+      if (!rawDate) return;
+      const dStr = String(rawDate).trim();
       if (dStr.length !== 8) return;
+
+      const dateNum = parseInt(dStr);
+      if (dateNum < syRange.startDateNum || dateNum > syRange.endDateNum) return;
+
       const isoDate = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
-      const subj = (ex.subject) ? (subjectsMap[ex.subject] || ex.name || 'Klausur') : (ex.name || 'Klausur');
+      let subj = 'Klausur';
+      if (ex.subject && subjectsMap[ex.subject]) subj = subjectsMap[ex.subject];
+      else if (ex.subjectId && subjectsMap[ex.subjectId]) subj = subjectsMap[ex.subjectId];
+      else if (typeof ex.subject === 'string' && ex.subject.trim()) subj = ex.subject.trim();
+      else if (ex.name && !/^klausur/i.test(ex.name)) subj = ex.name;
 
       let exTeacher = 'Fachlehrkraft';
-      if (ex.teachers && Array.isArray(ex.teachers) && ex.teachers[0] && teachersMap[ex.teachers[0]]) {
-        exTeacher = teachersMap[ex.teachers[0]];
-      } else if (ex.teacher && teachersMap[ex.teacher]) {
-        exTeacher = teachersMap[ex.teacher];
+      const tId = (ex.teachers && Array.isArray(ex.teachers) && ex.teachers[0]) || ex.teacher || ex.teacherId;
+      if (tId && teachersMap[tId]) {
+        exTeacher = teachersMap[tId];
+      } else if (typeof ex.teacher === 'string' && ex.teacher.trim()) {
+        exTeacher = ex.teacher.trim();
       }
 
       let exRoom = 'Raum laut Plan';
-      if (ex.rooms && Array.isArray(ex.rooms) && ex.rooms[0] && roomsMap[ex.rooms[0]]) {
-        const rCandidate = roomsMap[ex.rooms[0]];
+      const rId = (ex.rooms && Array.isArray(ex.rooms) && ex.rooms[0]) || ex.room || ex.roomId;
+      if (rId) {
+        const rCandidate = extractRoomFromObj(rId);
         if (isValidRoomCandidate(rCandidate)) {
           exRoom = formatRoomDisplay(rCandidate, exTeacher);
         }
-      } else if (ex.room && isValidRoomCandidate(String(ex.room))) {
-        exRoom = formatRoomDisplay(String(ex.room), exTeacher);
       }
 
-      let topicName = ex.name || '';
-      if (ex.examType && examTypesMap[ex.examType]) {
-        topicName = `${examTypesMap[ex.examType]}${topicName ? ' - ' + topicName : ''}`;
-      } else if (ex.examTypeId && examTypesMap[ex.examTypeId]) {
-        topicName = `${examTypesMap[ex.examTypeId]}${topicName ? ' - ' + topicName : ''}`;
-      }
-      if (!topicName) topicName = 'Klausur laut WebUntis';
+      const topicParts = [];
+      if (ex.examType && examTypesMap[ex.examType]) topicParts.push(examTypesMap[ex.examType]);
+      else if (ex.examTypeId && examTypesMap[ex.examTypeId]) topicParts.push(examTypesMap[ex.examTypeId]);
+      if (ex.name) topicParts.push(ex.name);
+      if (ex.text && ex.text !== ex.name) topicParts.push(ex.text);
+      if (ex.description && ex.description !== ex.name) topicParts.push(ex.description);
+
+      const topicName = topicParts.filter(Boolean).join(' - ') || 'Klausur laut WebUntis';
+      const sTime = ex.startTime !== undefined ? ex.startTime : (ex.start || 745);
+      const eTime = ex.endTime !== undefined ? ex.endTime : (ex.end || 915);
 
       addUniqueExam({
         id: `untis-exam-${ex.id || idx}`,
         subject: subj,
         date: isoDate,
-        startTime: formatUntisTimeToStr(ex.startTime || 745),
-        endTime: formatUntisTimeToStr(ex.endTime || 915),
+        startTime: formatUntisTimeToStr(sTime),
+        endTime: formatUntisTimeToStr(eTime),
         room: exRoom,
         teacher: exTeacher,
         topic: topicName,
@@ -903,18 +1006,90 @@ async function performWebUntisSync(userOverride, passOverride) {
       });
     });
 
+    // B. Klassenbuch-Ereignisse (getClassregEvents) parsen (Prüfungen + Termine)
+    const newHolidays = [];
+    const holidayKeySet = new Set();
+
+    const rawClassregList = [];
+    classregResponses.forEach(res => {
+      if (res && res.result && Array.isArray(res.result)) {
+        rawClassregList.push(...res.result);
+      }
+    });
+
+    rawClassregList.forEach((evt, idx) => {
+      const rawDate = evt.date || evt.startDate;
+      if (!rawDate) return;
+      const dStr = String(rawDate).trim();
+      if (dStr.length !== 8) return;
+
+      const dateNum = parseInt(dStr);
+      if (dateNum < syRange.startDateNum || dateNum > syRange.endDateNum) return;
+
+      const isoDate = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
+      const catName = (evt.categoryId && classregCatsMap[evt.categoryId]) || evt.category || '';
+      const reason = evt.reason || evt.text || evt.description || evt.name || '';
+      const sTime = evt.starttime !== undefined ? evt.starttime : (evt.startTime || 745);
+      const eTime = evt.endtime !== undefined ? evt.endtime : (evt.endTime || 915);
+
+      let subj = 'Schultermin';
+      if (evt.subjectId && subjectsMap[evt.subjectId]) subj = subjectsMap[evt.subjectId];
+      else if (evt.subject && subjectsMap[evt.subject]) subj = subjectsMap[evt.subject];
+
+      let teach = 'Fachlehrkraft';
+      const tId = evt.teacherId || (evt.teachers && evt.teachers[0]) || evt.teacher;
+      if (tId && teachersMap[tId]) teach = teachersMap[tId];
+
+      const fullText = `${catName} ${reason} ${evt.text || ''}`.toLowerCase();
+      const isExam = /\b(klausur|klassenarbeit|prüfung|pruefung|arbeit|test|leistungsnachweis|nachschreib|zk|abschlussprüfung|facharbeit)\b/i.test(fullText);
+
+      if (isExam) {
+        addUniqueExam({
+          id: `classreg-exam-${evt.id || dStr + '-' + sTime + '-' + idx}`,
+          subject: (subj !== 'Schultermin' ? subj : (reason || 'Klausur')),
+          date: isoDate,
+          startTime: formatUntisTimeToStr(sTime),
+          endTime: formatUntisTimeToStr(eTime),
+          room: 'Raum laut Plan',
+          teacher: teach,
+          topic: [catName, reason, evt.text].filter(Boolean).join(' - ') || 'Prüfung laut WebUntis',
+          type: 'exam',
+          completed: false
+        });
+      } else {
+        const title = reason || catName || 'Schultermin';
+        const key = `classreg_${isoDate}_${title.toLowerCase().trim()}`;
+        if (!holidayKeySet.has(key)) {
+          holidayKeySet.add(key);
+          newHolidays.push({
+            id: `classreg-evt-${evt.id || dStr + '-' + sTime + '-' + idx}`,
+            name: title,
+            shortName: catName || title,
+            longName: [catName, reason, evt.text].filter(Boolean).join(' - '),
+            startDate: isoDate,
+            endDate: isoDate,
+            startDateNum: dateNum,
+            endDateNum: dateNum,
+            timeStr: `${formatUntisTimeToStr(sTime)} - ${formatUntisTimeToStr(eTime)} Uhr`,
+            type: 'appointment'
+          });
+        }
+      }
+    });
+
+    // C. Stundenplan-Prüfungen hinzufügen
     timetableExams.forEach(addUniqueExam);
 
     if (newExams.length > 0) {
       appData.exams = newExams;
     }
 
-    // 11. Schulferien und Termine parsen & mit Schulkalender anreichern
-    const newHolidays = [];
-    const holidayKeySet = new Set();
-
+    // 11. Schulferien und Termine parsen (STRIKT NUR AKTUELLES SCHULJAHR 2026/2027!)
     if (holidaysRes && holidaysRes.result && Array.isArray(holidaysRes.result)) {
       holidaysRes.result.forEach(h => {
+        // FILTER: Nur Ferien im aktuellen Schuljahr einbeziehen (Historische Jahre wie 2020-2025 ignorieren!)
+        if (h.endDate < syRange.startDateNum || h.startDate > syRange.endDateNum) return;
+
         const sStr = String(h.startDate);
         const eStr = String(h.endDate);
         if (sStr.length !== 8 || eStr.length !== 8) return;
@@ -946,6 +1121,9 @@ async function performWebUntisSync(userOverride, passOverride) {
         if (!title && !text) return;
         let dStr = String(art.date || art.publishDate || art.startDate || '');
         if (dStr.length === 8) {
+          const dateNum = parseInt(dStr);
+          if (dateNum < syRange.startDateNum || dateNum > syRange.endDateNum) return;
+
           const sIso = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
           let eStr = String(art.expireDate || art.endDate || dStr);
           let eIso = (eStr.length === 8) ? `${eStr.slice(0, 4)}-${eStr.slice(4, 6)}-${eStr.slice(6, 8)}` : sIso;
@@ -959,7 +1137,7 @@ async function performWebUntisSync(userOverride, passOverride) {
               longName: text ? `${title}: ${text}` : title,
               startDate: sIso,
               endDate: eIso,
-              startDateNum: parseInt(dStr),
+              startDateNum: dateNum,
               endDateNum: parseInt(eStr.length === 8 ? eStr : dStr),
               type: 'appointment'
             });
