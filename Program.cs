@@ -178,6 +178,34 @@ namespace BarrierefreierStundenplan
 
         public static string GetLocalVersion()
         {
+            // 1. Zuerst aus der eingebetteten Ressource der EXE lesen (autark)
+            if (_assembly != null)
+            {
+                try
+                {
+                    foreach (string name in _assembly.GetManifestResourceNames())
+                    {
+                        if (name.EndsWith("version.json", StringComparison.OrdinalIgnoreCase))
+                        {
+                            using (Stream stream = _assembly.GetManifestResourceStream(name))
+                            {
+                                if (stream != null)
+                                {
+                                    using (StreamReader reader = new StreamReader(stream, Encoding.UTF8))
+                                    {
+                                        string txt = reader.ReadToEnd();
+                                        Match m = Regex.Match(txt, "\"version\"\\s*:\\s*\"v?([^\"]+)\"");
+                                        if (m.Success) return m.Groups[1].Value.Trim();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            // 2. Fallback: Datei auf Disk prüfen
             string vPath = Path.Combine(_baseDir, "version.json");
             if (File.Exists(vPath))
             {
@@ -189,7 +217,7 @@ namespace BarrierefreierStundenplan
                 }
                 catch { }
             }
-            return "1.0.0";
+            return "1.3.0";
         }
 
         private static bool IsNewerVersion(string remote, string local)
