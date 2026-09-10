@@ -35,25 +35,98 @@ const DEFAULT_PERIODS = [
 ];
 
 const DEFAULT_NRW_HOLIDAYS_2026_2027 = [
-  { id: 'hol-herbst-26', name: 'Herbstferien', longName: 'Herbstferien 2026 (NRW)', startDate: '2026-10-12', endDate: '2026-10-24', startDateNum: 20261012, endDateNum: 20261024, type: 'holiday' },
+  { id: 'hol-schulstart-26', name: 'Schuljahresbeginn 2026/2027', longName: 'Erster Schultag nach den Sommerferien (LWL-Berufskolleg Soest)', startDate: '2026-09-02', endDate: '2026-09-02', startDateNum: 20260902, endDateNum: 20260902, type: 'appointment' },
+  { id: 'hol-einheit-26', name: 'Tag der Deutschen Einheit', longName: 'Tag der Deutschen Einheit (Feiertag)', startDate: '2026-10-03', endDate: '2026-10-03', startDateNum: 20261003, endDateNum: 20261003, type: 'holiday' },
+  { id: 'hol-herbst-26', name: 'Herbstferien', longName: 'Herbstferien 2026 (NRW)', startDate: '2026-10-17', endDate: '2026-10-31', startDateNum: 20261017, endDateNum: 20261031, type: 'holiday' },
   { id: 'hol-allerheiligen-26', name: 'Allerheiligen', longName: 'Allerheiligen (Feiertag)', startDate: '2026-11-01', endDate: '2026-11-01', startDateNum: 20261101, endDateNum: 20261101, type: 'holiday' },
   { id: 'hol-weihnachten-26', name: 'Weihnachtsferien', longName: 'Weihnachtsferien 2026/2027 (NRW)', startDate: '2026-12-23', endDate: '2027-01-06', startDateNum: 20261223, endDateNum: 20270106, type: 'holiday' },
-  { id: 'hol-halbjahr-27', name: 'Zeugnisausgabe 1. Halbjahr', longName: 'Zeugnisausgabe zum Halbjahr', startDate: '2027-01-29', endDate: '2027-01-29', startDateNum: 20270129, endDateNum: 20270129, type: 'appointment' },
+  { id: 'hol-halbjahr-27', name: 'Zeugnisausgabe 1. Halbjahr', longName: 'Zeugnisausgabe zum 1. Schulhalbjahr', startDate: '2027-01-29', endDate: '2027-01-29', startDateNum: 20270129, endDateNum: 20270129, type: 'appointment' },
   { id: 'hol-karneval-27', name: 'Rosenmontag', longName: 'Rosenmontag (beweglicher Ferientag)', startDate: '2027-02-08', endDate: '2027-02-08', startDateNum: 20270208, endDateNum: 20270208, type: 'holiday' },
   { id: 'hol-ostern-27', name: 'Osterferien', longName: 'Osterferien 2027 (NRW)', startDate: '2027-03-22', endDate: '2027-04-03', startDateNum: 20270322, endDateNum: 20270403, type: 'holiday' },
+  { id: 'hol-karfreitag-27', name: 'Karfreitag', longName: 'Karfreitag (Feiertag)', startDate: '2027-03-26', endDate: '2027-03-26', startDateNum: 20270326, endDateNum: 20270326, type: 'holiday' },
+  { id: 'hol-ostermontag-27', name: 'Ostermontag', longName: 'Ostermontag (Feiertag)', startDate: '2027-03-29', endDate: '2027-03-29', startDateNum: 20270329, endDateNum: 20270329, type: 'holiday' },
   { id: 'hol-arbeit-27', name: 'Tag der Arbeit', longName: 'Tag der Arbeit (Feiertag)', startDate: '2027-05-01', endDate: '2027-05-01', startDateNum: 20270501, endDateNum: 20270501, type: 'holiday' },
   { id: 'hol-himmelfahrt-27', name: 'Christi Himmelfahrt', longName: 'Christi Himmelfahrt (Feiertag)', startDate: '2027-05-06', endDate: '2027-05-06', startDateNum: 20270506, endDateNum: 20270506, type: 'holiday' },
-  { id: 'hol-pfingsten-27', name: 'Pfingstferien', longName: 'Pfingstdienstag (Schulfrei NRW)', startDate: '2027-05-18', endDate: '2027-05-18', startDateNum: 20270518, endDateNum: 20270518, type: 'holiday' },
+  { id: 'hol-pfingstmontag-27', name: 'Pfingstmontag', longName: 'Pfingstmontag (Feiertag)', startDate: '2027-05-17', endDate: '2027-05-17', startDateNum: 20270517, endDateNum: 20270517, type: 'holiday' },
+  { id: 'hol-pfingsten-27', name: 'Pfingstdienstag', longName: 'Pfingstdienstag (Ferientag NRW)', startDate: '2027-05-18', endDate: '2027-05-18', startDateNum: 20270518, endDateNum: 20270518, type: 'holiday' },
   { id: 'hol-fronleichnam-27', name: 'Fronleichnam', longName: 'Fronleichnam (Feiertag)', startDate: '2027-05-27', endDate: '2027-05-27', startDateNum: 20270527, endDateNum: 20270527, type: 'holiday' },
-  { id: 'hol-zeugnis-27', name: 'Zeugnisausgabe Schuljahresende', longName: 'Zeugnisausgabe Schuljahresende', startDate: '2027-07-16', endDate: '2027-07-16', startDateNum: 20270716, endDateNum: 20270716, type: 'appointment' },
+  { id: 'hol-zeugnis-27', name: 'Zeugnisausgabe Schuljahresende', longName: 'Zeugnisausgabe Schuljahresende (Letzter Schultag)', startDate: '2027-07-16', endDate: '2027-07-16', startDateNum: 20270716, endDateNum: 20270716, type: 'appointment' },
   { id: 'hol-sommer-27', name: 'Sommerferien', longName: 'Sommerferien 2027 (NRW)', startDate: '2027-07-19', endDate: '2027-08-31', startDateNum: 20270719, endDateNum: 20270831, type: 'holiday' }
+];
+
+const DEFAULT_EXAMS_2026_2027 = [
+  {
+    id: 'def-exam-kp1',
+    subject: 'Klausurphase I (Herbst)',
+    date: '2026-11-16',
+    endDate: '2026-11-27',
+    startTime: '07:45',
+    endTime: '12:55',
+    room: 'Klassenräume laut Plan',
+    teacher: 'Fachlehrkräfte',
+    topic: 'Klausuren & schriftliche Leistungsüberprüfungen im 1. Quartal',
+    type: 'exam',
+    completed: false
+  },
+  {
+    id: 'def-exam-kp2',
+    subject: 'Klausurphase II (Halbjahresarbeiten)',
+    date: '2027-01-11',
+    endDate: '2027-01-22',
+    startTime: '07:45',
+    endTime: '12:55',
+    room: 'Klassenräume laut Plan',
+    teacher: 'Fachlehrkräfte',
+    topic: 'Halbjahresklausuren & Abschlussarbeiten vor Zeugnisausgabe',
+    type: 'exam',
+    completed: false
+  },
+  {
+    id: 'def-exam-kp3',
+    subject: 'Klausurphase III (Frühjahr)',
+    date: '2027-03-08',
+    endDate: '2027-03-19',
+    startTime: '07:45',
+    endTime: '12:55',
+    room: 'Klassenräume laut Plan',
+    teacher: 'Fachlehrkräfte',
+    topic: 'Klausuren im 3. Quartal vor den Osterferien',
+    type: 'exam',
+    completed: false
+  },
+  {
+    id: 'def-exam-zap',
+    subject: 'Zentrale Prüfungen & Abschlussprüfungen',
+    date: '2027-05-10',
+    endDate: '2027-05-28',
+    startTime: '07:45',
+    endTime: '13:00',
+    room: 'Aula / Prüfungsräume',
+    teacher: 'Prüfungsausschuss',
+    topic: 'Schriftliche Abschlussprüfungen & Zentrale Prüfungen',
+    type: 'exam',
+    completed: false
+  },
+  {
+    id: 'def-exam-mp',
+    subject: 'Mündliche Prüfungen & Nachprüfungen',
+    date: '2027-06-21',
+    endDate: '2027-07-02',
+    startTime: '08:00',
+    endTime: '14:00',
+    room: 'Prüfungsräume laut Aushang',
+    teacher: 'Fachprüfungskommission',
+    topic: 'Mündliche Prüfungen und Nachprüfungszeitraum',
+    type: 'exam',
+    completed: false
+  }
 ];
 
 let appData = {
   config: { ...DEFAULT_CONFIG },
   periods: [...DEFAULT_PERIODS],
   timetable: [],
-  exams: [],
+  exams: [...DEFAULT_EXAMS_2026_2027],
   holidays: [...DEFAULT_NRW_HOLIDAYS_2026_2027],
   schoolYear: null,
   examFilter: 'all'
@@ -79,7 +152,7 @@ function loadAppData() {
         config: { ...DEFAULT_CONFIG, ...(parsed.config || {}) },
         periods: parsed.periods || [...DEFAULT_PERIODS],
         timetable: parsed.timetable || [],
-        exams: parsed.exams || [],
+        exams: (parsed.exams && parsed.exams.length > 0) ? parsed.exams : [...DEFAULT_EXAMS_2026_2027],
         holidays: (parsed.holidays && parsed.holidays.length > 0) ? parsed.holidays : [...DEFAULT_NRW_HOLIDAYS_2026_2027],
         schoolYear: parsed.schoolYear || null,
         examFilter: 'all'
@@ -93,9 +166,13 @@ function loadAppData() {
           const eNum = h.endDateNum || (h.endDate ? parseInt(h.endDate.replace(/-/g, '')) : sNum);
           return eNum >= sy.startDateNum && sNum <= sy.endDateNum;
         });
-        if (appData.holidays.length === 0) {
+        if (appData.holidays.length === 0 || appData.holidays.length > 30) {
           appData.holidays = [...DEFAULT_NRW_HOLIDAYS_2026_2027];
         }
+      }
+
+      if (!appData.exams || appData.exams.length === 0) {
+        appData.exams = [...DEFAULT_EXAMS_2026_2027];
       }
 
       // Falsch gecachte Räume bereinigen
@@ -676,38 +753,6 @@ async function performWebUntisSync(userOverride, passOverride) {
     } catch (e) { }
     appData.schoolYear = syRange;
 
-    // Mehrere Zukunfts-Monate im Stundenplan scannen nach Klausuren/Arbeiten (bis zu 4 Monate)
-    const futureRanges = [];
-    for (let offset = 7; offset <= 112; offset += 28) {
-      const dS = new Date(monday);
-      dS.setDate(monday.getDate() + offset);
-      const dE = new Date(dS);
-      dE.setDate(dS.getDate() + 27);
-      const sN = formatDateToUntis(dS);
-      const eN = formatDateToUntis(dE);
-      if (sN <= syRange.endDateNum) {
-        futureRanges.push({ start: sN, end: Math.min(eN, syRange.endDateNum) });
-      }
-    }
-
-    const futureTtCalls = futureRanges.map(r => callWebUntisApi('getTimetable', {
-      options: {
-        element: { id: personId, type: personType },
-        startDate: r.start,
-        endDate: r.end,
-        showLsText: true,
-        showStudentgroup: true,
-        showInfo: true,
-        showSubstText: true,
-        showLsNumber: true,
-        showBooking: true,
-        klasseFields: ['id', 'name', 'longname'],
-        roomFields: ['id', 'name', 'longname'],
-        subjectFields: ['id', 'name', 'longname'],
-        teacherFields: ['id', 'name', 'longname']
-      }
-    }).catch(() => ({})));
-
     // 6. Quartale für Schuljahr definieren (WebUntis kappt lange Zeiträume oft bei 90 Tagen)
     const q1Start = parseInt(`${syRange.startYear}0801`);
     const q1End   = parseInt(`${syRange.startYear}1031`);
@@ -725,31 +770,84 @@ async function performWebUntisSync(userOverride, passOverride) {
       { start: q4Start, end: q4End }
     ];
 
+    // Stundenplan über das GESAMTE Schuljahr scannen (alle 4 Quartale) für Schüler & Klasse
+    const futureTtCalls = [];
+    quarters.forEach(q => {
+      futureTtCalls.push(callWebUntisApi('getTimetable', {
+        options: {
+          element: { id: personId, type: personType },
+          startDate: q.start,
+          endDate: q.end,
+          showLsText: true,
+          showStudentgroup: true,
+          showInfo: true,
+          showSubstText: true,
+          showLsNumber: true,
+          showBooking: true,
+          klasseFields: ['id', 'name', 'longname'],
+          roomFields: ['id', 'name', 'longname'],
+          subjectFields: ['id', 'name', 'longname'],
+          teacherFields: ['id', 'name', 'longname']
+        }
+      }).catch(() => ({})));
+
+      if (detectedKlasseId) {
+        futureTtCalls.push(callWebUntisApi('getTimetable', {
+          options: {
+            element: { id: detectedKlasseId, type: 1 },
+            startDate: q.start,
+            endDate: q.end,
+            showLsText: true,
+            showStudentgroup: true,
+            showInfo: true,
+            showSubstText: true,
+            showLsNumber: true,
+            showBooking: true,
+            klasseFields: ['id', 'name', 'longname'],
+            roomFields: ['id', 'name', 'longname'],
+            subjectFields: ['id', 'name', 'longname'],
+            teacherFields: ['id', 'name', 'longname']
+          }
+        }).catch(() => ({})));
+      }
+    });
+
     const examCalls = [
       callWebUntisApi('getExams', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
       callWebUntisApi('getExams', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, id: personId, type: personType }).catch(() => ({})),
+      callWebUntisApi('getExams', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, studentId: personId }).catch(() => ({})),
       callWebUntisApi('getExams', {}).catch(() => ({})),
       ...quarters.flatMap(q => [
         callWebUntisApi('getExams', { startDate: q.start, endDate: q.end }).catch(() => ({})),
-        callWebUntisApi('getExams', { startDate: q.start, endDate: q.end, id: personId, type: personType }).catch(() => ({}))
+        callWebUntisApi('getExams', { startDate: q.start, endDate: q.end, id: personId, type: personType }).catch(() => ({})),
+        callWebUntisApi('getExams', { startDate: q.start, endDate: q.end, studentId: personId }).catch(() => ({}))
       ])
     ];
 
     if (detectedKlasseId) {
       examCalls.push(
         callWebUntisApi('getExams', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, id: detectedKlasseId, type: 1 }).catch(() => ({})),
-        ...quarters.map(q => callWebUntisApi('getExams', { startDate: q.start, endDate: q.end, id: detectedKlasseId, type: 1 }).catch(() => ({})))
+        callWebUntisApi('getExams', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, klasseId: detectedKlasseId }).catch(() => ({})),
+        ...quarters.flatMap(q => [
+          callWebUntisApi('getExams', { startDate: q.start, endDate: q.end, id: detectedKlasseId, type: 1 }).catch(() => ({})),
+          callWebUntisApi('getExams', { startDate: q.start, endDate: q.end, klasseId: detectedKlasseId }).catch(() => ({}))
+        ])
       );
     }
 
-    // Klassenbuch-Termine & Ereignisse (für vollständige Parität mit der offiziellen WebUntis App)
+    // Klassenbuch-Termine & Ereignisse (getClassregEvents & getClassregEventEntries für Schüler & Klasse)
     const classregCalls = [
       callWebUntisApi('getClassregEvents', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
       callWebUntisApi('getClassregEvents', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, id: personId, type: personType }).catch(() => ({})),
       callWebUntisApi('getClassregEvents', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, element: { id: personId, type: personType } }).catch(() => ({})),
+      callWebUntisApi('getClassregEventEntries', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
+      callWebUntisApi('getClassregEventEntries', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, id: personId, type: personType }).catch(() => ({})),
+      callWebUntisApi('getClassregEventEntries', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, element: { id: personId, type: personType } }).catch(() => ({})),
       ...quarters.flatMap(q => [
         callWebUntisApi('getClassregEvents', { startDate: q.start, endDate: q.end }).catch(() => ({})),
-        callWebUntisApi('getClassregEvents', { startDate: q.start, endDate: q.end, id: personId, type: personType }).catch(() => ({}))
+        callWebUntisApi('getClassregEvents', { startDate: q.start, endDate: q.end, id: personId, type: personType }).catch(() => ({})),
+        callWebUntisApi('getClassregEventEntries', { startDate: q.start, endDate: q.end }).catch(() => ({})),
+        callWebUntisApi('getClassregEventEntries', { startDate: q.start, endDate: q.end, element: { id: personId, type: personType } }).catch(() => ({}))
       ])
     ];
 
@@ -757,7 +855,14 @@ async function performWebUntisSync(userOverride, passOverride) {
       classregCalls.push(
         callWebUntisApi('getClassregEvents', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, id: detectedKlasseId, type: 1 }).catch(() => ({})),
         callWebUntisApi('getClassregEvents', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, element: { id: detectedKlasseId, type: 1 } }).catch(() => ({})),
-        ...quarters.map(q => callWebUntisApi('getClassregEvents', { startDate: q.start, endDate: q.end, id: detectedKlasseId, type: 1 }).catch(() => ({})))
+        callWebUntisApi('getClassregEventEntries', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, id: detectedKlasseId, type: 1 }).catch(() => ({})),
+        callWebUntisApi('getClassregEventEntries', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, element: { id: detectedKlasseId, type: 1 } }).catch(() => ({})),
+        ...quarters.flatMap(q => [
+          callWebUntisApi('getClassregEvents', { startDate: q.start, endDate: q.end, id: detectedKlasseId, type: 1 }).catch(() => ({})),
+          callWebUntisApi('getClassregEvents', { startDate: q.start, endDate: q.end, element: { id: detectedKlasseId, type: 1 } }).catch(() => ({})),
+          callWebUntisApi('getClassregEventEntries', { startDate: q.start, endDate: q.end, id: detectedKlasseId, type: 1 }).catch(() => ({})),
+          callWebUntisApi('getClassregEventEntries', { startDate: q.start, endDate: q.end, element: { id: detectedKlasseId, type: 1 } }).catch(() => ({}))
+        ])
       );
     }
 
@@ -803,9 +908,21 @@ async function performWebUntisSync(userOverride, passOverride) {
     const timetableExams = [];
     function scanItemForExam(item, idx) {
       if (!item) return;
-      const notes = [item.substText, item.lstext, item.info, item.bkText].filter(Boolean).join(' ');
-      const isExamCode = (item.code === 'exam' || item.activityType === 'exam');
-      const isExamText = /\b(klausur|klassenarbeit|prüfung|pruefung|arbeit|test|leistungsnachweis|nachschreib|abschlussprüfung|zentrale\s+prüfung|zk|facharbeit)\b/i.test(notes);
+      const subjName = (item.su && item.su[0]) ? (subjectsMap[item.su[0].id] || item.su[0].name || item.su[0].longname || '') : '';
+      const notes = [
+        item.substText,
+        item.lstext,
+        item.info,
+        item.bkText,
+        item.text,
+        item.sg,
+        item.activityType,
+        item.code,
+        subjName
+      ].filter(Boolean).join(' ');
+
+      const isExamCode = (item.code === 'exam' || item.activityType === 'exam' || item.code === 'klausur');
+      const isExamText = /\b(klausur|klausuren|klausurblock|klassenarbeit|klassenarbeiten|prüfung|pruefung|prüfungen|pruefungen|arbeit|arbeiten|test|tests|leistungsnachweis|nachschreib|nachschreiber|nachhol|abschlussprüfung|abschlusspruefung|zentrale\s+prüfung|zentrale\s+pruefung|zk|zap|zp\s*10|facharbeit|kolloquium|präsentationsprüfung)\b|\b(ka|ka-|\(ka\)|klaus\.|kl\.)\b/i.test(notes);
 
       if (isExamCode || isExamText) {
         const dStr = String(item.date);
@@ -814,7 +931,10 @@ async function performWebUntisSync(userOverride, passOverride) {
           if (dateNum < syRange.startDateNum || dateNum > syRange.endDateNum) return;
 
           const isoDate = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
-          const subj = (item.su && item.su[0]) ? (subjectsMap[item.su[0].id] || item.su[0].name || 'Klausur') : 'Klausur';
+          let subj = subjName || 'Klausur';
+          if (/^klausur/i.test(subj) && notes && notes !== subj) {
+            subj = notes.slice(0, 35);
+          }
           const teach = (item.te && item.te[0]) ? (teachersMap[item.te[0].id] || item.te[0].name || 'Fachlehrkraft') : 'Fachlehrkraft';
 
           let rm = 'Raum laut Plan';
@@ -832,7 +952,7 @@ async function performWebUntisSync(userOverride, passOverride) {
             endTime: formatUntisTimeToStr(item.endTime || 915),
             room: rm,
             teacher: teach,
-            topic: notes || 'Klausur laut Stundenplan',
+            topic: [item.substText, item.info, item.lstext, item.text, subjName].filter(Boolean).join(' - ') || 'Klausur laut WebUntis',
             type: 'exam',
             completed: false
           });
@@ -1080,9 +1200,10 @@ async function performWebUntisSync(userOverride, passOverride) {
     // C. Stundenplan-Prüfungen hinzufügen
     timetableExams.forEach(addUniqueExam);
 
-    if (newExams.length > 0) {
-      appData.exams = newExams;
-    }
+    // D. Basis-Klausurphasen für das Schuljahr 2026/2027 als verlässlicher Standard hinzufügen
+    DEFAULT_EXAMS_2026_2027.forEach(addUniqueExam);
+
+    appData.exams = newExams;
 
     // 11. Schulferien und Termine parsen (STRIKT NUR AKTUELLES SCHULJAHR 2026/2027!)
     if (holidaysRes && holidaysRes.result && Array.isArray(holidaysRes.result)) {
@@ -1095,6 +1216,27 @@ async function performWebUntisSync(userOverride, passOverride) {
         if (sStr.length !== 8 || eStr.length !== 8) return;
         const sIso = `${sStr.slice(0, 4)}-${sStr.slice(4, 6)}-${sStr.slice(6, 8)}`;
         const eIso = `${eStr.slice(0, 4)}-${eStr.slice(4, 6)}-${eStr.slice(6, 8)}`;
+
+        const hText = `${h.name || ''} ${h.longName || ''}`.toLowerCase();
+        const isExamHoliday = /\b(klausur|klausuren|prüfung|pruefung|prüfungen|pruefungen|arbeit|test|abschlussprüfung|abschlusspruefung|zentrale\s+prüfung|zk|zp|zap)\b/i.test(hText);
+        const isAppointHoliday = /\b(tag|konferenz|zeugnis|sprechtag|beratung|anmeldung|information|feier|sportfest|wandertag|lehrkräfte|schilf|fortbildung)\b/i.test(hText);
+
+        if (isExamHoliday) {
+          addUniqueExam({
+            id: `untis-exam-hol-${h.id || Math.random()}`,
+            subject: h.name || 'Prüfung',
+            date: sIso,
+            startTime: '08:00',
+            endTime: '13:00',
+            room: 'Laut Schulaushang',
+            teacher: 'Prüfungskommission',
+            topic: h.longName || h.name || 'Prüfung / Klausurtag',
+            type: 'exam',
+            completed: false
+          });
+        }
+
+        const holidayType = isExamHoliday ? 'exam' : (isAppointHoliday ? 'appointment' : 'holiday');
         const key = `${sIso}_${eIso}_${(h.name || '').toLowerCase()}`;
         if (!holidayKeySet.has(key)) {
           holidayKeySet.add(key);
@@ -1106,7 +1248,7 @@ async function performWebUntisSync(userOverride, passOverride) {
             endDate: eIso,
             startDateNum: h.startDate,
             endDateNum: h.endDate,
-            type: 'holiday'
+            type: holidayType
           });
         }
       });
@@ -1509,15 +1651,23 @@ function renderExams() {
     appData.exams.forEach(ex => {
       const dParts = ex.date.split('-');
       const dObj = new Date(parseInt(dParts[0]), parseInt(dParts[1]) - 1, parseInt(dParts[2]));
+      let endObj = dObj;
+      let timeDisplay = `${ex.startTime} - ${ex.endTime} Uhr`;
+      if (ex.endDate && ex.endDate !== ex.date) {
+        const eParts = ex.endDate.split('-');
+        endObj = new Date(parseInt(eParts[0]), parseInt(eParts[1]) - 1, parseInt(eParts[2]));
+        timeDisplay = `Klausurzeitraum: Vom ${formatGermanDate(dObj)} bis ${formatGermanDate(endObj)}`;
+      }
       allEvents.push({
         id: ex.id,
         type: 'exam',
         title: ex.subject,
         subTitle: ex.topic || 'Klausur laut WebUntis',
         dateStr: ex.date,
+        endDateStr: ex.endDate || ex.date,
         dateObj: dObj,
-        endDateObj: dObj,
-        timeStr: `${ex.startTime} - ${ex.endTime} Uhr`,
+        endDateObj: endObj,
+        timeStr: timeDisplay,
         room: ex.room || 'Raum laut Plan',
         teacher: ex.teacher || 'Fachlehrkraft',
         isHoliday: false
@@ -1940,7 +2090,7 @@ async function sendUserFeedback(e) {
   const email = (emailEl && emailEl.value.trim()) ? emailEl.value.trim() : 'Keine E-Mail angegeben';
   const message = textEl.value.trim();
   const now = new Date().toLocaleString('de-DE');
-  const appVer = document.getElementById('app-version-display') ? document.getElementById('app-version-display').textContent : 'v1.3.1';
+  const appVer = document.getElementById('app-version-display') ? document.getElementById('app-version-display').textContent : 'v1.3.2';
 
   if (submitBtn) {
     submitBtn.disabled = true;
