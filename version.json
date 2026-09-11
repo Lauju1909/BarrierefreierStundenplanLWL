@@ -1,23 +1,19 @@
 {
-  "version": "1.3.4",
+  "version": "1.3.5",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
-  "buildDate": "2026-09-10",
+  "buildDate": "2026-09-11",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
+    "Rotierende Werbebanner am Seitenende mit automatischer Rotation, Zähler und Steuerung (WCAG 2.2 AAA konform)",
+    "Umfangreiche Anzeigenverwaltung in Reiter 5 mit eigenem Affiliate-/Partnerlink-Support (Geld verdienen)",
+    "Klassenarbeiten und Klausuren aus dem gesamten Schuljahr werden strikt in Reiter 2 als Prüfungen angezeigt",
+    "Automatische Erkennung von Hausaufgaben aus Stundenplan, Klassenbuch (lstext) und allen WebUntis-Endpunkten",
+    "Erweiterte getHomeWork2017 und REST-API-Abfragen mit mehreren Parametervarianten",
     "Reine WebUntis-API-Anbindung für das LWL-Berufskolleg Soest ohne synthetische Fake-Prüfungen",
-    "Echte Prüfungsabfrage über getExams (alle examTypeIds), getStudentExams, getTimetable2017 & WebUntis REST-Endpunkte",
-    "Robuste 28-Tage Sliding Windows zur Einhaltung von WebUntis Zeitraumgrenzen",
-    "Bereinigung historischer Termine vor 2026/2027",
-    "Automatische Synchronisation alle 5 Minuten und bei jedem Start",
-    "Feedback-Absender rein optional (keine automatische Übernahme des WebUntis-Benutzers)",
-    "Auto-Updater aktualisiert direkt die EXE ohne Dateien in den Ordner zu entpacken",
     "Vollständiges automatisches Beenden der App bei Alt+F4, Fensterschließen oder Beenden des Browsers",
-    "Separate Feedback_Zentrale.exe Begleit-App mit Cloud- & Live-Sync",
-    "100% Tastatur- und Screenreader-optimiert (NVDA / JAWS, WCAG 2.2 AAA)",
-    "Hausaufgaben-Verwaltung mit Fälligkeitsdatum, Checkbox zum Abhaken und Filter",
-    "Fehlzeiten-Übersicht mit Statistik (entschuldigt/unentschuldigt/Minuten)",
-    "Klassenbuch / Lehrstoff aus WebUntis lstext-Feldern",
-    "Stunden-Details-Modal: Raum, Lehrer, Lehrstoff und Hausaufgaben per Klick"
+    "Auto-Updater aktualisiert direkt die EXE ohne Dateien in den Ordner zu entpacken",
+    "100% Tastatur- und Screenreader-optimiert (NVDA / JAWS, WCAG 2.2 AAA)"
   ]
 }
+
 

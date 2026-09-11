@@ -8,6 +8,33 @@
 // =============================================================================
 // 1. STANDARD-DATEN & VORKONFIGURATION (LWL-BERUFSKOLLEG SOEST)
 // =============================================================================
+const DEFAULT_SPONSORS = [
+  {
+    id: 'sp-1',
+    title: '📚 Schulbedarf, Fachbücher & Schreibwaren (Gratisversand)',
+    desc: 'Bücher, Hefte, Ordner und Taschenrechner günstig bestellen und bequem liefern lassen.',
+    url: 'https://www.amazon.de/s?k=schulbedarf+fachb%C3%BCcher',
+    badge: '💡 Empfehlung',
+    active: true
+  },
+  {
+    id: 'sp-2',
+    title: '👁️ Barrierefreie Hilfsmittel & Großdruck für Schule & Beruf',
+    desc: 'Spezialtastaturen, Lupen, Beleuchtung und ergonomische Hilfsmittel für Sehbehinderte.',
+    url: 'https://www.amazon.de/s?k=barrierefreie+hilfsmittel+sehen',
+    badge: '⭐ Hilfsmittel',
+    active: true
+  },
+  {
+    id: 'sp-3',
+    title: '💻 Laptops, Tablets & Zubehör mit Bildungsrabatt',
+    desc: 'Günstige Arbeitsgeräte, Bildschirme und Software für Berufskollegs und Ausbildung.',
+    url: 'https://www.amazon.de/s?k=laptop+tablet+schule',
+    badge: '🎒 Technik',
+    active: true
+  }
+];
+
 const DEFAULT_CONFIG = {
   schoolName: 'LWL-Berufskolleg Soest',
   schoolShort: 'lwl-bk-soest',
@@ -21,11 +48,13 @@ const DEFAULT_CONFIG = {
   ttsEnabled: true,
   ttsRate: 1.0,
   textOnlyMode: false,
-  sponsorTitle: '📚 Schulbedarf, Fachbücher & Barrierefreie Lernmittel',
-  sponsorDesc: 'Entdecke hochwertige Hilfsmittel, Schreibwaren und Bücher für deinen Schulalltag am Berufskolleg.',
-  sponsorUrl: 'https://www.amazon.de/s?k=schulbedarf+fachb%C3%BCcher',
+  sponsors: [...DEFAULT_SPONSORS],
+  currentSponsorIndex: 0,
+  sponsorRotationSeconds: 9,
+  sponsorRotationEnabled: true,
   sponsorVisible: true
 };
+
 
 const DEFAULT_PERIODS = [
   { period: 1, start: '07:45', end: '08:30' },
@@ -181,23 +210,28 @@ function applyConfig() {
   if (cfgTtsRate) cfgTtsRate.value = appData.config.ttsRate || 1.0;
 
   // Partner / Sponsor Banner Einstellungen & Ansicht
+  if (!Array.isArray(appData.config.sponsors) || appData.config.sponsors.length === 0) {
+    appData.config.sponsors = [...DEFAULT_SPONSORS];
+  }
+  if (appData.config.currentSponsorIndex === undefined) {
+    appData.config.currentSponsorIndex = 0;
+  }
+
   const spArea = document.getElementById('sponsor-banner-area');
   if (spArea) {
     spArea.style.display = (appData.config.sponsorVisible !== false) ? 'block' : 'none';
   }
-  const spTitleEl = document.getElementById('sponsor-banner-title');
-  if (spTitleEl) spTitleEl.textContent = appData.config.sponsorTitle || '💡 Partner-Empfehlung';
-  const spDescEl = document.getElementById('sponsor-banner-desc');
-  if (spDescEl) spDescEl.textContent = appData.config.sponsorDesc || '';
 
-  const cfgSpTitle = document.getElementById('cfg-sponsor-title');
-  if (cfgSpTitle) cfgSpTitle.value = appData.config.sponsorTitle || '';
-  const cfgSpDesc = document.getElementById('cfg-sponsor-desc');
-  if (cfgSpDesc) cfgSpDesc.value = appData.config.sponsorDesc || '';
-  const cfgSpUrl = document.getElementById('cfg-sponsor-url');
-  if (cfgSpUrl) cfgSpUrl.value = appData.config.sponsorUrl || '';
   const cfgSpVis = document.getElementById('cfg-sponsor-visible');
   if (cfgSpVis) cfgSpVis.checked = (appData.config.sponsorVisible !== false);
+  const cfgSpRot = document.getElementById('cfg-sponsor-rotate');
+  if (cfgSpRot) cfgSpRot.checked = (appData.config.sponsorRotationEnabled !== false);
+  const cfgSpInt = document.getElementById('cfg-sponsor-interval');
+  if (cfgSpInt) cfgSpInt.value = String(appData.config.sponsorRotationSeconds || 9);
+
+  renderSponsorBanner();
+  renderSponsorManagementList();
+  startSponsorRotationTimer();
 
   // Account Display
   const uDisp = document.getElementById('settings-username-display');
@@ -320,6 +354,7 @@ function switchTab(tabId) {
     announceSR('Reiter 4: Fehlzeiten und Entschuldigungen ausgewählt.', 'polite');
   } else if (tabId === 'settings') {
     loadFeedbackArchive();
+    renderSponsorManagementList();
     announceSR('Reiter 5: Konto und Einstellungen ausgewählt.', 'polite');
   }
 }
@@ -871,9 +906,12 @@ async function performWebUntisSync(userOverride, passOverride) {
       }
     });
 
-    // Spezifische Schülerprüfungs-Methoden
+    // Spezifische Schülerprüfungs-Methoden & generelle Prüfungsabfragen
     examCalls.push(callWebUntisApi('getStudentExams', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
+    examCalls.push(callWebUntisApi('getStudentExams', { startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})));
     examCalls.push(callWebUntisApi('getStudentExamList', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
+    examCalls.push(callWebUntisApi('getExams', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
+    examCalls.push(callWebUntisApi('getExams', { startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})));
 
     // Klassenbuch-Termine & Ereignisse
     const classregCalls = [
@@ -894,30 +932,47 @@ async function performWebUntisSync(userOverride, passOverride) {
       );
     }
 
-    // 6b. Hausaufgaben-Abfragen (getHomeWork2017 für Schüler & Klasse + getHomeWorks)
+    // 6b. Hausaufgaben-Abfragen (getHomeWork2017 für Schüler & Klasse + getHomeWorks) - Alle WebUntis Varianten
     const homeworkCalls = [
+      // Standard JSON-RPC mit Integer-Daten
       callWebUntisApi('getHomeWork2017', { id: personId, type: personType, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
+      callWebUntisApi('getHomeWork2017', { id: personId, type: 5, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
       callWebUntisApi('getHomeWork2017', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
-      callWebUntisApi('getHomeWorks', { id: personId, type: personType, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({}))
+      // WebUntis Mobile API mit ISO-String-Daten (YYYY-MM-DD) & String-Types ("STUDENT")
+      callWebUntisApi('getHomeWork2017', { id: personId, type: 'STUDENT', startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})),
+      callWebUntisApi('getHomeWork2017', { id: personId, type: 5, startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})),
+      callWebUntisApi('getHomeWork2017', { startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})),
+      // Array-Parameter (wird von manchen WebUntis-Servern vorausgesetzt)
+      callWebUntisApi('getHomeWork2017', [{ id: personId, type: 'STUDENT', startDate: sIsoStr, endDate: eIsoStr }]).catch(() => ({})),
+      callWebUntisApi('getHomeWork2017', [{ id: personId, type: personType, startDate: syRange.startDateNum, endDate: syRange.endDateNum }]).catch(() => ({})),
+      // getHomeWorks Methode
+      callWebUntisApi('getHomeWorks', { id: personId, type: personType, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
+      callWebUntisApi('getHomeWorks', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
+      callWebUntisApi('getHomeWorks', { startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({}))
     ];
     if (detectedKlasseId) {
-      homeworkCalls.push(callWebUntisApi('getHomeWork2017', { id: detectedKlasseId, type: 1, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
+      homeworkCalls.push(
+        callWebUntisApi('getHomeWork2017', { id: detectedKlasseId, type: 1, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
+        callWebUntisApi('getHomeWork2017', { id: detectedKlasseId, type: 'CLASS', startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})),
+        callWebUntisApi('getHomeWork2017', [{ id: detectedKlasseId, type: 'CLASS', startDate: sIsoStr, endDate: eIsoStr }]).catch(() => ({}))
+      );
     }
 
     // 6c. Fehlzeiten-Abfragen (getStudentAbsences2017, getTimetableWithAbsences & Gründe)
     const absenceCalls = [
       callWebUntisApi('getStudentAbsences2017', { id: personId, type: personType, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
       callWebUntisApi('getStudentAbsences2017', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
+      callWebUntisApi('getStudentAbsences2017', { startDate: sIsoStr, endDate: eIsoStr, includeExcused: true, includeUnExcused: true }).catch(() => ({})),
       callWebUntisApi('getTimetableWithAbsences', { id: personId, type: personType, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
       callWebUntisApi('getAbsenceReasons', {}).catch(() => ({}))
     ];
 
     // REST-Endpunkte für Prüfungen, Hausaufgaben, Fehlzeiten & App-Daten (Untis Mobile Backend)
-    const sIsoStr = `${String(syRange.startDateNum).slice(0, 4)}-${String(syRange.startDateNum).slice(4, 6)}-${String(syRange.startDateNum).slice(6, 8)}`;
-    const eIsoStr = `${String(syRange.endDateNum).slice(0, 4)}-${String(syRange.endDateNum).slice(4, 6)}-${String(syRange.endDateNum).slice(6, 8)}`;
     const restExamsPromise = callWebUntisRest(`/api/exams?startDate=${sIsoStr}&endDate=${eIsoStr}`).catch(() => null);
     const restAppDataPromise = callWebUntisRest('/api/rest/view/v1/app/data').catch(() => null);
-    const restHomeworkPromise = callWebUntisRest(`/api/homeworks/lessons?startDate=${sIsoStr}&endDate=${eIsoStr}`).catch(() => null);
+    const restHomeworkPromise1 = callWebUntisRest(`/api/homeworks/lessons?startDate=${sIsoStr}&endDate=${eIsoStr}`).catch(() => null);
+    const restHomeworkPromise2 = callWebUntisRest(`/api/homeworks?startDate=${sIsoStr}&endDate=${eIsoStr}`).catch(() => null);
+    const restHomeworkPromise3 = callWebUntisRest(`/api/rest/view/v1/homeworks?startDate=${sIsoStr}&endDate=${eIsoStr}`).catch(() => null);
     const restAbsencesPromise = callWebUntisRest(`/api/classreg/absences/students?startDate=${sIsoStr}&endDate=${eIsoStr}`).catch(() => null);
 
     // 7. Schulferien, News, Prüfungen, Klassenbuch, Hausaufgaben, Fehlzeiten & REST-Daten parallel abrufen
@@ -931,7 +986,9 @@ async function performWebUntisSync(userOverride, passOverride) {
       newsRes,
       restExamsRes,
       restAppDataRes,
-      restHomeworkRes,
+      restHomeworkRes1,
+      restHomeworkRes2,
+      restHomeworkRes3,
       restAbsencesRes
     ] = await Promise.all([
       Promise.all(examCalls),
@@ -943,9 +1000,12 @@ async function performWebUntisSync(userOverride, passOverride) {
       callWebUntisApi('getNewsWidgetData', {}).catch(() => callWebUntisApi('getNewsWidget', {}).catch(() => ({}))),
       restExamsPromise,
       restAppDataPromise,
-      restHomeworkPromise,
+      restHomeworkPromise1,
+      restHomeworkPromise2,
+      restHomeworkPromise3,
       restAbsencesPromise
     ]);
+
 
     // 8. Logout
     try { await callWebUntisApi('logout', {}); } catch (e) { }
@@ -976,8 +1036,11 @@ async function performWebUntisSync(userOverride, passOverride) {
       return '';
     }
 
-    // 9. Stundenplan der aktuellen Schulwoche parsen
+    // 9. Stundenplan der aktuellen Schulwoche & des gesamten Schuljahres parsen
     const timetableExams = [];
+    const timetableHomeworks = [];
+
+    // Erweiterte Erkennung von Klassenarbeiten, Klausuren, Arbeiten und Tests
     function scanItemForExam(item, idx) {
       if (!item) return;
       const subjName = (item.su && item.su[0]) ? (subjectsMap[item.su[0].id] || item.su[0].name || item.su[0].longname || '') : '';
@@ -1004,7 +1067,8 @@ async function performWebUntisSync(userOverride, passOverride) {
                          typeVal === 'exam' || cellVal === 'exam' ||
                          item.examId !== undefined || item.exam !== undefined || item.exams !== undefined || item.isExam === true;
 
-      const isExamText = /\b(klausur|klausuren|klausurblock|klassenarbeit|klassenarbeiten|prüfung|pruefung|prüfungen|pruefungen|arbeit|arbeiten|test|tests|leistungsnachweis|nachschreib|nachschreiber|nachhol|abschlussprüfung|abschlusspruefung|zentrale\s+prüfung|zentrale\s+pruefung|zk|zap|zp\s*10|facharbeit|kolloquium|präsentationsprüfung)\b|\b(ka|ka-|\(ka\)|klaus\.|kl\.)\b/i.test(notes);
+      const isExamText = /\b(klausur|klausuren|klausurblock|klassenarbeit|klassenarbeiten|prüfung|pruefung|prüfungen|pruefungen|arbeit|arbeiten|test|tests|leistungsnachweis|nachschreib|nachschreiber|nachhol|abschlussprüfung|abschlusspruefung|zentrale\s+prüfung|zentrale\s+pruefung|zk|zap|zp\s*10|facharbeit|kolloquium|präsentationsprüfung)\b|\b(ka\b|ka-|\(ka\)|1\.\s*ka|2\.\s*ka|3\.\s*ka|4\.\s*ka|klaus\.|kl\.)/i.test(notes) ||
+                         /\b(klassenarbeit|klausur|arbeit|test|prüfung|ka\b)/i.test(subjName);
 
       if (isExamCode || isExamText) {
         const dStr = String(item.date);
@@ -1014,7 +1078,9 @@ async function performWebUntisSync(userOverride, passOverride) {
 
           const isoDate = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
           let subj = subjName || 'Klausur';
-          if (/^klausur/i.test(subj) && notes && notes !== subj) {
+          if (/klassenarbeit/i.test(notes) && !/klassenarbeit/i.test(subj)) {
+            subj = subj ? `${subj} (Klassenarbeit)` : 'Klassenarbeit';
+          } else if (/^klausur/i.test(subj) && notes && notes !== subj) {
             subj = notes.slice(0, 35);
           }
           const teach = (item.te && item.te[0]) ? (teachersMap[item.te[0].id] || item.te[0].name || 'Fachlehrkraft') : 'Fachlehrkraft';
@@ -1026,6 +1092,8 @@ async function performWebUntisSync(userOverride, passOverride) {
           if (!isValidRoomCandidate(rm)) rm = 'Raum laut Plan';
           else rm = formatRoomDisplay(rm, teach);
 
+          const topicText = [item.substText, item.info, item.lstext, item.lessonText, item.text, subjName].filter(Boolean).join(' - ') || 'Klassenarbeit / Klausur laut WebUntis';
+
           timetableExams.push({
             id: `tt-exam-${item.id || dStr + '-' + (item.startTime || idx)}`,
             subject: subj,
@@ -1034,7 +1102,7 @@ async function performWebUntisSync(userOverride, passOverride) {
             endTime: formatUntisTimeToStr(item.endTime || 915),
             room: rm,
             teacher: teach,
-            topic: [item.substText, item.info, item.lstext, item.text, subjName].filter(Boolean).join(' - ') || 'Klausur laut WebUntis',
+            topic: topicText,
             type: 'exam',
             completed: false
           });
@@ -1042,11 +1110,55 @@ async function performWebUntisSync(userOverride, passOverride) {
       }
     }
 
+    // Automatische Erkennung von Hausaufgaben aus dem Stundenplan & Klassenbuch
+    function scanItemForHomework(item, idx) {
+      if (!item) return;
+      const subjName = (item.su && item.su[0]) ? (subjectsMap[item.su[0].id] || item.su[0].name || item.su[0].longname || '') : '';
+      const dStr = String(item.date);
+      if (dStr.length !== 8) return;
+      const isoDate = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
+      const teach = (item.te && item.te[0]) ? (teachersMap[item.te[0].id] || item.te[0].name || 'Fachlehrkraft') : 'Fachlehrkraft';
+
+      const fullText = [item.homework, item.lstext, item.lessonText, item.info, item.substText, item.text].filter(Boolean).join(' ');
+      if (!fullText) return;
+
+      const isExam = /\b(klausur|klassenarbeit|prüfung|arbeit)\b/i.test(fullText);
+      const hwMatch = fullText.match(/\b(?:ha:|h\.a\.:|hausaufgabe:|hausaufgaben:|hausaufgabe|hausaufgaben|aufgabe:|aufgaben:|übung:|bis\s+nächste\s+woche|zu\s+erledigen:|erledigen\s+bis)\s*[:\-]?\s*(.+)/i);
+
+      if ((hwMatch || item.homework) && !isExam) {
+        const textContent = hwMatch ? hwMatch[1].trim() : String(item.homework || fullText).trim();
+        if (textContent.length > 2) {
+          timetableHomeworks.push({
+            id: `tt-hw-${item.id || idx}-${isoDate}`,
+            subject: subjName || 'Hausaufgabe',
+            teacher: teach,
+            dueDate: isoDate,
+            text: textContent,
+            completed: false
+          });
+        }
+      }
+    }
+
+    // Alle Stundenplanquellen für das gesamte Schuljahr sammeln
+    const allTtSource = [];
+    if (ttRes && ttRes.result && Array.isArray(ttRes.result)) allTtSource.push(...ttRes.result);
+    if (futureTtResults && Array.isArray(futureTtResults)) {
+      futureTtResults.forEach(f => {
+        if (f && f.result && Array.isArray(f.result)) allTtSource.push(...f.result);
+      });
+    }
+
+    // Alle Stunden des gesamten Schuljahres nach Klassenarbeiten & Hausaufgaben scannen
+    allTtSource.forEach((item, idx) => {
+      scanItemForExam(item, idx);
+      scanItemForHomework(item, idx);
+    });
+
+    // Stundenplan der aktuellen Schulwoche in appData.timetable überführen
     if (ttRes && ttRes.result && Array.isArray(ttRes.result)) {
       const newTimetable = [];
       ttRes.result.forEach((item, idx) => {
-        scanItemForExam(item, idx);
-
         const dStr = String(item.date);
         const itemDate = new Date(parseInt(dStr.slice(0, 4)), parseInt(dStr.slice(4, 6)) - 1, parseInt(dStr.slice(6, 8)));
         const dayOfWeek = itemDate.getDay();
@@ -1119,7 +1231,7 @@ async function performWebUntisSync(userOverride, passOverride) {
           status: st,
           notes: item.substText || item.info || '',
           lstext: lessonTopic,
-          homework: ''
+          homework: item.homework || ''
         });
       });
 
@@ -1128,14 +1240,7 @@ async function performWebUntisSync(userOverride, passOverride) {
       }
     }
 
-    // Zusätzliche Prüfungen aus den kommenden Wochen/Monaten erfassen
-    if (futureTtResults && Array.isArray(futureTtResults)) {
-      futureTtResults.forEach((fRes, fIdx) => {
-        if (fRes && fRes.result && Array.isArray(fRes.result)) {
-          fRes.result.forEach((item, idx) => scanItemForExam(item, (fIdx + 1) * 1000 + idx));
-        }
-      });
-    }
+
 
     // 10. Prüfungen zusammenführen & deduplizieren
     const examKeySet = new Set();
@@ -1517,12 +1622,21 @@ async function performWebUntisSync(userOverride, passOverride) {
       });
     }
 
-    // B. REST Hausaufgaben
-    if (restHomeworkRes) {
-      const restHwList = Array.isArray(restHomeworkRes) ? restHomeworkRes : (restHomeworkRes.data || restHomeworkRes.homeworks || []);
-      if (Array.isArray(restHwList)) {
-        restHwList.forEach((hw, idx) => {
-          const rawDate = hw.dueDate || hw.endDate || hw.date;
+    // B. REST Hausaufgaben aus allen Endpunkten auswerten
+    const allRestHwLists = [
+      restHomeworkRes1,
+      restHomeworkRes2,
+      restHomeworkRes3,
+      restAppDataRes && restAppDataRes.data ? restAppDataRes.data.homeworks : null,
+      restAppDataRes && restAppDataRes.data ? restAppDataRes.data.tasks : null
+    ];
+
+    allRestHwLists.forEach(restRes => {
+      if (!restRes) return;
+      const rawList = Array.isArray(restRes) ? restRes : (restRes.data || restRes.homeworks || restRes.records || []);
+      if (Array.isArray(rawList)) {
+        rawList.forEach((hw, idx) => {
+          const rawDate = hw.dueDate || hw.endDate || hw.date || hw.lessonDate;
           let dueStr = '';
           if (rawDate) {
             const dStr = String(rawDate).replace(/-/g, '').trim();
@@ -1530,20 +1644,25 @@ async function performWebUntisSync(userOverride, passOverride) {
           }
           let subj = hw.subject || (hw.lesson && hw.lesson.subject) || 'Hausaufgabe';
           let teach = hw.teacher || (hw.lesson && hw.lesson.teacher) || 'Fachlehrkraft';
-          const hwId = String(hw.id || `rest-hw-${idx}`);
+          const hwId = String(hw.id || `rest-hw-${idx}-${dueStr}`);
           const isComp = !!(preservedCompletedMap[hwId] || hw.completed === true);
+          const hwText = hw.text || hw.remark || hw.description || hw.content || hw.title || hw.note || 'Hausaufgabe laut WebUntis';
 
           addUniqueHomework({
             id: hwId,
             subject: typeof subj === 'object' ? (subj.name || subj.longName || 'Hausaufgabe') : String(subj),
             teacher: typeof teach === 'object' ? (teach.name || teach.longName || 'Fachlehrkraft') : String(teach),
             dueDate: dueStr || 'Ohne Frist',
-            text: hw.text || hw.remark || hw.description || 'Hausaufgabe laut WebUntis',
+            text: hwText,
+            description: hwText,
             completed: isComp
           });
         });
       }
-    }
+    });
+
+    // C. Hausaufgaben aus dem Stundenplan & Klassenbuch hinzufügen
+    timetableHomeworks.forEach(addUniqueHomework);
 
     appData.homework = newHomework;
 
@@ -1630,19 +1749,11 @@ async function performWebUntisSync(userOverride, passOverride) {
 
     function addUniqueClassbook(cbItem) {
       if (!cbItem || !cbItem.topic) return;
-      const key = `${cbItem.date}_${cbItem.period}_${cbItem.subject.toLowerCase()}`;
+      const key = `${cbItem.date}_${cbItem.period}_${(cbItem.subject || '').toLowerCase()}`;
       if (!classbookKeySet.has(key)) {
         classbookKeySet.add(key);
         newClassbook.push(cbItem);
       }
-    }
-
-    const allTtSource = [];
-    if (ttRes && ttRes.result && Array.isArray(ttRes.result)) allTtSource.push(...ttRes.result);
-    if (futureTtResults && Array.isArray(futureTtResults)) {
-      futureTtResults.forEach(f => {
-        if (f && f.result && Array.isArray(f.result)) allTtSource.push(...f.result);
-      });
     }
 
     allTtSource.forEach((item, idx) => {
@@ -1660,12 +1771,14 @@ async function performWebUntisSync(userOverride, passOverride) {
         period: item.startTime ? formatUntisTimeToStr(item.startTime) + ' Uhr' : '1. Std.',
         subject: subj,
         teacher: teach,
-        topic: topicText
+        topic: topicText,
+        text: topicText
       });
     });
 
     newClassbook.sort((a, b) => new Date(b.date) - new Date(a.date));
     appData.classbook = newClassbook;
+
 
     // 15. Hausaufgaben mit Stunden im aktuellen Stundenplan verknüpfen
     if (appData.timetable && appData.timetable.length > 0 && appData.homework.length > 0) {
@@ -2487,10 +2600,16 @@ function renderHomework() {
   if (items.length > 0) {
     html += `<h3 class="section-subheading">Hausaufgaben (${items.length})</h3>`;
     items.forEach(hw => {
-      const dueStr = hw.dueDate ? formatGermanDate(new Date(hw.dueDate)) : 'Kein Datum';
-      const assignedStr = hw.date ? formatGermanDate(new Date(hw.date)) : '';
-      const isOverdue = !hw.completed && hw.dueDate && new Date(hw.dueDate) < today;
+      const rawDue = hw.dueDate;
+      const hasDate = rawDue && rawDue !== 'Ohne Frist' && !isNaN(new Date(rawDue));
+      const dueStr = hasDate ? formatGermanDate(new Date(rawDue)) : (rawDue || 'Kein Datum');
+      const rawDate = hw.date;
+      const hasAssigned = rawDate && !isNaN(new Date(rawDate));
+      const assignedStr = hasAssigned ? formatGermanDate(new Date(rawDate)) : '';
+      const isOverdue = !hw.completed && hasDate && new Date(rawDue) < today;
       const checkId = `hw-check-${hw.id}`;
+      // hw.text ist das Feld aus dem Parser (nicht hw.description!)
+      const displayText = hw.text || hw.description || hw.remark || 'Hausaufgabe laut WebUntis';
       html += `
         <article class="homework-card${hw.completed ? ' completed' : ''}${isOverdue ? ' overdue' : ''}"
                  role="article" aria-label="Hausaufgabe: ${escHtml(hw.subject || 'Unbekannt')}">
@@ -2499,9 +2618,10 @@ function renderHomework() {
               📅 ${dueStr}${isOverdue ? ' – Überfällig!' : ''}
             </span>
             <span class="homework-subject">${escHtml(hw.subject || 'Allgemein')}</span>
+            ${hw.teacher ? `<span class="homework-assigned">👤 ${escHtml(hw.teacher)}</span>` : ''}
             ${assignedStr ? `<span class="homework-assigned">Aufgegeben: ${assignedStr}</span>` : ''}
           </div>
-          <p class="homework-desc">${escHtml(hw.description || 'Keine Beschreibung')}</p>
+          <p class="homework-desc">${escHtml(displayText)}</p>
           ${hw.details ? `<p class="homework-details">${escHtml(hw.details)}</p>` : ''}
           <label class="homework-toggle-label" for="${checkId}">
             <input type="checkbox" id="${checkId}" class="homework-checkbox"
@@ -2511,21 +2631,34 @@ function renderHomework() {
             ${hw.completed ? 'Erledigt ✓' : 'Als erledigt markieren'}
           </label>
         </article>`;
+
     });
   }
 
-  // Klassenbuch
-  if (classbook.length > 0) {
+  // Klassenbuch (Lehrstoff der Stunden)
+  if (classbook.length > 0 && (filter === 'all' || filter === 'classbook')) {
     html += `<h3 class="section-subheading" style="margin-top:1.5rem;">Klassenbuch / Lehrstoff (${classbook.length})</h3>`;
     classbook.slice(0, 50).forEach(entry => {
-      const dateStr = entry.date ? formatGermanDate(new Date(String(entry.date).slice(0,4) + '-' + String(entry.date).slice(4,6) + '-' + String(entry.date).slice(6,8))) : '';
+      let dObj = null;
+      if (entry.date) {
+        const dRaw = String(entry.date).replace(/-/g, '');
+        if (dRaw.length === 8) {
+          dObj = new Date(parseInt(dRaw.slice(0,4)), parseInt(dRaw.slice(4,6)) - 1, parseInt(dRaw.slice(6,8)));
+        } else {
+          dObj = new Date(entry.date);
+        }
+      }
+      const dateStr = (dObj && !isNaN(dObj)) ? formatGermanDate(dObj) : (entry.date || '');
+      const displayText = entry.topic || entry.text || 'Kein Lehrstoff eingetragen';
       html += `
         <article class="homework-card classbook-entry" role="article" aria-label="Lehrstoff: ${escHtml(entry.subject || 'Unbekannt')}">
           <div class="homework-header">
             ${dateStr ? `<span class="homework-date-badge">📅 ${dateStr}</span>` : ''}
             <span class="homework-subject">${escHtml(entry.subject || 'Allgemein')}</span>
+            ${entry.period ? `<span class="homework-assigned">${escHtml(entry.period)}</span>` : ''}
+            ${entry.teacher ? `<span class="homework-assigned">👤 ${escHtml(entry.teacher)}</span>` : ''}
           </div>
-          <p class="homework-desc">${escHtml(entry.text || 'Kein Text')}</p>
+          <p class="homework-desc">${escHtml(displayText)}</p>
         </article>`;
     });
   }
@@ -2678,11 +2811,117 @@ function readAbsencesSummary() {
 }
 
 // =============================================================================
-// 9e. PARTNER-BANNER & EINSTELLUNGEN
+// 9e. ROTIERENDE WERBEBANNER & ANZEIGENVERWALTUNG (GELD VERDIENEN)
 // =============================================================================
+let sponsorRotationTimer = null;
+let isSponsorRotationPaused = false;
+
+function getActiveSponsors() {
+  const list = appData.config.sponsors || [];
+  const active = list.filter(s => s && s.active !== false);
+  return active.length > 0 ? active : list;
+}
+
+function getCurrentSponsor() {
+  const active = getActiveSponsors();
+  if (active.length === 0) return null;
+  const idx = Math.max(0, Math.min(appData.config.currentSponsorIndex || 0, active.length - 1));
+  return active[idx];
+}
+
+function renderSponsorBanner() {
+  const spArea = document.getElementById('sponsor-banner-area');
+  if (!spArea) return;
+
+  if (appData.config.sponsorVisible === false) {
+    spArea.style.display = 'none';
+    return;
+  }
+  spArea.style.display = 'block';
+
+  const active = getActiveSponsors();
+  if (active.length === 0) {
+    spArea.style.display = 'none';
+    return;
+  }
+
+  let idx = appData.config.currentSponsorIndex || 0;
+  if (idx >= active.length) idx = 0;
+  if (idx < 0) idx = active.length - 1;
+  appData.config.currentSponsorIndex = idx;
+
+  const sp = active[idx];
+  const badgeEl = document.getElementById('sponsor-banner-badge');
+  const counterEl = document.getElementById('sponsor-banner-counter');
+  const titleEl = document.getElementById('sponsor-banner-title');
+  const descEl = document.getElementById('sponsor-banner-desc');
+  const pauseBtn = document.getElementById('btn-sponsor-pause');
+
+  if (badgeEl) badgeEl.textContent = sp.badge || '💡 Empfehlung';
+  if (counterEl) counterEl.textContent = `${idx + 1} / ${active.length}`;
+  if (titleEl) titleEl.textContent = sp.title || 'Empfehlung';
+  if (descEl) descEl.textContent = sp.desc || '';
+  if (pauseBtn) {
+    pauseBtn.textContent = isSponsorRotationPaused ? '▶️' : '⏸️';
+    pauseBtn.title = isSponsorRotationPaused ? 'Wechsel fortsetzen' : 'Wechsel pausieren';
+    pauseBtn.setAttribute('aria-label', isSponsorRotationPaused ? 'Wechsel fortsetzen' : 'Wechsel pausieren');
+  }
+}
+
+function nextSponsor(manual = false) {
+  const active = getActiveSponsors();
+  if (active.length <= 1) return;
+  appData.config.currentSponsorIndex = ((appData.config.currentSponsorIndex || 0) + 1) % active.length;
+  renderSponsorBanner();
+  if (manual) {
+    const sp = getCurrentSponsor();
+    if (sp) announceSR(`Anzeige: ${sp.title}`, 'polite');
+  }
+}
+
+function prevSponsor() {
+  const active = getActiveSponsors();
+  if (active.length <= 1) return;
+  let idx = (appData.config.currentSponsorIndex || 0) - 1;
+  if (idx < 0) idx = active.length - 1;
+  appData.config.currentSponsorIndex = idx;
+  renderSponsorBanner();
+  const sp = getCurrentSponsor();
+  if (sp) announceSR(`Anzeige: ${sp.title}`, 'polite');
+}
+
+function toggleSponsorRotation() {
+  isSponsorRotationPaused = !isSponsorRotationPaused;
+  const pauseBtn = document.getElementById('btn-sponsor-pause');
+  if (pauseBtn) {
+    pauseBtn.textContent = isSponsorRotationPaused ? '▶️' : '⏸️';
+    pauseBtn.title = isSponsorRotationPaused ? 'Wechsel fortsetzen' : 'Wechsel pausieren';
+    pauseBtn.setAttribute('aria-label', isSponsorRotationPaused ? 'Wechsel fortsetzen' : 'Wechsel pausieren');
+  }
+  announceSR(isSponsorRotationPaused ? 'Anzeigen-Wechsel pausiert.' : 'Anzeigen-Wechsel fortgesetzt.', 'polite');
+}
+
+function startSponsorRotationTimer() {
+  if (sponsorRotationTimer) {
+    clearInterval(sponsorRotationTimer);
+    sponsorRotationTimer = null;
+  }
+
+  if (appData.config.sponsorVisible === false) return;
+  if (appData.config.sponsorRotationEnabled === false) return;
+
+  const seconds = Math.max(4, parseInt(appData.config.sponsorRotationSeconds, 10) || 9);
+  sponsorRotationTimer = setInterval(() => {
+    if (!isSponsorRotationPaused && document.visibilityState !== 'hidden') {
+      nextSponsor(false);
+    }
+  }, seconds * 1000);
+}
+
 function openSponsorLink() {
-  const url = (appData.config.sponsorUrl || '').trim();
-  if (!url) return;
+  const sp = getCurrentSponsor();
+  if (!sp || !sp.url) return;
+  const url = sp.url.trim();
   try {
     fetch('/api/open_url?url=' + encodeURIComponent(url)).catch(() => {
       window.open(url, '_blank', 'noopener');
@@ -2692,22 +2931,180 @@ function openSponsorLink() {
   }
 }
 
-function saveSponsorSettings() {
-  // IDs aus index.html: cfg-sponsor-title, cfg-sponsor-desc, cfg-sponsor-url, cfg-sponsor-visible
-  const titleEl   = document.getElementById('cfg-sponsor-title');
-  const descEl    = document.getElementById('cfg-sponsor-desc');
-  const urlEl     = document.getElementById('cfg-sponsor-url');
+function saveSponsorSettingsFromUI() {
   const visibleEl = document.getElementById('cfg-sponsor-visible');
+  const rotateEl = document.getElementById('cfg-sponsor-rotate');
+  const intervalEl = document.getElementById('cfg-sponsor-interval');
 
-  if (titleEl)   appData.config.sponsorTitle   = titleEl.value.trim();
-  if (descEl)    appData.config.sponsorDesc    = descEl.value.trim();
-  if (urlEl)     appData.config.sponsorUrl     = urlEl.value.trim();
   if (visibleEl) appData.config.sponsorVisible = visibleEl.checked;
+  if (rotateEl) appData.config.sponsorRotationEnabled = rotateEl.checked;
+  if (intervalEl) appData.config.sponsorRotationSeconds = parseInt(intervalEl.value, 10) || 9;
 
   saveAppData();
-  applyConfig();
-  speak('Partner-Banner-Einstellungen gespeichert.', false);
+  renderSponsorBanner();
+  startSponsorRotationTimer();
+  speak('Werbeeinstellungen gespeichert.', false);
 }
+
+function renderSponsorManagementList() {
+  const container = document.getElementById('sponsor-list-management');
+  if (!container) return;
+
+  const sponsors = appData.config.sponsors || [];
+  if (sponsors.length === 0) {
+    container.innerHTML = '<p class="field-hint">Keine Anzeigen konfiguriert. Füge deine erste Werbeanzeige hinzu!</p>';
+    return;
+  }
+
+  let html = '';
+  sponsors.forEach((sp, idx) => {
+    const isAct = sp.active !== false;
+    html += `
+      <div class="sponsor-mgmt-card${isAct ? '' : ' inactive'}">
+        <div class="sponsor-mgmt-info">
+          <div>
+            <span class="sponsor-badge" style="margin-right: 8px;">${escHtml(sp.badge || 'Anzeige')}</span>
+            <strong>${escHtml(sp.title || 'Unbenannte Anzeige')}</strong>
+          </div>
+          <p class="sponsor-desc" style="font-size: 13px;">${escHtml(sp.desc || '')}</p>
+          <span style="font-size: 12px; color: var(--accent-info); word-break: break-all;">🔗 ${escHtml(sp.url || '')}</span>
+        </div>
+        <div class="sponsor-mgmt-actions">
+          <button type="button" class="btn btn-secondary" onclick="toggleSponsorActive('${sp.id}')" title="${isAct ? 'Deaktivieren' : 'Aktivieren'}" style="min-height: 36px; padding: 4px 10px; font-size: 13px;">
+            ${isAct ? '🟢 Aktiv' : '⚪ Pausiert'}
+          </button>
+          <button type="button" class="btn btn-secondary" onclick="openEditSponsorModal('${sp.id}')" title="Bearbeiten" style="min-height: 36px; padding: 4px 10px; font-size: 13px;">
+            ✏️ Bearbeiten
+          </button>
+          <button type="button" class="btn btn-danger" onclick="deleteSponsor('${sp.id}')" title="Löschen" style="min-height: 36px; padding: 4px 10px; font-size: 13px;">
+            🗑️
+          </button>
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = html;
+}
+
+function openAddSponsorModal() {
+  const modal = document.getElementById('modal-sponsor-edit');
+  if (!modal) return;
+  document.getElementById('modal-sponsor-title').textContent = 'Neue Werbeanzeige hinzufügen';
+  document.getElementById('modal-sp-id').value = '';
+  document.getElementById('modal-sp-title').value = '';
+  document.getElementById('modal-sp-desc').value = '';
+  document.getElementById('modal-sp-url').value = '';
+  document.getElementById('modal-sp-badge').value = '💡 Empfehlung';
+  document.getElementById('modal-sp-active').checked = true;
+
+  modal.style.display = 'flex';
+  modal.setAttribute('aria-hidden', 'false');
+  document.getElementById('modal-sp-title').focus();
+}
+
+function openEditSponsorModal(spId) {
+  const modal = document.getElementById('modal-sponsor-edit');
+  if (!modal) return;
+  const sp = (appData.config.sponsors || []).find(s => String(s.id) === String(spId));
+  if (!sp) return;
+
+  document.getElementById('modal-sponsor-title').textContent = 'Werbeanzeige bearbeiten';
+  document.getElementById('modal-sp-id').value = sp.id;
+  document.getElementById('modal-sp-title').value = sp.title || '';
+  document.getElementById('modal-sp-desc').value = sp.desc || '';
+  document.getElementById('modal-sp-url').value = sp.url || '';
+  document.getElementById('modal-sp-badge').value = sp.badge || '💡 Empfehlung';
+  document.getElementById('modal-sp-active').checked = (sp.active !== false);
+
+  modal.style.display = 'flex';
+  modal.setAttribute('aria-hidden', 'false');
+  document.getElementById('modal-sp-title').focus();
+}
+
+function closeSponsorModal() {
+  const modal = document.getElementById('modal-sponsor-edit');
+  if (!modal) return;
+  modal.style.display = 'none';
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+function handleSponsorModalBackdropClick(event) {
+  const modal = document.getElementById('modal-sponsor-edit');
+  if (!modal) return;
+  if (event.target === modal) closeSponsorModal();
+}
+
+function saveSponsorFromModal(event) {
+  if (event && event.preventDefault) event.preventDefault();
+
+  const idVal = document.getElementById('modal-sp-id').value.trim();
+  const titleVal = document.getElementById('modal-sp-title').value.trim();
+  const descVal = document.getElementById('modal-sp-desc').value.trim();
+  const urlVal = document.getElementById('modal-sp-url').value.trim();
+  const badgeVal = document.getElementById('modal-sp-badge').value.trim() || '💡 Empfehlung';
+  const activeVal = document.getElementById('modal-sp-active').checked;
+
+  if (!titleVal || !urlVal) {
+    alert('Bitte gib mindestens einen Titel und eine Ziel-URL ein.');
+    return;
+  }
+
+  if (!Array.isArray(appData.config.sponsors)) {
+    appData.config.sponsors = [...DEFAULT_SPONSORS];
+  }
+
+  if (idVal) {
+    const existing = appData.config.sponsors.find(s => String(s.id) === String(idVal));
+    if (existing) {
+      existing.title = titleVal;
+      existing.desc = descVal;
+      existing.url = urlVal;
+      existing.badge = badgeVal;
+      existing.active = activeVal;
+    }
+  } else {
+    appData.config.sponsors.push({
+      id: 'sp-' + Date.now(),
+      title: titleVal,
+      desc: descVal,
+      url: urlVal,
+      badge: badgeVal,
+      active: activeVal
+    });
+  }
+
+  saveAppData();
+  closeSponsorModal();
+  renderSponsorBanner();
+  renderSponsorManagementList();
+  startSponsorRotationTimer();
+  speak('Werbeanzeige erfolgreich gespeichert.', false);
+}
+
+function toggleSponsorActive(spId) {
+  const sp = (appData.config.sponsors || []).find(s => String(s.id) === String(spId));
+  if (!sp) return;
+  sp.active = !sp.active;
+  saveAppData();
+  renderSponsorBanner();
+  renderSponsorManagementList();
+  announceSR(`Anzeige ${sp.active ? 'aktiviert' : 'pausiert'}.`, 'polite');
+}
+
+function deleteSponsor(spId) {
+  if (confirm('Möchtest du diese Werbeanzeige wirklich löschen?')) {
+    appData.config.sponsors = (appData.config.sponsors || []).filter(s => String(s.id) !== String(spId));
+    if (appData.config.sponsors.length === 0) {
+      appData.config.sponsors = [...DEFAULT_SPONSORS];
+    }
+    saveAppData();
+    renderSponsorBanner();
+    renderSponsorManagementList();
+    speak('Werbeanzeige gelöscht.', false);
+  }
+}
+
 
 // =============================================================================
 // 10. INITIALISIERUNG & TASTEN-STEUERUNG
@@ -2793,8 +3190,19 @@ function initApp() {
       triggerManualSync();
     } else if (e.key === 'Escape') {
       closeLessonDetails();
+      closeSponsorModal();
     }
   });
+
+  // WCAG 2.2 AAA: Werbe-Rotation pausieren wenn Benutzer den Banner fokussiert oder mit der Maus darüber fährt
+  const spArea = document.getElementById('sponsor-banner-area');
+  if (spArea) {
+    spArea.addEventListener('mouseenter', () => { isSponsorRotationPaused = true; });
+    spArea.addEventListener('mouseleave', () => { isSponsorRotationPaused = false; });
+    spArea.addEventListener('focusin', () => { isSponsorRotationPaused = true; });
+    spArea.addEventListener('focusout', () => { isSponsorRotationPaused = false; });
+  }
+
 
   // Automatische Anmeldung & Synchronisation beim Start
   if (appData.config.username && appData.config.password) {

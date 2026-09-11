@@ -1441,12 +1441,70 @@ body.theme-high-contrast .gpa-big-number {
   border-radius: var(--radius-md);
   padding: 16px 22px;
   display: flex;
-  align-items: center;
-  gap: 18px;
+  flex-direction: column;
+  gap: 12px;
   position: relative;
   box-shadow: var(--shadow-sm);
+  transition: opacity 0.25s ease, border-color 0.2s ease;
 }
 body.theme-high-contrast .sponsor-banner-card {
+  border-color: #FFFF00;
+}
+
+.sponsor-top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 8px;
+}
+
+.sponsor-controls-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sponsor-counter {
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--text-secondary);
+  padding: 2px 8px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 4px;
+}
+body.theme-high-contrast .sponsor-counter {
+  color: #FFFF00;
+  background: #000;
+  border: 1px solid #FFFF00;
+}
+
+.sponsor-ctrl-btn {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-primary);
+  min-height: 28px;
+  min-width: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+.sponsor-ctrl-btn:hover,
+.sponsor-ctrl-btn:focus-visible {
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
+  outline: 2px solid var(--accent-primary);
+}
+body.theme-high-contrast .sponsor-ctrl-btn {
+  background: #000;
+  color: #FFFF00;
   border-color: #FFFF00;
 }
 
@@ -1480,17 +1538,49 @@ body.theme-high-contrast .sponsor-badge {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  flex: 1;
+  min-width: 260px;
 }
 
 .sponsor-desc {
   font-size: 14px;
   color: var(--text-muted);
   margin: 0;
+  line-height: 1.4;
 }
 
 .sponsor-btn {
   white-space: nowrap;
   font-weight: bold;
+}
+
+/* Sponsor Management Liste in Einstellungen */
+.sponsor-mgmt-card {
+  background: var(--bg-surface-elevated);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.sponsor-mgmt-card.inactive {
+  opacity: 0.6;
+}
+.sponsor-mgmt-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 250px;
+}
+.sponsor-mgmt-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 /* =============================================================================
