@@ -500,7 +500,7 @@ async function callWebUntisApi(method, params = {}) {
   throw lastError || new Error('Keine Verbindung zum WebUntis-Server möglich.');
 }
 
-async function callWebUntisRest(endpoint, token = null) {
+async function callWebUntisRest(endpoint, token = null, method = 'GET', body = null) {
   const endpoints = [];
   if (window.location.origin && window.location.origin.startsWith('http')) {
     endpoints.push(window.location.origin + '/api/webuntis');
@@ -519,14 +519,19 @@ async function callWebUntisRest(endpoint, token = null) {
       if (webuntisSessionId) {
         headers['X-JSESSIONID'] = webuntisSessionId;
       }
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+      if (token && typeof token === 'string' && token.startsWith('eyJ')) {
+        headers['Authorization'] = `Bearer ${token.trim()}`;
       }
 
-      const res = await fetch(ep, {
-        method: 'GET',
+      const fetchOpts = {
+        method: method || 'GET',
         headers: headers
-      });
+      };
+      if (body && (method === 'POST' || method === 'PUT')) {
+        fetchOpts.body = typeof body === 'string' ? body : JSON.stringify(body);
+      }
+
+      const res = await fetch(ep, fetchOpts);
 
       if (res.ok) {
         const textData = await res.text();
@@ -638,31 +643,46 @@ async function performWebUntisSync(userOverride, passOverride) {
     const { sessionId, personId, personType } = authRes.result;
     webuntisSessionId = sessionId;
 
-    // JWT Bearer Token für WebUntis REST- & App-APIs abrufen
+    // JWT Bearer Token für WebUntis REST- & App-APIs abrufen (Untis Mobile Auth)
     let jwtToken = null;
     try {
-      const tokenRes = await callWebUntisRest('/api/token/new');
-      if (tokenRes) {
-        if (typeof tokenRes === 'string' && tokenRes.length > 20) {
-          jwtToken = tokenRes.trim();
-        } else if (tokenRes.token) {
-          jwtToken = tokenRes.token;
-        } else if (tokenRes.jwt) {
-          jwtToken = tokenRes.jwt;
-        } else if (tokenRes.data && tokenRes.data.token) {
-          jwtToken = tokenRes.data.token;
-        }
+      const schoolShort = appData.config.schoolShort || 'lwl-bk-soest';
+      const authMobileRes = await callWebUntisRest(
+        `/api/mobile/v2/${schoolShort}/authentication`,
+        null,
+        'POST',
+        { username: username, password: password }
+      );
+      if (authMobileRes && authMobileRes.jwt) {
+        jwtToken = String(authMobileRes.jwt).trim();
       }
     } catch (e) { }
 
-    // 2. Metadaten parallel abrufen (Fächer, Lehrer, Räume, Klassen, Prüfungsarten, Klassenbuch-Kategorien)
-    const [subRes, teaRes, rooRes, klaRes, examTypesRes, classregCatsRes] = await Promise.all([
+    // Fallback falls Mobile Auth nicht verfügbar war
+    if (!jwtToken) {
+      try {
+        const tokenRes = await callWebUntisRest('/api/token/new');
+        if (tokenRes) {
+          if (typeof tokenRes === 'string' && tokenRes.length > 20 && tokenRes.startsWith('eyJ')) {
+            jwtToken = tokenRes.trim();
+          } else if (tokenRes.token && typeof tokenRes.token === 'string' && tokenRes.token.startsWith('eyJ')) {
+            jwtToken = tokenRes.token.trim();
+          } else if (tokenRes.jwt && typeof tokenRes.jwt === 'string' && tokenRes.jwt.startsWith('eyJ')) {
+            jwtToken = tokenRes.jwt.trim();
+          }
+        }
+      } catch (e) { }
+    }
+
+    // 2. Metadaten & getUserData2017 parallel abrufen
+    const [subRes, teaRes, rooRes, klaRes, examTypesRes, classregCatsRes, userDataRes] = await Promise.all([
       callWebUntisApi('getSubjects').catch(() => ({})),
       callWebUntisApi('getTeachers').catch(() => ({})),
       callWebUntisApi('getRooms').catch(() => ({})),
       callWebUntisApi('getKlassen').catch(() => ({})),
       callWebUntisApi('getExamTypes').catch(() => ({})),
-      callWebUntisApi('getClassregCategories').catch(() => ({}))
+      callWebUntisApi('getClassregCategories').catch(() => ({})),
+      callWebUntisApi('getUserData2017', [{ elementId: 0 }]).catch(() => callWebUntisApi('getUserData2017', { elementId: 0 }).catch(() => ({})))
     ]);
 
     const examTypesMap = {};
@@ -758,19 +778,37 @@ async function performWebUntisSync(userOverride, passOverride) {
       }
     }).catch(() => ({}));
 
-    // Schülerklasse ermitteln (für klassenspezifische Prüfungen & Termine)
-    let detectedKlasseId = null;
-    if (ttRes && ttRes.result && Array.isArray(ttRes.result)) {
-      for (const item of ttRes.result) {
-        if (item.kl && Array.isArray(item.kl) && item.kl[0] && item.kl[0].id) {
-          detectedKlasseId = item.kl[0].id;
-          break;
-        }
+    // 4b. Schüler- und Klassen-IDs vollständig erfassen (für personenbezogene UND klassenweite Abfragen)
+    const detectedKlasseIds = new Set();
+    const detectedStudentIds = new Set();
+
+    if (personId) {
+      if (personType === 1) detectedKlasseIds.add(personId);
+      else detectedStudentIds.add(personId);
+    }
+    if (authRes.result) {
+      if (authRes.result.klasseId) detectedKlasseIds.add(authRes.result.klasseId);
+      if (authRes.result.classId) detectedKlasseIds.add(authRes.result.classId);
+    }
+    if (userDataRes && userDataRes.result && userDataRes.result.userData) {
+      const ud = userDataRes.result.userData;
+      if (ud.elemType === 'STUDENT' && ud.elemId) detectedStudentIds.add(ud.elemId);
+      if (ud.elemType === 'CLASS' && ud.elemId) detectedKlasseIds.add(ud.elemId);
+      if (ud.klassenIds && Array.isArray(ud.klassenIds)) {
+        ud.klassenIds.forEach(kId => { if (kId) detectedKlasseIds.add(kId); });
+      }
+      if (ud.children && Array.isArray(ud.children)) {
+        ud.children.forEach(ch => { if (ch && ch.id) detectedStudentIds.add(ch.id); });
       }
     }
-    if (!detectedKlasseId && personType === 1) {
-      detectedKlasseId = personId;
+    if (ttRes && ttRes.result && Array.isArray(ttRes.result)) {
+      ttRes.result.forEach(item => {
+        if (item.kl && Array.isArray(item.kl)) {
+          item.kl.forEach(k => { if (k && k.id) detectedKlasseIds.add(k.id); });
+        }
+      });
     }
+    let detectedKlasseId = detectedKlasseIds.size > 0 ? Array.from(detectedKlasseIds)[0] : (personType === 1 ? personId : null);
 
     // 5. Schuljahr ermitteln (WebUntis getSchoolyears oder dynamische Berechnung)
     let syRange = getSchoolYearRange();
@@ -803,38 +841,46 @@ async function performWebUntisSync(userOverride, passOverride) {
     const sIsoStr = `${String(syRange.startDateNum).slice(0, 4)}-${String(syRange.startDateNum).slice(4, 6)}-${String(syRange.startDateNum).slice(6, 8)}`;
     const eIsoStr = `${String(syRange.endDateNum).slice(0, 4)}-${String(syRange.endDateNum).slice(4, 6)}-${String(syRange.endDateNum).slice(6, 8)}`;
 
-    // 6. Sliding-Windows für den Stundenplan (Priorisiere aktuelle Wochen vor den Herbstferien)
+    // 6. Sliding-Windows für Stundenplan, Prüfungen, Klassenbuch & Hausaufgaben
     const dateWindows = [];
-    let winCur = new Date(now);
-    winCur.setDate(winCur.getDate() - 7); // 1 Woche Puffer
+
+    // Prioritätsfenster: 14 Tage rückwärts bis 60 Tage vorwärts (deckt aktuelle Aufgaben & Arbeiten vor den Herbstferien optimal ab)
+    const pStart = new Date(now);
+    pStart.setDate(pStart.getDate() - 14);
+    const pEnd = new Date(now);
+    pEnd.setDate(pEnd.getDate() + 60);
+    dateWindows.push({
+      startNum: formatDateToUntis(pStart),
+      endNum: formatDateToUntis(pEnd),
+      startIso: normalizeToIsoDate(formatDateToUntis(pStart)),
+      endIso: normalizeToIsoDate(formatDateToUntis(pEnd))
+    });
+
+    // 30-Tage-Fenster für das gesamte Schuljahr
+    let winCur = new Date(syRange.startDate);
     while (winCur < syRange.endDate) {
       let winNext = new Date(winCur);
-      winNext.setDate(winNext.getDate() + 27);
+      winNext.setDate(winNext.getDate() + 29);
       if (winNext > syRange.endDate) winNext = new Date(syRange.endDate);
       dateWindows.push({
-        start: formatDateToUntis(winCur),
-        end: formatDateToUntis(winNext)
+        startNum: formatDateToUntis(winCur),
+        endNum: formatDateToUntis(winNext),
+        startIso: normalizeToIsoDate(formatDateToUntis(winCur)),
+        endIso: normalizeToIsoDate(formatDateToUntis(winNext))
       });
       winCur = new Date(winNext);
       winCur.setDate(winCur.getDate() + 1);
     }
-    // Frühere Wochen des Schuljahres (z.B. August) ergänzen
-    if (new Date(syRange.startDate) < new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7)) {
-      dateWindows.push({
-        start: formatDateToUntis(syRange.startDate),
-        end: formatDateToUntis(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 8))
-      });
-    }
 
-    // Stundenplan-Abfragen (getTimetable und getTimetable2017 für Schüler & Klasse)
+    // Stundenplan-Abfragen (getTimetable und getTimetable2017 für Schüler & Klassen)
     const futureTtCalls = [];
     dateWindows.forEach(win => {
-      // Standard getTimetable
+      // Standard getTimetable für Schüler
       futureTtCalls.push(callWebUntisApi('getTimetable', {
         options: {
           element: { id: personId, type: personType },
-          startDate: win.start,
-          endDate: win.end,
+          startDate: win.startNum,
+          endDate: win.endNum,
           showLsText: true,
           showStudentgroup: true,
           showInfo: true,
@@ -848,20 +894,21 @@ async function performWebUntisSync(userOverride, passOverride) {
         }
       }).catch(() => ({})));
 
-      // getTimetable2017 (wird von WebUntis Mobile für erweiterte Aktivitäts- & Prüfungsdetails genutzt)
+      // getTimetable2017 (WebUntis Mobile Format)
       futureTtCalls.push(callWebUntisApi('getTimetable2017', {
         id: personId,
         type: personType,
-        startDate: win.start,
-        endDate: win.end
+        startDate: win.startNum,
+        endDate: win.endNum
       }).catch(() => ({})));
 
-      if (detectedKlasseId) {
+      // Für jede erkannte Klasse
+      detectedKlasseIds.forEach(kId => {
         futureTtCalls.push(callWebUntisApi('getTimetable', {
           options: {
-            element: { id: detectedKlasseId, type: 1 },
-            startDate: win.start,
-            endDate: win.end,
+            element: { id: kId, type: 1 },
+            startDate: win.startNum,
+            endDate: win.endNum,
             showLsText: true,
             showStudentgroup: true,
             showInfo: true,
@@ -876,12 +923,12 @@ async function performWebUntisSync(userOverride, passOverride) {
         }).catch(() => ({})));
 
         futureTtCalls.push(callWebUntisApi('getTimetable2017', {
-          id: detectedKlasseId,
+          id: kId,
           type: 1,
-          startDate: win.start,
-          endDate: win.end
+          startDate: win.startNum,
+          endDate: win.endNum
         }).catch(() => ({})));
-      }
+      });
     });
 
     // Prüfungs-IDs aus getExamTypes sammeln (inklusive Fallback 0 für alle Prüfungsarten)
@@ -897,92 +944,97 @@ async function performWebUntisSync(userOverride, passOverride) {
       examCalls.push(callWebUntisApi('getExams', { examTypeId: etId, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
       examCalls.push(callWebUntisApi('getExams', { examTypeId: etId, startDate: syRange.startDateNum, endDate: syRange.endDateNum, id: personId, type: personType }).catch(() => ({})));
       examCalls.push(callWebUntisApi('getExams', { examTypeId: etId, startDate: syRange.startDateNum, endDate: syRange.endDateNum, studentId: personId }).catch(() => ({})));
-      if (detectedKlasseId) {
-        examCalls.push(callWebUntisApi('getExams', { examTypeId: etId, startDate: syRange.startDateNum, endDate: syRange.endDateNum, id: detectedKlasseId, type: 1 }).catch(() => ({})));
-        examCalls.push(callWebUntisApi('getExams', { examTypeId: etId, startDate: syRange.startDateNum, endDate: syRange.endDateNum, klasseId: detectedKlasseId }).catch(() => ({})));
-      }
+      detectedKlasseIds.forEach(kId => {
+        examCalls.push(callWebUntisApi('getExams', { examTypeId: etId, startDate: syRange.startDateNum, endDate: syRange.endDateNum, id: kId, type: 1 }).catch(() => ({})));
+        examCalls.push(callWebUntisApi('getExams', { examTypeId: etId, startDate: syRange.startDateNum, endDate: syRange.endDateNum, klasseId: kId }).catch(() => ({})));
+      });
     });
 
     // Spezifische Schülerprüfungs-Methoden & generelle Prüfungsabfragen (alle Formate)
     examCalls.push(callWebUntisApi('getExams', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
     examCalls.push(callWebUntisApi('getExams', { startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})));
-    examCalls.push(callWebUntisApi('getExams', { id: personId, type: personType, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
-    examCalls.push(callWebUntisApi('getExams', { id: personId, type: 5, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
-    examCalls.push(callWebUntisApi('getExams', { studentId: personId, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
-    examCalls.push(callWebUntisApi('getExams', { id: personId, type: 'STUDENT', startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})));
     examCalls.push(callWebUntisApi('getStudentExams', { id: personId, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
-    examCalls.push(callWebUntisApi('getStudentExams', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
-    examCalls.push(callWebUntisApi('getStudentExams', { startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})));
     examCalls.push(callWebUntisApi('getStudentExamList', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
-    if (detectedKlasseId) {
-      examCalls.push(callWebUntisApi('getExams', { id: detectedKlasseId, type: 1, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
-      examCalls.push(callWebUntisApi('getExams', { klasseId: detectedKlasseId, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
-      examCalls.push(callWebUntisApi('getExams', { id: detectedKlasseId, type: 'CLASS', startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})));
-    }
 
-    // 6b. Klassenbuch-Termine & Ereignisse in 30-Tage-Fenstern (WebUntis erlaubt max. 30 Tage pro Abfrage!)
-    const classregCalls = [];
-    const crWindows = [];
-    let crCur = new Date(now);
-    crCur.setDate(crCur.getDate() - 14); // 2 Wochen Puffer rückwärts
-    for (let w = 0; w < 4; w++) {
-      let crNext = new Date(crCur);
-      crNext.setDate(crNext.getDate() + 29);
-      crWindows.push({
-        startNum: formatDateToUntis(crCur),
-        endNum: formatDateToUntis(crNext),
-        startIso: normalizeToIsoDate(formatDateToUntis(crCur)),
-        endIso: normalizeToIsoDate(formatDateToUntis(crNext))
+    // getExams2017 in Intervallen für alle erkannten Schüler & Klassen (Untis Mobile Format)
+    dateWindows.forEach(win => {
+      detectedStudentIds.forEach(sId => {
+        examCalls.push(callWebUntisApi('getExams2017', [{ id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso }]).catch(() => ({})));
+        examCalls.push(callWebUntisApi('getExams2017', [{ id: sId, type: 5, startDate: win.startNum, endDate: win.endNum }]).catch(() => ({})));
+        examCalls.push(callWebUntisApi('getExams2017', { id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso }).catch(() => ({})));
+        examCalls.push(callWebUntisApi('getExams2017', { id: sId, type: 5, startDate: win.startNum, endDate: win.endNum }).catch(() => ({})));
+        examCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getExams2017', jwtToken, 'POST', {
+          id: 'ex-' + Date.now(),
+          jsonrpc: '2.0',
+          method: 'getExams2017',
+          params: [{ id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso }]
+        }).catch(() => ({})));
       });
-      crCur = new Date(crNext);
-      crCur.setDate(crCur.getDate() + 1);
-    }
-    // Auch Schuljahresbeginn abdecken
-    crWindows.push({
-      startNum: syRange.startDateNum,
-      endNum: formatDateToUntis(new Date(syRange.startYear, 7, 31)),
-      startIso: `${syRange.startYear}-08-01`,
-      endIso: `${syRange.startYear}-08-31`
+
+      detectedKlasseIds.forEach(kId => {
+        examCalls.push(callWebUntisApi('getExams2017', [{ id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso }]).catch(() => ({})));
+        examCalls.push(callWebUntisApi('getExams2017', [{ id: kId, type: 1, startDate: win.startNum, endDate: win.endNum }]).catch(() => ({})));
+        examCalls.push(callWebUntisApi('getExams2017', { id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso }).catch(() => ({})));
+        examCalls.push(callWebUntisApi('getExams2017', { id: kId, type: 1, startDate: win.startNum, endDate: win.endNum }).catch(() => ({})));
+        examCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getExams2017', jwtToken, 'POST', {
+          id: 'ex-' + Date.now(),
+          jsonrpc: '2.0',
+          method: 'getExams2017',
+          params: [{ id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso }]
+        }).catch(() => ({})));
+      });
+
+      examCalls.push(callWebUntisApi('getExams2017', [{ startDate: win.startIso, endDate: win.endIso }]).catch(() => ({})));
+      examCalls.push(callWebUntisApi('getExams2017', { startDate: win.startIso, endDate: win.endIso }).catch(() => ({})));
     });
 
-    crWindows.forEach(cw => {
+    // 6b. Klassenbuch-Termine & Ereignisse in 30-Tage-Fenstern
+    const classregCalls = [];
+    dateWindows.forEach(cw => {
       classregCalls.push(callWebUntisApi('getClassregEvents', { startDate: cw.startNum, endDate: cw.endNum }).catch(() => ({})));
       classregCalls.push(callWebUntisApi('getClassregEvents', { startDate: cw.startNum, endDate: cw.endNum, id: personId, type: personType }).catch(() => ({})));
-      classregCalls.push(callWebUntisApi('getClassregEvents', { startDate: cw.startNum, endDate: cw.endNum, element: { id: personId, type: personType } }).catch(() => ({})));
       classregCalls.push(callWebUntisApi('getClassregEvents', { startDate: cw.startIso, endDate: cw.endIso }).catch(() => ({})));
       classregCalls.push(callWebUntisApi('getClassregEventEntries', { startDate: cw.startNum, endDate: cw.endNum }).catch(() => ({})));
-      classregCalls.push(callWebUntisApi('getClassregEventEntries', { startDate: cw.startNum, endDate: cw.endNum, id: personId, type: personType }).catch(() => ({})));
-      classregCalls.push(callWebUntisApi('getClassregEventEntries', { startDate: cw.startNum, endDate: cw.endNum, element: { id: personId, type: personType } }).catch(() => ({})));
-
-      if (detectedKlasseId) {
-        classregCalls.push(callWebUntisApi('getClassregEvents', { startDate: cw.startNum, endDate: cw.endNum, id: detectedKlasseId, type: 1 }).catch(() => ({})));
-        classregCalls.push(callWebUntisApi('getClassregEvents', { startDate: cw.startNum, endDate: cw.endNum, element: { id: detectedKlasseId, type: 1 } }).catch(() => ({})));
-        classregCalls.push(callWebUntisApi('getClassregEventEntries', { startDate: cw.startNum, endDate: cw.endNum, id: detectedKlasseId, type: 1 }).catch(() => ({})));
-        classregCalls.push(callWebUntisApi('getClassregEventEntries', { startDate: cw.startNum, endDate: cw.endNum, element: { id: detectedKlasseId, type: 1 } }).catch(() => ({})));
-      }
+      detectedKlasseIds.forEach(kId => {
+        classregCalls.push(callWebUntisApi('getClassregEvents', { startDate: cw.startNum, endDate: cw.endNum, id: kId, type: 1 }).catch(() => ({})));
+        classregCalls.push(callWebUntisApi('getClassregEventEntries', { startDate: cw.startNum, endDate: cw.endNum, id: kId, type: 1 }).catch(() => ({})));
+      });
     });
 
-    // 6c. Hausaufgaben-Abfragen (getHomeWork2017 für Schüler & Klasse + getHomeWorks)
-    const homeworkCalls = [
-      callWebUntisApi('getHomeWork2017', { id: personId, type: personType, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
-      callWebUntisApi('getHomeWork2017', { id: personId, type: 5, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
-      callWebUntisApi('getHomeWork2017', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
-      callWebUntisApi('getHomeWork2017', { id: personId, type: 'STUDENT', startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})),
-      callWebUntisApi('getHomeWork2017', { id: personId, type: 5, startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})),
-      callWebUntisApi('getHomeWork2017', { startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})),
-      callWebUntisApi('getHomeWork2017', [{ id: personId, type: 'STUDENT', startDate: sIsoStr, endDate: eIsoStr }]).catch(() => ({})),
-      callWebUntisApi('getHomeWork2017', [{ id: personId, type: personType, startDate: syRange.startDateNum, endDate: syRange.endDateNum }]).catch(() => ({})),
-      callWebUntisApi('getHomeWorks', { id: personId, type: personType, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
-      callWebUntisApi('getHomeWorks', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
-      callWebUntisApi('getHomeWorks', { startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({}))
-    ];
-    if (detectedKlasseId) {
-      homeworkCalls.push(
-        callWebUntisApi('getHomeWork2017', { id: detectedKlasseId, type: 1, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
-        callWebUntisApi('getHomeWork2017', { id: detectedKlasseId, type: 'CLASS', startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})),
-        callWebUntisApi('getHomeWork2017', [{ id: detectedKlasseId, type: 'CLASS', startDate: sIsoStr, endDate: eIsoStr }]).catch(() => ({}))
-      );
-    }
+    // 6c. Hausaufgaben-Abfragen (getHomeWork2017 für alle Schüler & Klassen in allen Intervallen)
+    const homeworkCalls = [];
+    dateWindows.forEach(win => {
+      detectedStudentIds.forEach(sId => {
+        homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso }]).catch(() => ({})));
+        homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ id: sId, type: 5, startDate: win.startNum, endDate: win.endNum }]).catch(() => ({})));
+        homeworkCalls.push(callWebUntisApi('getHomeWork2017', { id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso }).catch(() => ({})));
+        homeworkCalls.push(callWebUntisApi('getHomeWork2017', { id: sId, type: 5, startDate: win.startNum, endDate: win.endNum }).catch(() => ({})));
+        homeworkCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getHomeWork2017', jwtToken, 'POST', {
+          id: 'hw-' + Date.now(),
+          jsonrpc: '2.0',
+          method: 'getHomeWork2017',
+          params: [{ id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso }]
+        }).catch(() => ({})));
+      });
+
+      detectedKlasseIds.forEach(kId => {
+        homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso }]).catch(() => ({})));
+        homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ id: kId, type: 1, startDate: win.startNum, endDate: win.endNum }]).catch(() => ({})));
+        homeworkCalls.push(callWebUntisApi('getHomeWork2017', { id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso }).catch(() => ({})));
+        homeworkCalls.push(callWebUntisApi('getHomeWork2017', { id: kId, type: 1, startDate: win.startNum, endDate: win.endNum }).catch(() => ({})));
+        homeworkCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getHomeWork2017', jwtToken, 'POST', {
+          id: 'hw-' + Date.now(),
+          jsonrpc: '2.0',
+          method: 'getHomeWork2017',
+          params: [{ id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso }]
+        }).catch(() => ({})));
+      });
+
+      homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ startDate: win.startIso, endDate: win.endIso }]).catch(() => ({})));
+      homeworkCalls.push(callWebUntisApi('getHomeWork2017', { startDate: win.startIso, endDate: win.endIso }).catch(() => ({})));
+      homeworkCalls.push(callWebUntisApi('getHomeWorks', { startDate: win.startNum, endDate: win.endNum }).catch(() => ({})));
+      homeworkCalls.push(callWebUntisApi('getHomeWorks', { startDate: win.startIso, endDate: win.endIso }).catch(() => ({})));
+    });
 
     // 6d. Fehlzeiten-Abfragen
     const absenceCalls = [
@@ -1265,7 +1317,18 @@ async function performWebUntisSync(userOverride, passOverride) {
     if (ttRes && ttRes.result && Array.isArray(ttRes.result)) allTtSource.push(...ttRes.result);
     if (futureTtResults && Array.isArray(futureTtResults)) {
       futureTtResults.forEach(f => {
-        if (f && f.result && Array.isArray(f.result)) allTtSource.push(...f.result);
+        if (!f) return;
+        const resObj = f.result || f;
+        if (!resObj) return;
+        if (Array.isArray(resObj)) {
+          allTtSource.push(...resObj);
+        } else if (resObj.timetable && Array.isArray(resObj.timetable.periods)) {
+          allTtSource.push(...resObj.timetable.periods);
+        } else if (Array.isArray(resObj.periods)) {
+          allTtSource.push(...resObj.periods);
+        } else if (Array.isArray(resObj.data)) {
+          allTtSource.push(...resObj.data);
+        }
       });
     }
 
@@ -1273,6 +1336,9 @@ async function performWebUntisSync(userOverride, passOverride) {
     allTtSource.forEach((item, idx) => {
       scanItemForExam(item, idx);
       scanItemForHomework(item, idx);
+      if (item.kl && Array.isArray(item.kl)) {
+        item.kl.forEach(k => { if (k && k.id) detectedKlasseIds.add(k.id); });
+      }
     });
 
     // Stundenplan der aktuellen Schulwoche in appData.timetable überführen
@@ -1375,33 +1441,72 @@ async function performWebUntisSync(userOverride, passOverride) {
       }
     }
 
-    // A. WebUntis getExams parsen
+    // A. WebUntis getExams & getExams2017 parsen
     const rawExamsList = [];
     examResponses.forEach(res => {
-      if (res && res.result && Array.isArray(res.result)) {
-        rawExamsList.push(...res.result);
+      if (!res) return;
+      const resObj = res.result || res;
+      if (!resObj) return;
+      if (Array.isArray(resObj)) {
+        rawExamsList.push(...resObj);
+      } else if (resObj.exams && Array.isArray(resObj.exams)) {
+        rawExamsList.push(...resObj.exams);
+      } else if (resObj.records && Array.isArray(resObj.records)) {
+        rawExamsList.push(...resObj.records);
+      } else if (resObj.data && Array.isArray(resObj.data)) {
+        rawExamsList.push(...resObj.data);
       }
+    });
+
+    [restExamsRes1, restExamsRes2].forEach(rRes => {
+      if (!rRes) return;
+      const rObj = rRes.data || rRes;
+      if (Array.isArray(rObj)) rawExamsList.push(...rObj);
+      else if (rObj.exams && Array.isArray(rObj.exams)) rawExamsList.push(...rObj.exams);
+      else if (rObj.records && Array.isArray(rObj.records)) rawExamsList.push(...rObj.records);
     });
 
     rawExamsList.forEach((ex, idx) => {
       if (!ex) return;
-      // WICHTIG: WebUntis liefert ex.date ODER ex.examDate ODER ex.startDate
-      const rawDate = ex.date || ex.examDate || ex.startDate;
-      if (!rawDate) return;
-      const dStr = String(rawDate).replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
-      if (dStr.length !== 8) return;
+      let isoDate = '';
+      let sTimeStr = '';
+      let eTimeStr = '';
 
-      const dateNum = parseInt(dStr);
-      const isoDate = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
+      if (ex.startDateTime) {
+        isoDate = normalizeToIsoDate(ex.startDateTime);
+        const sMatch = String(ex.startDateTime).match(/T(\d{2}:\d{2})/);
+        if (sMatch) sTimeStr = sMatch[1];
+      }
+      if (ex.endDateTime) {
+        const eMatch = String(ex.endDateTime).match(/T(\d{2}:\d{2})/);
+        if (eMatch) eTimeStr = eMatch[1];
+      }
+
+      const rawDate = ex.date || ex.examDate || ex.startDate;
+      if (!isoDate && rawDate) {
+        isoDate = normalizeToIsoDate(rawDate);
+      }
+      if (!isoDate) return;
+
+      if (!sTimeStr) {
+        const sTime = ex.startTime !== undefined ? ex.startTime : (ex.start || 745);
+        sTimeStr = formatUntisTimeToStr(sTime);
+      }
+      if (!eTimeStr) {
+        const eTime = ex.endTime !== undefined ? ex.endTime : (ex.end || 915);
+        eTimeStr = formatUntisTimeToStr(eTime);
+      }
+
       let subj = 'Klausur';
-      if (ex.subject && subjectsMap[ex.subject]) subj = subjectsMap[ex.subject];
-      else if (ex.subjectId && subjectsMap[ex.subjectId]) subj = subjectsMap[ex.subjectId];
-      else if (typeof ex.subject === 'string' && ex.subject.trim()) subj = ex.subject.trim();
-      else if (ex.subject && typeof ex.subject === 'object') subj = ex.subject.name || ex.subject.longName || 'Klausur';
+      const sId = ex.subjectId || ex.subject;
+      if (sId && subjectsMap[sId]) subj = subjectsMap[sId];
+      else if (typeof sId === 'string' && sId.trim()) subj = sId.trim();
+      else if (sId && typeof sId === 'object') subj = sId.name || sId.longName || 'Klausur';
       else if (ex.name && !/^klausur/i.test(ex.name)) subj = ex.name;
 
       let exTeacher = 'Fachlehrkraft';
-      const tId = (ex.teachers && Array.isArray(ex.teachers) && ex.teachers[0]) || ex.teacher || ex.teacherId;
+      const tIds = ex.teacherIds || (ex.teachers && Array.isArray(ex.teachers) ? ex.teachers : null);
+      const tId = (tIds && tIds[0]) || ex.teacher || ex.teacherId;
       if (tId && teachersMap[tId]) {
         exTeacher = teachersMap[tId];
       } else if (typeof tId === 'string' && tId.trim()) {
@@ -1411,7 +1516,8 @@ async function performWebUntisSync(userOverride, passOverride) {
       }
 
       let exRoom = 'Raum laut Plan';
-      const rId = (ex.rooms && Array.isArray(ex.rooms) && ex.rooms[0]) || ex.room || ex.roomId;
+      const rIds = ex.roomIds || (ex.rooms && Array.isArray(ex.rooms) ? ex.rooms : null);
+      const rId = (rIds && rIds[0]) || ex.room || ex.roomId;
       if (rId) {
         const rCandidate = extractRoomFromObj(rId);
         if (isValidRoomCandidate(rCandidate)) {
@@ -1427,15 +1533,13 @@ async function performWebUntisSync(userOverride, passOverride) {
       if (ex.description && ex.description !== ex.name) topicParts.push(ex.description);
 
       const topicName = topicParts.filter(Boolean).join(' - ') || 'Klausur laut WebUntis';
-      const sTime = ex.startTime !== undefined ? ex.startTime : (ex.start || 745);
-      const eTime = ex.endTime !== undefined ? ex.endTime : (ex.end || 915);
 
       addUniqueExam({
-        id: `untis-exam-${ex.id || idx}`,
+        id: `untis-exam-${ex.id || idx}-${isoDate}`,
         subject: subj,
         date: isoDate,
-        startTime: formatUntisTimeToStr(sTime),
-        endTime: formatUntisTimeToStr(eTime),
+        startTime: sTimeStr,
+        endTime: eTimeStr,
         room: exRoom,
         teacher: exTeacher,
         topic: topicName,
@@ -1600,17 +1704,6 @@ async function performWebUntisSync(userOverride, passOverride) {
       });
     });
 
-    // Es werden AUSSCHLIESSLICH echte WebUntis-Prüfungen gespeichert (keine synthetischen Standarddaten!)
-    if (newExams.length > 0 || !appData.exams || appData.exams.length === 0) {
-      appData.exams = newExams;
-    } else {
-      newExams.forEach(ne => {
-        if (!appData.exams.some(ex => ex.id === ne.id || (ex.date === ne.date && ex.startTime === ne.startTime && ex.subject === ne.subject))) {
-          appData.exams.push(ne);
-        }
-      });
-    }
-
     // 11. Schulferien und Termine parsen (STRIKT NUR AKTUELLES SCHULJAHR 2026/2027!)
     if (holidaysRes && holidaysRes.result && Array.isArray(holidaysRes.result)) {
       holidaysRes.result.forEach(h => {
@@ -1707,6 +1800,35 @@ async function performWebUntisSync(userOverride, passOverride) {
 
     appData.holidays = newHolidays;
 
+    // Prüfungen aus Terminen & Feiertagen ergänzen
+    newHolidays.forEach(h => {
+      if (h.type === 'exam') {
+        addUniqueExam({
+          id: `untis-exam-hol-${h.id}`,
+          subject: h.name || 'Prüfung',
+          date: h.startDate,
+          startTime: '08:00',
+          endTime: '13:00',
+          room: 'Laut Schulaushang',
+          teacher: 'Prüfungskommission',
+          topic: h.longName || h.name || 'Prüfung / Klausurtag',
+          type: 'exam',
+          completed: false
+        });
+      }
+    });
+
+    // Es werden AUSSCHLIESSLICH echte WebUntis-Prüfungen gespeichert (keine synthetischen Standarddaten!)
+    if (newExams.length > 0 || !appData.exams || appData.exams.length === 0) {
+      appData.exams = newExams;
+    } else {
+      newExams.forEach(ne => {
+        if (!appData.exams.some(ex => ex.id === ne.id || (ex.date === ne.date && ex.startTime === ne.startTime && ex.subject === ne.subject))) {
+          appData.exams.push(ne);
+        }
+      });
+    }
+
     // 12. Hausaufgaben parsen & zusammenführen
     const preservedCompletedMap = {};
     if (appData.homework && Array.isArray(appData.homework)) {
@@ -1730,43 +1852,80 @@ async function performWebUntisSync(userOverride, passOverride) {
     // A. JSON-RPC Hausaufgaben (getHomeWork2017 / getHomeWorks)
     if (homeworkResponses && Array.isArray(homeworkResponses)) {
       homeworkResponses.forEach(res => {
-        if (!res || !res.result) return;
+        if (!res) return;
+        const resObj = res.result || res;
+        if (!resObj) return;
 
-        // Lessons-Lookup Map aufbauen, falls WebUntis Fächer/Lehrer in lessons liefert
+        // Lessons-Lookup Map aufbauen
         const lessonsMap = {};
-        if (res.result.lessons && Array.isArray(res.result.lessons)) {
-          res.result.lessons.forEach(l => {
+        if (resObj.lessonsById && typeof resObj.lessonsById === 'object') {
+          Object.keys(resObj.lessonsById).forEach(lId => {
+            lessonsMap[lId] = resObj.lessonsById[lId];
+          });
+        }
+        if (resObj.lessons && Array.isArray(resObj.lessons)) {
+          resObj.lessons.forEach(l => {
             if (l && l.id !== undefined) lessonsMap[l.id] = l;
           });
         }
 
-        const rawList = Array.isArray(res.result) ? res.result : (res.result.homeworks || res.result.records || res.result.data || []);
+        // homeWorks (Großes W!), homeworks, records, data, oder direkt Array
+        const rawList = Array.isArray(resObj)
+          ? resObj
+          : (resObj.homeWorks || resObj.homeworks || resObj.records || resObj.data || []);
+
+        if (!Array.isArray(rawList)) return;
+
         rawList.forEach((hw, idx) => {
           if (!hw) return;
-          const rawDate = hw.dueDate || hw.endDate || hw.date || hw.lessonDate;
+          // In WebUntis Mobile ist endDate das Fälligkeitsdatum!
+          const rawDate = hw.endDate || hw.dueDate || hw.date || hw.lessonDate || hw.startDate;
           let dueStr = '';
           if (rawDate) {
-            const dStr = String(rawDate).replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
-            if (dStr.length === 8) dueStr = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
+            dueStr = normalizeToIsoDate(rawDate);
           }
 
           const lInfo = hw.lessonId ? lessonsMap[hw.lessonId] : null;
           let subj = '';
-          if (hw.subject && subjectsMap[hw.subject]) subj = subjectsMap[hw.subject];
-          else if (hw.subjectId && subjectsMap[hw.subjectId]) subj = subjectsMap[hw.subjectId];
-          else if (typeof hw.subject === 'string' && hw.subject.trim()) subj = hw.subject.trim();
-          else if (hw.subject && typeof hw.subject === 'object') subj = hw.subject.name || hw.subject.longName || '';
-          else if (lInfo && lInfo.subject && subjectsMap[lInfo.subject]) subj = subjectsMap[lInfo.subject];
-          else if (lInfo && lInfo.subject && typeof lInfo.subject === 'string') subj = lInfo.subject;
-          else if (hw.lesson && hw.lesson.subject) subj = typeof hw.lesson.subject === 'object' ? (hw.lesson.subject.name || '') : hw.lesson.subject;
-
+          if (lInfo) {
+            const sId = lInfo.subjectId || lInfo.subject;
+            if (sId && subjectsMap[sId]) subj = subjectsMap[sId];
+            else if (typeof sId === 'string') subj = sId;
+            else if (sId && typeof sId === 'object') subj = sId.name || sId.longName || '';
+          }
+          if (!subj && hw.subject) {
+            if (subjectsMap[hw.subject]) subj = subjectsMap[hw.subject];
+            else if (typeof hw.subject === 'string') subj = hw.subject;
+            else if (typeof hw.subject === 'object') subj = hw.subject.name || hw.subject.longName || '';
+          }
+          if (!subj && hw.subjectId && subjectsMap[hw.subjectId]) {
+            subj = subjectsMap[hw.subjectId];
+          }
+          if (!subj && hw.lesson && hw.lesson.subject) {
+            subj = typeof hw.lesson.subject === 'object' ? (hw.lesson.subject.name || hw.lesson.subject.longName || '') : hw.lesson.subject;
+          }
           if (!subj) subj = 'Hausaufgabe';
 
           let teach = '';
-          const tId = hw.teacher || hw.teacherId || (lInfo && lInfo.teacher) || (hw.lesson && hw.lesson.teacher);
-          if (tId && teachersMap[tId]) teach = teachersMap[tId];
-          else if (typeof tId === 'string' && tId.trim()) teach = tId.trim();
-          else if (tId && typeof tId === 'object') teach = tId.name || tId.longName || '';
+          if (lInfo) {
+            const tIds = lInfo.teacherIds || (lInfo.teacherId ? [lInfo.teacherId] : null) || (lInfo.teacher ? [lInfo.teacher] : null);
+            if (Array.isArray(tIds) && tIds.length > 0) {
+              const firstT = tIds[0];
+              if (teachersMap[firstT]) teach = teachersMap[firstT];
+              else if (typeof firstT === 'string') teach = firstT;
+            }
+          }
+          if (!teach && hw.teacher) {
+            if (teachersMap[hw.teacher]) teach = teachersMap[hw.teacher];
+            else if (typeof hw.teacher === 'string') teach = hw.teacher;
+            else if (typeof hw.teacher === 'object') teach = hw.teacher.name || hw.teacher.longName || '';
+          }
+          if (!teach && hw.teacherId && teachersMap[hw.teacherId]) {
+            teach = teachersMap[hw.teacherId];
+          }
+          if (!teach && hw.lesson && hw.lesson.teacher) {
+            teach = typeof hw.lesson.teacher === 'object' ? (hw.lesson.teacher.name || hw.lesson.teacher.longName || '') : hw.lesson.teacher;
+          }
           if (!teach) teach = 'Fachlehrkraft';
 
           const textContent = hw.text || hw.remark || hw.description || hw.content || hw.title || hw.note || '';
@@ -1793,20 +1952,20 @@ async function performWebUntisSync(userOverride, passOverride) {
       restHomeworkRes2,
       restHomeworkRes3,
       restAppDataRes && restAppDataRes.data ? restAppDataRes.data.homeworks : null,
+      restAppDataRes && restAppDataRes.data ? restAppDataRes.data.homeWorks : null,
       restAppDataRes && restAppDataRes.data ? restAppDataRes.data.tasks : null
     ];
 
     allRestHwLists.forEach(restRes => {
       if (!restRes) return;
-      const rawList = Array.isArray(restRes) ? restRes : (restRes.data || restRes.homeworks || restRes.records || []);
+      const rawList = Array.isArray(restRes) ? restRes : (restRes.data || restRes.homeWorks || restRes.homeworks || restRes.records || []);
       if (Array.isArray(rawList)) {
         rawList.forEach((hw, idx) => {
           if (!hw) return;
-          const rawDate = hw.dueDate || hw.endDate || hw.date || hw.lessonDate;
+          const rawDate = hw.endDate || hw.dueDate || hw.date || hw.lessonDate || hw.startDate;
           let dueStr = '';
           if (rawDate) {
-            const dStr = String(rawDate).replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
-            if (dStr.length === 8) dueStr = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
+            dueStr = normalizeToIsoDate(rawDate);
           }
           let subj = hw.subject || (hw.lesson && hw.lesson.subject) || 'Hausaufgabe';
           let teach = hw.teacher || (hw.lesson && hw.lesson.teacher) || 'Fachlehrkraft';

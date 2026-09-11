@@ -249,7 +249,7 @@ namespace BarrierefreierStundenplan
                 }
                 catch { }
             }
-            return "1.3.8";
+            return "1.3.9";
         }
 
         private static bool IsNewerVersion(string remote, string local)
