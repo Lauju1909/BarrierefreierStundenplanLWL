@@ -449,8 +449,120 @@ function exitApp() {
 }
 
 // =============================================================================
-// 6. WEBUNTIS JSON-RPC API CLIENT & SYNCHRONISATION
+// 6. WEBUNTIS TOTP GENERATOR & JSON-RPC API CLIENT
 // =============================================================================
+function base32Decode(str) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const clean = String(str || '').toUpperCase().replace(/[\s=]/g, '');
+  let bits = '';
+  for (let i = 0; i < clean.length; i++) {
+    const val = alphabet.indexOf(clean[i]);
+    if (val === -1) continue;
+    bits += val.toString(2).padStart(5, '0');
+  }
+  const bytes = [];
+  for (let i = 0; i + 8 <= bits.length; i += 8) {
+    bytes.push(parseInt(bits.substr(i, 8), 2));
+  }
+  return new Uint8Array(bytes);
+}
+
+function sha1(msgBytes) {
+  function rotl(n, s) { return (n << s) | (n >>> (32 - s)); }
+  const len = msgBytes.length;
+  const bitLen = len * 8;
+  const withPad = [];
+  for (let i = 0; i < len; i++) withPad.push(msgBytes[i]);
+  withPad.push(0x80);
+  while ((withPad.length % 64) !== 56) withPad.push(0);
+  withPad.push(0, 0, 0, 0);
+  withPad.push((bitLen >>> 24) & 0xff, (bitLen >>> 16) & 0xff, (bitLen >>> 8) & 0xff, bitLen & 0xff);
+
+  let H0 = 0x67452301, H1 = 0xEFCDAB89, H2 = 0x98BADCFE, H3 = 0x10325476, H4 = 0xC3D2E1F0;
+  const W = new Uint32Array(80);
+
+  for (let chunk = 0; chunk < withPad.length; chunk += 64) {
+    for (let i = 0; i < 16; i++) {
+      W[i] = (withPad[chunk + i * 4] << 24) |
+             (withPad[chunk + i * 4 + 1] << 16) |
+             (withPad[chunk + i * 4 + 2] << 8) |
+             (withPad[chunk + i * 4 + 3]);
+    }
+    for (let i = 16; i < 80; i++) {
+      W[i] = rotl(W[i - 3] ^ W[i - 8] ^ W[i - 14] ^ W[i - 16], 1);
+    }
+    let A = H0, B = H1, C = H2, D = H3, E = H4;
+    for (let i = 0; i < 80; i++) {
+      let f, k;
+      if (i < 20) { f = (B & C) | ((~B) & D); k = 0x5A827999; }
+      else if (i < 40) { f = B ^ C ^ D; k = 0x6ED9EBA1; }
+      else if (i < 60) { f = (B & C) | (B & D) | (C & D); k = 0x8F1BBCDC; }
+      else { f = B ^ C ^ D; k = 0xCA62C1D6; }
+      const temp = (rotl(A, 5) + f + E + k + W[i]) >>> 0;
+      E = D; D = C; C = rotl(B, 30) >>> 0; B = A; A = temp;
+    }
+    H0 = (H0 + A) >>> 0;
+    H1 = (H1 + B) >>> 0;
+    H2 = (H2 + C) >>> 0;
+    H3 = (H3 + D) >>> 0;
+    H4 = (H4 + E) >>> 0;
+  }
+  const res = new Uint8Array(20);
+  const words = [H0, H1, H2, H3, H4];
+  for (let i = 0; i < 5; i++) {
+    res[i * 4] = (words[i] >>> 24) & 0xff;
+    res[i * 4 + 1] = (words[i] >>> 16) & 0xff;
+    res[i * 4 + 2] = (words[i] >>> 8) & 0xff;
+    res[i * 4 + 3] = words[i] & 0xff;
+  }
+  return res;
+}
+
+function hmacSha1(keyBytes, msgBytes) {
+  let key = keyBytes;
+  if (key.length > 64) key = sha1(key);
+  const kPadInner = new Uint8Array(64);
+  const kPadOuter = new Uint8Array(64);
+  for (let i = 0; i < 64; i++) {
+    const k = i < key.length ? key[i] : 0;
+    kPadInner[i] = k ^ 0x36;
+    kPadOuter[i] = k ^ 0x5c;
+  }
+  const inner = new Uint8Array(kPadInner.length + msgBytes.length);
+  inner.set(kPadInner);
+  inner.set(msgBytes, kPadInner.length);
+  const innerHash = sha1(inner);
+
+  const outer = new Uint8Array(kPadOuter.length + innerHash.length);
+  outer.set(kPadOuter);
+  outer.set(innerHash, kPadOuter.length);
+  return sha1(outer);
+}
+
+function generateTotpCode(secretBase32, timestampMs) {
+  try {
+    if (!secretBase32) return 0;
+    const key = base32Decode(secretBase32);
+    if (!key || key.length === 0) return 0;
+    const step = Math.floor((timestampMs / 1000) / 30);
+    const msg = new Uint8Array(8);
+    let s = step;
+    for (let i = 7; i >= 0; i--) {
+      msg[i] = s & 0xff;
+      s = Math.floor(s / 256);
+    }
+    const hash = hmacSha1(key, msg);
+    const offset = hash[hash.length - 1] & 0x0f;
+    const binary = ((hash[offset] & 0x7f) << 24) |
+                   ((hash[offset + 1] & 0xff) << 16) |
+                   ((hash[offset + 2] & 0xff) << 8) |
+                   (hash[offset + 3] & 0xff);
+    return binary % 1000000;
+  } catch (e) {
+    return 0;
+  }
+}
+
 async function callWebUntisApi(method, params = {}) {
   const payload = {
     id: 'req-' + Date.now(),
@@ -476,6 +588,10 @@ async function callWebUntisApi(method, params = {}) {
       };
       if (webuntisSessionId) {
         headers['X-JSESSIONID'] = webuntisSessionId;
+      }
+      if (appData.config.appSharedSecret) {
+        headers['X-Untis-Secret'] = appData.config.appSharedSecret;
+        headers['X-Untis-User'] = appData.config.username;
       }
 
       const res = await fetch(ep, {
@@ -518,6 +634,10 @@ async function callWebUntisRest(endpoint, token = null, method = 'GET', body = n
       };
       if (webuntisSessionId) {
         headers['X-JSESSIONID'] = webuntisSessionId;
+      }
+      if (appData.config.appSharedSecret) {
+        headers['X-Untis-Secret'] = appData.config.appSharedSecret;
+        headers['X-Untis-User'] = appData.config.username;
       }
       if (token && typeof token === 'string' && token.startsWith('eyJ')) {
         headers['Authorization'] = `Bearer ${token.trim()}`;
@@ -643,22 +763,66 @@ async function performWebUntisSync(userOverride, passOverride) {
     const { sessionId, personId, personType } = authRes.result;
     webuntisSessionId = sessionId;
 
-    // JWT Bearer Token für WebUntis REST- & App-APIs abrufen (Untis Mobile Auth)
-    let jwtToken = null;
-    try {
-      const schoolShort = appData.config.schoolShort || 'lwl-bk-soest';
-      const authMobileRes = await callWebUntisRest(
-        `/api/mobile/v2/${schoolShort}/authentication`,
-        null,
-        'POST',
-        { username: username, password: password }
-      );
-      if (authMobileRes && authMobileRes.jwt) {
-        jwtToken = String(authMobileRes.jwt).trim();
-      }
-    } catch (e) { }
+    // 1b. Untis Mobile App-Shared-Secret & OTP Authentifizierung (getAppSharedSecret + getAuthToken)
+    let appSharedSecret = appData.config.appSharedSecret || null;
+    if (!appSharedSecret) {
+      try {
+        const secRes = await callWebUntisRest('/jsonrpc_intern.do?m=getAppSharedSecret', null, 'POST', {
+          id: 'sec-' + Date.now(),
+          jsonrpc: '2.0',
+          method: 'getAppSharedSecret',
+          params: [{ userName: username, password: password, token: '' }]
+        });
+        if (secRes && secRes.result && typeof secRes.result === 'string') {
+          appSharedSecret = secRes.result.trim();
+          appData.config.appSharedSecret = appSharedSecret;
+          saveAppData();
+        }
+      } catch (e) { }
+    }
 
-    // Fallback falls Mobile Auth nicht verfügbar war
+    let nowClientTime = Date.now();
+    let curOtp = appSharedSecret ? generateTotpCode(appSharedSecret, nowClientTime) : 0;
+
+    // JWT Bearer Token für WebUntis REST- & App-APIs abrufen (getAuthToken mit TOTP)
+    let jwtToken = null;
+    if (appSharedSecret && curOtp) {
+      try {
+        const tokRes = await callWebUntisRest('/jsonrpc_intern.do?m=getAuthToken', null, 'POST', {
+          id: 'tok-' + Date.now(),
+          jsonrpc: '2.0',
+          method: 'getAuthToken',
+          params: [{
+            auth: {
+              clientTime: nowClientTime,
+              otp: curOtp,
+              user: username
+            }
+          }]
+        });
+        if (tokRes && tokRes.result && tokRes.result.token) {
+          jwtToken = tokRes.result.token.trim();
+        }
+      } catch (e) { }
+    }
+
+    // Fallback 1: Mobile Auth v2 Endpoint
+    if (!jwtToken) {
+      try {
+        const schoolShort = appData.config.schoolShort || 'lwl-bk-soest';
+        const authMobileRes = await callWebUntisRest(
+          `/api/mobile/v2/${schoolShort}/authentication`,
+          null,
+          'POST',
+          { username: username, password: password }
+        );
+        if (authMobileRes && authMobileRes.jwt) {
+          jwtToken = String(authMobileRes.jwt).trim();
+        }
+      } catch (e) { }
+    }
+
+    // Fallback 2: /api/token/new
     if (!jwtToken) {
       try {
         const tokenRes = await callWebUntisRest('/api/token/new');
@@ -956,36 +1120,42 @@ async function performWebUntisSync(userOverride, passOverride) {
     examCalls.push(callWebUntisApi('getStudentExams', { id: personId, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
     examCalls.push(callWebUntisApi('getStudentExamList', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
 
-    // getExams2017 in Intervallen für alle erkannten Schüler & Klassen (Untis Mobile Format)
+    // getExams2017 in Intervallen für alle erkannten Schüler & Klassen (Untis Mobile Format mit OTP)
     dateWindows.forEach(win => {
+      const authObj = appSharedSecret ? {
+        clientTime: Date.now(),
+        otp: generateTotpCode(appSharedSecret, Date.now()),
+        user: username
+      } : null;
+
       detectedStudentIds.forEach(sId => {
-        examCalls.push(callWebUntisApi('getExams2017', [{ id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso }]).catch(() => ({})));
-        examCalls.push(callWebUntisApi('getExams2017', [{ id: sId, type: 5, startDate: win.startNum, endDate: win.endNum }]).catch(() => ({})));
-        examCalls.push(callWebUntisApi('getExams2017', { id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso }).catch(() => ({})));
-        examCalls.push(callWebUntisApi('getExams2017', { id: sId, type: 5, startDate: win.startNum, endDate: win.endNum }).catch(() => ({})));
+        examCalls.push(callWebUntisApi('getExams2017', [{ id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
+        examCalls.push(callWebUntisApi('getExams2017', [{ id: sId, type: 5, startDate: win.startNum, endDate: win.endNum, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
+        examCalls.push(callWebUntisApi('getExams2017', { id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
+        examCalls.push(callWebUntisApi('getExams2017', { id: sId, type: 5, startDate: win.startNum, endDate: win.endNum, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
         examCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getExams2017', jwtToken, 'POST', {
           id: 'ex-' + Date.now(),
           jsonrpc: '2.0',
           method: 'getExams2017',
-          params: [{ id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso }]
+          params: [{ id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }]
         }).catch(() => ({})));
       });
 
       detectedKlasseIds.forEach(kId => {
-        examCalls.push(callWebUntisApi('getExams2017', [{ id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso }]).catch(() => ({})));
-        examCalls.push(callWebUntisApi('getExams2017', [{ id: kId, type: 1, startDate: win.startNum, endDate: win.endNum }]).catch(() => ({})));
-        examCalls.push(callWebUntisApi('getExams2017', { id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso }).catch(() => ({})));
-        examCalls.push(callWebUntisApi('getExams2017', { id: kId, type: 1, startDate: win.startNum, endDate: win.endNum }).catch(() => ({})));
+        examCalls.push(callWebUntisApi('getExams2017', [{ id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
+        examCalls.push(callWebUntisApi('getExams2017', [{ id: kId, type: 1, startDate: win.startNum, endDate: win.endNum, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
+        examCalls.push(callWebUntisApi('getExams2017', { id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
+        examCalls.push(callWebUntisApi('getExams2017', { id: kId, type: 1, startDate: win.startNum, endDate: win.endNum, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
         examCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getExams2017', jwtToken, 'POST', {
           id: 'ex-' + Date.now(),
           jsonrpc: '2.0',
           method: 'getExams2017',
-          params: [{ id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso }]
+          params: [{ id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }]
         }).catch(() => ({})));
       });
 
-      examCalls.push(callWebUntisApi('getExams2017', [{ startDate: win.startIso, endDate: win.endIso }]).catch(() => ({})));
-      examCalls.push(callWebUntisApi('getExams2017', { startDate: win.startIso, endDate: win.endIso }).catch(() => ({})));
+      examCalls.push(callWebUntisApi('getExams2017', [{ startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
+      examCalls.push(callWebUntisApi('getExams2017', { startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
     });
 
     // 6b. Klassenbuch-Termine & Ereignisse in 30-Tage-Fenstern
@@ -1001,37 +1171,43 @@ async function performWebUntisSync(userOverride, passOverride) {
       });
     });
 
-    // 6c. Hausaufgaben-Abfragen (getHomeWork2017 für alle Schüler & Klassen in allen Intervallen)
+    // 6c. Hausaufgaben-Abfragen (getHomeWork2017 für alle Schüler & Klassen mit OTP)
     const homeworkCalls = [];
     dateWindows.forEach(win => {
+      const authObj = appSharedSecret ? {
+        clientTime: Date.now(),
+        otp: generateTotpCode(appSharedSecret, Date.now()),
+        user: username
+      } : null;
+
       detectedStudentIds.forEach(sId => {
-        homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso }]).catch(() => ({})));
-        homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ id: sId, type: 5, startDate: win.startNum, endDate: win.endNum }]).catch(() => ({})));
-        homeworkCalls.push(callWebUntisApi('getHomeWork2017', { id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso }).catch(() => ({})));
-        homeworkCalls.push(callWebUntisApi('getHomeWork2017', { id: sId, type: 5, startDate: win.startNum, endDate: win.endNum }).catch(() => ({})));
+        homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
+        homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ id: sId, type: 5, startDate: win.startNum, endDate: win.endNum, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
+        homeworkCalls.push(callWebUntisApi('getHomeWork2017', { id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
+        homeworkCalls.push(callWebUntisApi('getHomeWork2017', { id: sId, type: 5, startDate: win.startNum, endDate: win.endNum, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
         homeworkCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getHomeWork2017', jwtToken, 'POST', {
           id: 'hw-' + Date.now(),
           jsonrpc: '2.0',
           method: 'getHomeWork2017',
-          params: [{ id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso }]
+          params: [{ id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }]
         }).catch(() => ({})));
       });
 
       detectedKlasseIds.forEach(kId => {
-        homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso }]).catch(() => ({})));
-        homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ id: kId, type: 1, startDate: win.startNum, endDate: win.endNum }]).catch(() => ({})));
-        homeworkCalls.push(callWebUntisApi('getHomeWork2017', { id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso }).catch(() => ({})));
-        homeworkCalls.push(callWebUntisApi('getHomeWork2017', { id: kId, type: 1, startDate: win.startNum, endDate: win.endNum }).catch(() => ({})));
+        homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
+        homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ id: kId, type: 1, startDate: win.startNum, endDate: win.endNum, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
+        homeworkCalls.push(callWebUntisApi('getHomeWork2017', { id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
+        homeworkCalls.push(callWebUntisApi('getHomeWork2017', { id: kId, type: 1, startDate: win.startNum, endDate: win.endNum, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
         homeworkCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getHomeWork2017', jwtToken, 'POST', {
           id: 'hw-' + Date.now(),
           jsonrpc: '2.0',
           method: 'getHomeWork2017',
-          params: [{ id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso }]
+          params: [{ id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }]
         }).catch(() => ({})));
       });
 
-      homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ startDate: win.startIso, endDate: win.endIso }]).catch(() => ({})));
-      homeworkCalls.push(callWebUntisApi('getHomeWork2017', { startDate: win.startIso, endDate: win.endIso }).catch(() => ({})));
+      homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
+      homeworkCalls.push(callWebUntisApi('getHomeWork2017', { startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
       homeworkCalls.push(callWebUntisApi('getHomeWorks', { startDate: win.startNum, endDate: win.endNum }).catch(() => ({})));
       homeworkCalls.push(callWebUntisApi('getHomeWorks', { startDate: win.startIso, endDate: win.endIso }).catch(() => ({})));
     });
@@ -1044,6 +1220,34 @@ async function performWebUntisSync(userOverride, passOverride) {
       callWebUntisApi('getTimetableWithAbsences', { id: personId, type: personType, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
       callWebUntisApi('getAbsenceReasons', {}).catch(() => ({}))
     ];
+
+    // 6e. Untis Mobile REST-Aufrufe (timetable/entries & calendar-entry/detail)
+    const restTtCalls = [];
+    const restCalDetailCalls = [];
+    const pTypes = 'NORMAL_TEACHING_PERIOD,ADDITIONAL_PERIOD,STAND_BY_PERIOD,OFFICE_HOUR,EXAM,BREAK_SUPERVISION,EVENT,MEETING,PLATFORM_CALENDAR_EVENT,PERSONAL_CALENDAR_EVENT';
+
+    if (jwtToken) {
+      dateWindows.forEach(win => {
+        detectedStudentIds.forEach(sId => {
+          restTtCalls.push(callWebUntisRest(
+            `/api/rest/view/v1/timetable/entries?start=${win.startIso}&end=${win.endIso}&format=1&resourceType=STUDENT&resources=${sId}&periodTypes=${pTypes}&layout=PRIORITY`,
+            jwtToken
+          ).catch(() => null));
+
+          restCalDetailCalls.push(callWebUntisRest(
+            `/api/rest/view/v2/calendar-entry/detail?elementType=5&elementId=${sId}&startDateTime=${win.startIso}T00:00:00&endDateTime=${win.endIso}T23:59:59`,
+            jwtToken
+          ).catch(() => null));
+        });
+
+        detectedKlasseIds.forEach(kId => {
+          restTtCalls.push(callWebUntisRest(
+            `/api/rest/view/v1/timetable/entries?start=${win.startIso}&end=${win.endIso}&format=1&resourceType=CLASS&resources=${kId}&periodTypes=${pTypes}&layout=PRIORITY`,
+            jwtToken
+          ).catch(() => null));
+        });
+      });
+    }
 
     // REST-Endpunkte für Prüfungen, Kalender-Events, Hausaufgaben, Fehlzeiten & App-Daten (Untis Mobile Backend)
     const restAppDataPromise = callWebUntisRest('/api/rest/view/v1/app/data', jwtToken).catch(() => null);
@@ -1073,7 +1277,9 @@ async function performWebUntisSync(userOverride, passOverride) {
       restHomeworkRes1,
       restHomeworkRes2,
       restHomeworkRes3,
-      restAbsencesRes
+      restAbsencesRes,
+      restCalDetailResults,
+      restTtResults
     ] = await Promise.all([
       Promise.all(examCalls),
       Promise.all(classregCalls),
@@ -1090,7 +1296,9 @@ async function performWebUntisSync(userOverride, passOverride) {
       restHomeworkPromise1,
       restHomeworkPromise2,
       restHomeworkPromise3,
-      restAbsencesPromise
+      restAbsencesPromise,
+      Promise.all(restCalDetailCalls),
+      Promise.all(restTtCalls)
     ]);
 
 
@@ -1621,7 +1829,85 @@ async function performWebUntisSync(userOverride, passOverride) {
     // C. Stundenplan-Prüfungen hinzufügen
     timetableExams.forEach(addUniqueExam);
 
-    // D. Termine & Prüfungen aus allen WebUntis REST-Endpunkten
+    // D. Prüfungen aus Untis Mobile calendar-entry/detail und timetable/entries
+    if (restCalDetailResults && Array.isArray(restCalDetailResults)) {
+      restCalDetailResults.forEach(r => {
+        if (!r || !r.calendarEntries || !Array.isArray(r.calendarEntries)) return;
+        r.calendarEntries.forEach((entry, eIdx) => {
+          const sRaw = entry.startDateTime || '';
+          const eRaw = entry.endDateTime || '';
+          const isoDate = normalizeToIsoDate(sRaw) || normalizeToIsoDate(eRaw);
+          if (!isoDate) return;
+
+          let sTimeStr = '07:45';
+          let eTimeStr = '09:15';
+          const sMatch = String(sRaw).match(/T(\d{2}:\d{2})/);
+          if (sMatch) sTimeStr = sMatch[1];
+          const eMatch = String(eRaw).match(/T(\d{2}:\d{2})/);
+          if (eMatch) eTimeStr = eMatch[1];
+
+          let subj = (entry.subject && (entry.subject.displayName || entry.subject.longName || entry.subject.name)) || 'Unterricht';
+          let teach = (entry.teachers && entry.teachers[0] && (entry.teachers[0].displayName || entry.teachers[0].longName || entry.teachers[0].name)) || 'Fachlehrkraft';
+          let rm = (entry.rooms && entry.rooms[0] && (entry.rooms[0].displayName || entry.rooms[0].name || entry.rooms[0].longName)) || 'Raum laut Plan';
+          if (isValidRoomCandidate(rm)) rm = formatRoomDisplay(rm, teach);
+
+          if (entry.exam || entry.type === 'EXAM') {
+            const exObj = entry.exam || {};
+            const exTitle = exObj.name || exObj.text || exObj.description || (entry.type === 'EXAM' ? `${subj} (Klausur)` : 'Klausur');
+            addUniqueExam({
+              id: `cal-detail-exam-${entry.id || eIdx}-${isoDate}`,
+              subject: String(subj),
+              date: isoDate,
+              startTime: sTimeStr,
+              endTime: eTimeStr,
+              room: rm,
+              teacher: String(teach),
+              topic: String(exTitle),
+              type: 'exam',
+              completed: false
+            });
+          }
+        });
+      });
+    }
+
+    if (restTtResults && Array.isArray(restTtResults)) {
+      restTtResults.forEach(tt => {
+        if (!tt || !tt.days || !Array.isArray(tt.days)) return;
+        tt.days.forEach(day => {
+          const dIso = normalizeToIsoDate(day.date);
+          if (!dIso || !day.gridEntries || !Array.isArray(day.gridEntries)) return;
+          day.gridEntries.forEach((ge, gIdx) => {
+            const isGeExam = ge.type === 'EXAM' ||
+                             (ge.name && /\b(klausur|klassenarbeit|arbeit|test|prüfung)\b/i.test(ge.name));
+            if (isGeExam) {
+              let sTimeStr = '07:45';
+              let eTimeStr = '09:15';
+              if (ge.duration) {
+                const sm = String(ge.duration.start || '').match(/T(\d{2}:\d{2})/);
+                if (sm) sTimeStr = sm[1];
+                const em = String(ge.duration.end || '').match(/T(\d{2}:\d{2})/);
+                if (em) eTimeStr = em[1];
+              }
+              addUniqueExam({
+                id: `rest-tt-exam-${(ge.ids && ge.ids[0]) || gIdx}-${dIso}`,
+                subject: ge.name || 'Klassenarbeit / Klausur',
+                date: dIso,
+                startTime: sTimeStr,
+                endTime: eTimeStr,
+                room: 'Raum laut Plan',
+                teacher: 'Fachlehrkraft',
+                topic: ge.name || 'Prüfung laut Untis Mobile',
+                type: 'exam',
+                completed: false
+              });
+            }
+          });
+        });
+      });
+    }
+
+    // E. Termine & Prüfungen aus allen weiteren WebUntis REST-Endpunkten
     const allRestSources = [
       restAppDataRes,
       restExamsRes1,
@@ -1986,7 +2272,43 @@ async function performWebUntisSync(userOverride, passOverride) {
       }
     });
 
-    // C. Hausaufgaben aus dem Stundenplan & Klassenbuch hinzufügen
+    // C. Untis Mobile REST calendar-entry/detail Hausaufgaben
+    if (restCalDetailResults && Array.isArray(restCalDetailResults)) {
+      restCalDetailResults.forEach((r, rIdx) => {
+        if (!r || !r.calendarEntries || !Array.isArray(r.calendarEntries)) return;
+        r.calendarEntries.forEach((entry, eIdx) => {
+          if (!entry) return;
+          const sRaw = entry.startDateTime || '';
+          const eRaw = entry.endDateTime || '';
+          const isoDate = normalizeToIsoDate(sRaw) || normalizeToIsoDate(eRaw);
+          let subj = (entry.subject && (entry.subject.displayName || entry.subject.longName || entry.subject.name)) || 'Hausaufgabe';
+          let teach = (entry.teachers && entry.teachers[0] && (entry.teachers[0].displayName || entry.teachers[0].longName || entry.teachers[0].name)) || 'Fachlehrkraft';
+
+          if (entry.homeworks && Array.isArray(entry.homeworks)) {
+            entry.homeworks.forEach((hw, hIdx) => {
+              if (!hw) return;
+              const hwText = hw.text || hw.remark || hw.description || hw.title || '';
+              if (hwText) {
+                const dueRaw = hw.dueDate || hw.endDate || hw.date || isoDate;
+                const dueIso = normalizeToIsoDate(dueRaw) || isoDate || 'Ohne Frist';
+                const hwId = String(hw.id || `cal-hw-${entry.id || eIdx}-${hIdx}-${dueIso}`);
+                const isComp = !!(preservedCompletedMap[hwId] || hw.completed === true);
+                addUniqueHomework({
+                  id: hwId,
+                  subject: String(subj),
+                  teacher: String(teach),
+                  dueDate: dueIso,
+                  text: String(hwText).trim(),
+                  completed: isComp
+                });
+              }
+            });
+          }
+        });
+      });
+    }
+
+    // D. Hausaufgaben aus dem Stundenplan & Klassenbuch hinzufügen
     timetableHomeworks.forEach(addUniqueHomework);
 
     if (newHomework.length > 0 || !appData.homework || appData.homework.length === 0) {
@@ -2108,6 +2430,33 @@ async function performWebUntisSync(userOverride, passOverride) {
         text: topicText
       });
     });
+
+    // Untis Mobile REST calendar-entry/detail Lehrstoff hinzufügen
+    if (restCalDetailResults && Array.isArray(restCalDetailResults)) {
+      restCalDetailResults.forEach((r, rIdx) => {
+        if (!r || !r.calendarEntries || !Array.isArray(r.calendarEntries)) return;
+        r.calendarEntries.forEach((entry, eIdx) => {
+          if (!entry || !entry.teachingContent) return;
+          const sRaw = entry.startDateTime || '';
+          const isoDate = normalizeToIsoDate(sRaw);
+          if (!isoDate) return;
+          const sMatch = String(sRaw).match(/T(\d{2}:\d{2})/);
+          const sTimeStr = sMatch ? (sMatch[1] + ' Uhr') : '1. Std.';
+          let subj = (entry.subject && (entry.subject.displayName || entry.subject.longName || entry.subject.name)) || 'Unterricht';
+          let teach = (entry.teachers && entry.teachers[0] && (entry.teachers[0].displayName || entry.teachers[0].longName || entry.teachers[0].name)) || 'Fachlehrkraft';
+
+          addUniqueClassbook({
+            id: `cal-detail-cb-${entry.id || eIdx}-${isoDate}`,
+            date: isoDate,
+            period: sTimeStr,
+            subject: String(subj),
+            teacher: String(teach),
+            topic: String(entry.teachingContent).trim(),
+            text: String(entry.teachingContent).trim()
+          });
+        });
+      });
+    }
 
     newClassbook.sort((a, b) => new Date(b.date) - new Date(a.date));
     appData.classbook = newClassbook;

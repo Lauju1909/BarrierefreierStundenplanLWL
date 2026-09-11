@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -249,7 +250,7 @@ namespace BarrierefreierStundenplan
                 }
                 catch { }
             }
-            return "1.3.9";
+            return "1.4.0";
         }
 
         private static bool IsNewerVersion(string remote, string local)
@@ -503,7 +504,21 @@ namespace BarrierefreierStundenplan
                 return;
             }
 
-            // 3b. Externe URLs sicher im Standard-Browser öffnen
+            // 3b. Untis TOTP Generator & Auth Helper API
+            if (rawUrl.StartsWith("/api/untis/otp"))
+            {
+                string secret = req.QueryString["secret"];
+                long ts = (long)(DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds;
+                int otp = GenerateTotp(secret, ts);
+                resp.StatusCode = 200;
+                resp.ContentType = "application/json; charset=utf-8";
+                byte[] okData = Encoding.UTF8.GetBytes(string.Format("{{\"otp\":{0},\"otpStr\":\"{1}\",\"clientTime\":{2}}}", otp, otp.ToString("D6"), ts));
+                resp.OutputStream.Write(okData, 0, okData.Length);
+                resp.Close();
+                return;
+            }
+
+            // 3c. Externe URLs sicher im Standard-Browser öffnen
             if (rawUrl.StartsWith("/api/open_url"))
             {
                 string url = req.QueryString["url"];
@@ -741,41 +756,128 @@ namespace BarrierefreierStundenplan
             return null;
         }
 
-        private static void ProxyWebUntis(HttpListenerRequest req, HttpListenerResponse resp)
+        private static readonly object _debugLock = new object();
+        private static void LogUntis(string msg)
         {
             try
             {
-                string schoolHeader = req.Headers["X-School"];
-                string serverHeader = req.Headers["X-Server"];
-                string sessionId = req.Headers["X-JSESSIONID"];
-                string customEndpoint = req.Headers["X-Endpoint"];
-
-                string srv = !string.IsNullOrEmpty(serverHeader) ? serverHeader : "lwl-bk-soest.webuntis.com";
-                string sch = !string.IsNullOrEmpty(schoolHeader) ? schoolHeader : "lwl-bk-soest";
-
-                string targetUrl;
-                if (!string.IsNullOrEmpty(customEndpoint))
+                lock (_debugLock)
                 {
-                    string ep = customEndpoint.StartsWith("/") ? customEndpoint : "/" + customEndpoint;
-                    string queryChar = ep.Contains("?") ? "&" : "?";
-                    targetUrl = string.Format("https://{0}/WebUntis{1}{2}school={3}", srv, ep, queryChar, sch);
+                    string docDir = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                    string logFile = Path.Combine(docDir, "webuntis_debug.log");
+                    if (File.Exists(logFile) && new FileInfo(logFile).Length > 1024 * 1024)
+                    {
+                        try { File.Delete(logFile); } catch { }
+                    }
+                    File.AppendAllText(logFile, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + "] " + msg + "\r\n", Encoding.UTF8);
+                }
+            }
+            catch { }
+        }
+
+        public static int GenerateTotp(string secret, long timestampMs)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(secret)) return 0;
+                long step = (timestampMs / 1000) / 30;
+                byte[] key = Base32Decode(secret);
+                byte[] msg = BitConverter.GetBytes(step);
+                if (BitConverter.IsLittleEndian) Array.Reverse(msg);
+
+                using (HMACSHA1 hmac = new HMACSHA1(key))
+                {
+                    byte[] hash = hmac.ComputeHash(msg);
+                    int offset = hash[hash.Length - 1] & 0x0F;
+                    int binary = ((hash[offset] & 0x7F) << 24) |
+                                 ((hash[offset + 1] & 0xFF) << 16) |
+                                 ((hash[offset + 2] & 0xFF) << 8) |
+                                 (hash[offset + 3] & 0xFF);
+                    return binary % 1000000;
+                }
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        public static byte[] Base32Decode(string input)
+        {
+            if (string.IsNullOrEmpty(input)) return new byte[0];
+            input = input.Trim().TrimEnd('=').ToUpperInvariant();
+            const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+            int outputLen = input.Length * 5 / 8;
+            byte[] result = new byte[outputLen];
+            int curByte = 0, bitsLeft = 8;
+            int outIndex = 0;
+            for (int i = 0; i < input.Length; i++)
+            {
+                int val = alphabet.IndexOf(input[i]);
+                if (val < 0) continue;
+                if (bitsLeft > 5)
+                {
+                    curByte = (curByte << 5) | val;
+                    bitsLeft -= 5;
                 }
                 else
                 {
-                    if (!string.IsNullOrEmpty(sessionId))
-                    {
-                        targetUrl = string.Format("https://{0}/WebUntis/jsonrpc.do;jsessionid={1}?school={2}", srv, sessionId, sch);
-                    }
-                    else
-                    {
-                        targetUrl = string.Format("https://{0}/WebUntis/jsonrpc.do?school={1}", srv, sch);
-                    }
+                    int shift = 5 - bitsLeft;
+                    curByte = (curByte << bitsLeft) | (val >> shift);
+                    if (outIndex < outputLen) result[outIndex++] = (byte)curByte;
+                    curByte = val & ((1 << shift) - 1);
+                    bitsLeft = 8 - shift;
                 }
+            }
+            return result;
+        }
 
+        private static void ProxyWebUntis(HttpListenerRequest req, HttpListenerResponse resp)
+        {
+            string schoolHeader = req.Headers["X-School"];
+            string serverHeader = req.Headers["X-Server"];
+            string sessionId = req.Headers["X-JSESSIONID"];
+            string customEndpoint = req.Headers["X-Endpoint"];
+            string untisSecret = req.Headers["X-Untis-Secret"];
+            string untisUser = req.Headers["X-Untis-User"];
+
+            string srv = !string.IsNullOrEmpty(serverHeader) ? serverHeader : "lwl-bk-soest.webuntis.com";
+            string sch = !string.IsNullOrEmpty(schoolHeader) ? schoolHeader : "lwl-bk-soest";
+
+            string targetUrl;
+            if (!string.IsNullOrEmpty(customEndpoint))
+            {
+                string ep = customEndpoint.StartsWith("/") ? customEndpoint : "/" + customEndpoint;
+                if (ep.StartsWith("/WebUntis/", StringComparison.OrdinalIgnoreCase))
+                {
+                    ep = ep.Substring(9);
+                }
+                if (!ep.Contains("school="))
+                {
+                    string queryChar = ep.Contains("?") ? "&" : "?";
+                    ep = ep + queryChar + "school=" + sch;
+                }
+                targetUrl = string.Format("https://{0}/WebUntis{1}", srv, ep);
+            }
+            else
+            {
+                if (!string.IsNullOrEmpty(sessionId))
+                {
+                    targetUrl = string.Format("https://{0}/WebUntis/jsonrpc.do;jsessionid={1}?school={2}", srv, sessionId, sch);
+                }
+                else
+                {
+                    targetUrl = string.Format("https://{0}/WebUntis/jsonrpc.do?school={1}", srv, sch);
+                }
+            }
+
+            try
+            {
                 HttpWebRequest outReq = (HttpWebRequest)WebRequest.Create(targetUrl);
                 outReq.Method = req.HttpMethod;
-                outReq.Timeout = 15000;
+                outReq.Timeout = 20000;
                 outReq.UserAgent = "WebUntis/Mobile (Android; de)";
+                outReq.Accept = "application/json, text/plain, */*";
 
                 outReq.CookieContainer = new CookieContainer();
                 if (!string.IsNullOrEmpty(sessionId))
@@ -795,20 +897,49 @@ namespace BarrierefreierStundenplan
                     outReq.Headers["Authorization"] = authHeader;
                 }
 
-                if (req.HttpMethod == "POST")
+                byte[] postBytes = null;
+                if (req.HttpMethod == "POST" || req.HttpMethod == "PUT")
                 {
-                    outReq.ContentType = "application/json; charset=utf-8";
                     using (Stream inStream = req.InputStream)
+                    using (MemoryStream inMs = new MemoryStream())
+                    {
+                        inStream.CopyTo(inMs);
+                        postBytes = inMs.ToArray();
+                    }
+
+                    // Automatische Auth-Injektion für Untis Mobile JSON-RPC Calls falls X-Untis-Secret & X-Untis-User übergeben wurden
+                    if (!string.IsNullOrEmpty(untisSecret) && !string.IsNullOrEmpty(untisUser) && postBytes != null && postBytes.Length > 0)
+                    {
+                        try
+                        {
+                            string jsonStr = Encoding.UTF8.GetString(postBytes);
+                            if (jsonStr.Contains("\"method\"") && !jsonStr.Contains("\"auth\""))
+                            {
+                                long nowMs = (long)(DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds;
+                                int otpVal = GenerateTotp(untisSecret, nowMs);
+                                string authSnippet = string.Format("\"auth\":{{\"clientTime\":{0},\"otp\":{1},\"user\":\"{2}\"}}", nowMs, otpVal, EscapeJsonString(untisUser));
+
+                                if (Regex.IsMatch(jsonStr, "\"params\"\\s*:\\s*\\[\\s*\\{"))
+                                {
+                                    jsonStr = Regex.Replace(jsonStr, "(\"params\"\\s*:\\s*\\[\\s*\\{)", "$1" + authSnippet + ",");
+                                    postBytes = Encoding.UTF8.GetBytes(jsonStr);
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+
+                    outReq.ContentType = "application/json; charset=utf-8";
+                    outReq.ContentLength = postBytes.Length;
                     using (Stream outStream = outReq.GetRequestStream())
                     {
-                        byte[] buffer = new byte[4096];
-                        int read;
-                        while ((read = inStream.Read(buffer, 0, buffer.Length)) > 0)
-                        {
-                            outStream.Write(buffer, 0, read);
-                        }
+                        outStream.Write(postBytes, 0, postBytes.Length);
                     }
                 }
+
+                string reqPreview = postBytes != null ? Encoding.UTF8.GetString(postBytes, 0, Math.Min(300, postBytes.Length)) : "";
+                if (reqPreview.Contains("\"password\"")) reqPreview = Regex.Replace(reqPreview, "\"password\"\\s*:\\s*\"[^\"]+\"", "\"password\":\"***\"");
+                LogUntis(string.Format("REQ {0} {1} | Body: {2}", req.HttpMethod, targetUrl, reqPreview));
 
                 using (HttpWebResponse outResp = (HttpWebResponse)outReq.GetResponse())
                 using (Stream respStream = outResp.GetResponseStream())
@@ -825,6 +956,9 @@ namespace BarrierefreierStundenplan
                     {
                         resp.Headers["X-Set-Cookie"] = setCookie;
                     }
+
+                    string respPreview = Encoding.UTF8.GetString(data, 0, Math.Min(400, data.Length)).Replace("\r", " ").Replace("\n", " ");
+                    LogUntis(string.Format("RESP {0} ({1} bytes) {2}", (int)outResp.StatusCode, data.Length, respPreview));
 
                     resp.ContentLength64 = data.Length;
                     resp.OutputStream.Write(data, 0, data.Length);
@@ -845,6 +979,10 @@ namespace BarrierefreierStundenplan
                         resp.StatusCode = (int)errResp.StatusCode;
                         resp.ContentType = "application/json; charset=utf-8";
                         resp.ContentLength64 = data.Length;
+
+                        string errPreview = Encoding.UTF8.GetString(data, 0, Math.Min(400, data.Length)).Replace("\r", " ").Replace("\n", " ");
+                        LogUntis(string.Format("ERR RESP {0} {1}", (int)errResp.StatusCode, errPreview));
+
                         resp.OutputStream.Write(data, 0, data.Length);
                         resp.OutputStream.Flush();
                         resp.Close();
@@ -852,6 +990,7 @@ namespace BarrierefreierStundenplan
                     }
                 }
 
+                LogUntis(string.Format("ERR EXCEPTION: {0}", webEx.Message));
                 resp.StatusCode = 500;
                 byte[] err = Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"id\":\"err\",\"error\":{\"message\":\"" + webEx.Message.Replace("\"", "'") + "\",\"code\":-1}}");
                 resp.ContentType = "application/json; charset=utf-8";
@@ -860,6 +999,7 @@ namespace BarrierefreierStundenplan
             }
             catch (Exception ex)
             {
+                LogUntis(string.Format("GENERAL EXCEPTION: {0}", ex.Message));
                 resp.StatusCode = 500;
                 byte[] err = Encoding.UTF8.GetBytes("{\"jsonrpc\":\"2.0\",\"id\":\"err\",\"error\":{\"message\":\"" + ex.Message.Replace("\"", "'") + "\",\"code\":-1}}");
                 resp.ContentType = "application/json; charset=utf-8";
