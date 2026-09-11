@@ -70,7 +70,7 @@ let appData = {
   holidays: [...DEFAULT_NRW_HOLIDAYS_2026_2027],
   schoolYear: null,
   examFilter: 'all',
-  homeworkFilter: 'pending'
+  homeworkFilter: 'all'
 };
 
 let currentTab = 'overview';
@@ -100,15 +100,14 @@ function loadAppData() {
         holidays: (parsed.holidays && parsed.holidays.length > 0) ? parsed.holidays : [...DEFAULT_NRW_HOLIDAYS_2026_2027],
         schoolYear: parsed.schoolYear || null,
         examFilter: 'all',
-        homeworkFilter: parsed.homeworkFilter || 'pending'
+        homeworkFilter: parsed.homeworkFilter || 'all'
       };
 
-      // Gecachte synthetische Fake-Prüfungen aus früheren Versionen restlos entfernen
+      // Gecachte synthetische Fake-Prüfungen def-exam- aus früheren Versionen entfernen, aber ALLE echten Prüfungen beibehalten
       if (parsed.exams && Array.isArray(parsed.exams)) {
         appData.exams = parsed.exams.filter(ex => {
           if (!ex || !ex.id) return false;
           if (String(ex.id).startsWith('def-exam-')) return false;
-          if (ex.subject && /klausurphase|zentrale prüfung|mündliche prüfung/i.test(ex.subject)) return false;
           return true;
         });
       }
@@ -741,7 +740,7 @@ async function performWebUntisSync(userOverride, passOverride) {
         const activeSy = syRes.result.find(s => todayNum >= s.startDate && todayNum <= s.endDate)
           || syRes.result.find(s => s.endDate >= todayNum)
           || syRes.result[syRes.result.length - 1];
-        if (activeSy && activeSy.endDate >= 20260801) {
+        if (activeSy && activeSy.startDate && activeSy.endDate) {
           const sStr = String(activeSy.startDate);
           const eStr = String(activeSy.endDate);
           syRange = {
@@ -757,6 +756,10 @@ async function performWebUntisSync(userOverride, passOverride) {
       }
     } catch (e) { }
     appData.schoolYear = syRange;
+
+    // ISO-Datumsstrings für WebUntis REST- & Mobile-Abfragen (YYYY-MM-DD)
+    const sIsoStr = `${String(syRange.startDateNum).slice(0, 4)}-${String(syRange.startDateNum).slice(4, 6)}-${String(syRange.startDateNum).slice(6, 8)}`;
+    const eIsoStr = `${String(syRange.endDateNum).slice(0, 4)}-${String(syRange.endDateNum).slice(4, 6)}-${String(syRange.endDateNum).slice(6, 8)}`;
 
     // 6. 28-Tage-Sliding-Windows für den gesamten Schuljahres-Stundenplan (verhindert Überschreiten von WebUntis-Zeitraum-Limits)
     const dateWindows = [];
@@ -850,12 +853,22 @@ async function performWebUntisSync(userOverride, passOverride) {
       }
     });
 
-    // Spezifische Schülerprüfungs-Methoden & generelle Prüfungsabfragen
+    // Spezifische Schülerprüfungs-Methoden & generelle Prüfungsabfragen (alle Formate)
+    examCalls.push(callWebUntisApi('getExams', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
+    examCalls.push(callWebUntisApi('getExams', { startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})));
+    examCalls.push(callWebUntisApi('getExams', { id: personId, type: personType, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
+    examCalls.push(callWebUntisApi('getExams', { id: personId, type: 5, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
+    examCalls.push(callWebUntisApi('getExams', { studentId: personId, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
+    examCalls.push(callWebUntisApi('getExams', { id: personId, type: 'STUDENT', startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})));
+    examCalls.push(callWebUntisApi('getStudentExams', { id: personId, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
     examCalls.push(callWebUntisApi('getStudentExams', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
     examCalls.push(callWebUntisApi('getStudentExams', { startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})));
     examCalls.push(callWebUntisApi('getStudentExamList', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
-    examCalls.push(callWebUntisApi('getExams', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
-    examCalls.push(callWebUntisApi('getExams', { startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})));
+    if (detectedKlasseId) {
+      examCalls.push(callWebUntisApi('getExams', { id: detectedKlasseId, type: 1, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
+      examCalls.push(callWebUntisApi('getExams', { klasseId: detectedKlasseId, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
+      examCalls.push(callWebUntisApi('getExams', { id: detectedKlasseId, type: 'CLASS', startDate: sIsoStr, endDate: eIsoStr }).catch(() => ({})));
+    }
 
     // Klassenbuch-Termine & Ereignisse
     const classregCalls = [
@@ -993,6 +1006,35 @@ async function performWebUntisSync(userOverride, passOverride) {
       const typeVal = String(item.type || '').toLowerCase();
       const cellVal = String(item.cellType || '').toLowerCase();
 
+      // 1. Eingebettete Prüfungen in item.exams oder item.exam direkt auspacken!
+      if (item.exams && Array.isArray(item.exams) && item.exams.length > 0) {
+        item.exams.forEach((exObj, eIdx) => {
+          const rawD = exObj.date || exObj.examDate || exObj.startDate || item.date;
+          const dStrEx = String(rawD || '').replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
+          if (dStrEx.length === 8) {
+            const isoDateEx = `${dStrEx.slice(0, 4)}-${dStrEx.slice(4, 6)}-${dStrEx.slice(6, 8)}`;
+            let sEx = exObj.subject || subjName || 'Klausur';
+            if (typeof sEx === 'object') sEx = sEx.name || sEx.longName || 'Klausur';
+            let tEx = (exObj.teachers && exObj.teachers[0]) || exObj.teacher || (item.te && item.te[0] && (teachersMap[item.te[0].id] || item.te[0].name)) || 'Fachlehrkraft';
+            if (typeof tEx === 'object') tEx = tEx.name || tEx.longName || 'Fachlehrkraft';
+            let rEx = (exObj.rooms && exObj.rooms[0]) || exObj.room || (item.ro && item.ro[0] && extractRoomFromObj(item.ro[0])) || 'Raum laut Plan';
+            if (typeof rEx === 'object') rEx = rEx.name || rEx.longName || 'Raum laut Plan';
+            timetableExams.push({
+              id: `tt-emb-exam-${exObj.id || item.id || idx}-${eIdx}-${isoDateEx}`,
+              subject: String(sEx),
+              date: isoDateEx,
+              startTime: formatUntisTimeToStr(exObj.startTime || item.startTime || 745),
+              endTime: formatUntisTimeToStr(exObj.endTime || item.endTime || 915),
+              room: isValidRoomCandidate(rEx) ? formatRoomDisplay(rEx, tEx) : 'Raum laut Plan',
+              teacher: String(tEx),
+              topic: exObj.text || exObj.name || exObj.description || 'Klassenarbeit / Klausur laut WebUntis',
+              type: 'exam',
+              completed: false
+            });
+          }
+        });
+      }
+
       const notes = [
         item.substText,
         item.lstext,
@@ -1004,22 +1046,19 @@ async function performWebUntisSync(userOverride, passOverride) {
         item.activityType,
         item.code,
         subjName
-      ].filter(Boolean).join(' ');
+      ].filter(t => typeof t === 'string' && t.trim()).join(' ');
 
       const isExamCode = codeVal === 'exam' || codeVal === 'klausur' || codeVal === 'examination' ||
                          actVal === 'exam' || actVal === 'klausur' || actVal === 'examination' ||
                          typeVal === 'exam' || cellVal === 'exam' ||
-                         item.examId !== undefined || item.exam !== undefined || item.exams !== undefined || item.isExam === true;
+                         item.examId !== undefined || item.exam !== undefined || item.isExam === true;
 
-      const isExamText = /\b(klausur|klausuren|klausurblock|klassenarbeit|klassenarbeiten|prüfung|pruefung|prüfungen|pruefungen|arbeit|arbeiten|test|tests|leistungsnachweis|nachschreib|nachschreiber|nachhol|abschlussprüfung|abschlusspruefung|zentrale\s+prüfung|zentrale\s+pruefung|zk|zap|zp\s*10|facharbeit|kolloquium|präsentationsprüfung)\b|\b(ka\b|ka-|\(ka\)|1\.\s*ka|2\.\s*ka|3\.\s*ka|4\.\s*ka|klaus\.|kl\.)/i.test(notes) ||
+      const isExamText = /\b(klausur|klausuren|klausurblock|klausurtag|klausurtage|klassenarbeit|klassenarbeiten|prüfung|pruefung|prüfungen|pruefungen|arbeit|arbeiten|test|tests|leistungsnachweis|nachschreib|nachschreiber|nachhol|abschlussprüfung|abschlusspruefung|zentrale\s+prüfung|zentrale\s+pruefung|zk|zap|zp\s*10|facharbeit|kolloquium|präsentationsprüfung|kursarbeit|schulaufgabe|kurzarbeit)\b|\b(ka\b|ka-|\(ka\)|1\.\s*ka|2\.\s*ka|3\.\s*ka|4\.\s*ka|klaus\.|kl\.)/i.test(notes) ||
                          /\b(klassenarbeit|klausur|arbeit|test|prüfung|ka\b)/i.test(subjName);
 
       if (isExamCode || isExamText) {
-        const dStr = String(item.date);
+        const dStr = String(item.date || '').replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
         if (dStr.length === 8) {
-          const dateNum = parseInt(dStr);
-          if (dateNum < syRange.startDateNum || dateNum > syRange.endDateNum) return;
-
           const isoDate = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
           let subj = subjName || 'Klausur';
           if (/klassenarbeit/i.test(notes) && !/klassenarbeit/i.test(subj)) {
@@ -1036,7 +1075,7 @@ async function performWebUntisSync(userOverride, passOverride) {
           if (!isValidRoomCandidate(rm)) rm = 'Raum laut Plan';
           else rm = formatRoomDisplay(rm, teach);
 
-          const topicText = [item.substText, item.info, item.lstext, item.lessonText, item.text, subjName].filter(Boolean).join(' - ') || 'Klassenarbeit / Klausur laut WebUntis';
+          const topicText = [item.substText, item.info, item.lstext, item.lessonText, item.text, subjName].filter(t => typeof t === 'string' && t.trim()).join(' - ') || 'Klassenarbeit / Klausur laut WebUntis';
 
           timetableExams.push({
             id: `tt-exam-${item.id || dStr + '-' + (item.startTime || idx)}`,
@@ -1058,30 +1097,89 @@ async function performWebUntisSync(userOverride, passOverride) {
     function scanItemForHomework(item, idx) {
       if (!item) return;
       const subjName = (item.su && item.su[0]) ? (subjectsMap[item.su[0].id] || item.su[0].name || item.su[0].longname || '') : '';
-      const dStr = String(item.date);
+      const dStr = String(item.date || '').replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
       if (dStr.length !== 8) return;
       const isoDate = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
       const teach = (item.te && item.te[0]) ? (teachersMap[item.te[0].id] || item.te[0].name || 'Fachlehrkraft') : 'Fachlehrkraft';
 
-      const fullText = [item.homework, item.lstext, item.lessonText, item.info, item.substText, item.text].filter(Boolean).join(' ');
-      if (!fullText) return;
-
-      const isExam = /\b(klausur|klassenarbeit|prüfung|arbeit)\b/i.test(fullText);
-      const hwMatch = fullText.match(/\b(?:ha:|h\.a\.:|hausaufgabe:|hausaufgaben:|hausaufgabe|hausaufgaben|aufgabe:|aufgaben:|übung:|bis\s+nächste\s+woche|zu\s+erledigen:|erledigen\s+bis)\s*[:\-]?\s*(.+)/i);
-
-      if ((hwMatch || item.homework) && !isExam) {
-        const textContent = hwMatch ? hwMatch[1].trim() : String(item.homework || fullText).trim();
-        if (textContent.length > 2) {
+      // 1. item.homework direkt auswerten (String, Objekt oder Array)
+      if (item.homework) {
+        if (typeof item.homework === 'string' && item.homework.trim()) {
           timetableHomeworks.push({
             id: `tt-hw-${item.id || idx}-${isoDate}`,
             subject: subjName || 'Hausaufgabe',
             teacher: teach,
             dueDate: isoDate,
-            text: textContent,
+            text: item.homework.trim(),
             completed: false
           });
+        } else if (Array.isArray(item.homework)) {
+          item.homework.forEach((hwObj, hIdx) => {
+            if (typeof hwObj === 'string' && hwObj.trim()) {
+              timetableHomeworks.push({
+                id: `tt-hw-${item.id || idx}-${hIdx}-${isoDate}`,
+                subject: subjName || 'Hausaufgabe',
+                teacher: teach,
+                dueDate: isoDate,
+                text: hwObj.trim(),
+                completed: false
+              });
+            } else if (hwObj && typeof hwObj === 'object') {
+              const t = hwObj.text || hwObj.remark || hwObj.description || hwObj.title || '';
+              let d = hwObj.dueDate || hwObj.date || isoDate;
+              let dClean = String(d).replace(/[-T:\s].*$/, '').replace(/-/g, '').slice(0, 8);
+              let dIso = (dClean.length === 8) ? `${dClean.slice(0, 4)}-${dClean.slice(4, 6)}-${dClean.slice(6, 8)}` : isoDate;
+              if (t) {
+                timetableHomeworks.push({
+                  id: String(hwObj.id || `tt-hw-${item.id || idx}-${hIdx}-${dIso}`),
+                  subject: subjName || 'Hausaufgabe',
+                  teacher: teach,
+                  dueDate: dIso,
+                  text: String(t).trim(),
+                  completed: !!hwObj.completed
+                });
+              }
+            }
+          });
+        } else if (typeof item.homework === 'object') {
+          const t = item.homework.text || item.homework.remark || item.homework.description || item.homework.title || '';
+          let d = item.homework.dueDate || item.homework.date || isoDate;
+          let dClean = String(d).replace(/[-T:\s].*$/, '').replace(/-/g, '').slice(0, 8);
+          let dIso = (dClean.length === 8) ? `${dClean.slice(0, 4)}-${dClean.slice(4, 6)}-${dClean.slice(6, 8)}` : isoDate;
+          if (t) {
+            timetableHomeworks.push({
+              id: String(item.homework.id || `tt-hw-${item.id || idx}-${dIso}`),
+              subject: subjName || 'Hausaufgabe',
+              teacher: teach,
+              dueDate: dIso,
+              text: String(t).trim(),
+              completed: !!item.homework.completed
+            });
+          }
         }
       }
+
+      // 2. Texte in lstext, lessonText, substText, info scannen nach Hausaufgaben
+      const candidateTexts = [item.lstext, item.lessonText, item.info, item.substText, item.text].filter(t => typeof t === 'string' && t.trim());
+      candidateTexts.forEach((cText, cIdx) => {
+        // Nicht als Hausaufgabe einstufen, wenn es eine reine Klausurankündigung ist
+        if (/\b(klausur|klassenarbeit|klausuren|klassenarbeiten|nachschreibklausur)\b/i.test(cText)) return;
+
+        const hwMatch = cText.match(/\b(?:ha:|h\.a\.:|hausaufgabe:|hausaufgaben:|hausaufgabe|hausaufgaben|aufgabe:|aufgaben:|übung:|übungen:|zu\s+erledigen:|erledigen\s+bis|bearbeiten:|buch\s+s\.|s\.\s*\d+|ab\s+\d+|arbeitsblatt|vokabeln\s+lernen|lernen:|vorbereitung:)\s*[:\-]?\s*(.+)/i);
+        if (hwMatch) {
+          const hwContent = hwMatch[1] ? hwMatch[1].trim() : cText.trim();
+          if (hwContent.length > 2) {
+            timetableHomeworks.push({
+              id: `tt-text-hw-${item.id || idx}-${cIdx}-${isoDate}`,
+              subject: subjName || 'Hausaufgabe',
+              teacher: teach,
+              dueDate: isoDate,
+              text: hwContent,
+              completed: false
+            });
+          }
+        }
+      });
     }
 
     // Alle Stundenplanquellen für das gesamte Schuljahr sammeln
@@ -1208,28 +1306,30 @@ async function performWebUntisSync(userOverride, passOverride) {
     });
 
     rawExamsList.forEach((ex, idx) => {
+      if (!ex) return;
       // WICHTIG: WebUntis liefert ex.date ODER ex.examDate ODER ex.startDate
       const rawDate = ex.date || ex.examDate || ex.startDate;
       if (!rawDate) return;
-      const dStr = String(rawDate).trim();
+      const dStr = String(rawDate).replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
       if (dStr.length !== 8) return;
 
       const dateNum = parseInt(dStr);
-      if (dateNum < syRange.startDateNum || dateNum > syRange.endDateNum) return;
-
       const isoDate = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
       let subj = 'Klausur';
       if (ex.subject && subjectsMap[ex.subject]) subj = subjectsMap[ex.subject];
       else if (ex.subjectId && subjectsMap[ex.subjectId]) subj = subjectsMap[ex.subjectId];
       else if (typeof ex.subject === 'string' && ex.subject.trim()) subj = ex.subject.trim();
+      else if (ex.subject && typeof ex.subject === 'object') subj = ex.subject.name || ex.subject.longName || 'Klausur';
       else if (ex.name && !/^klausur/i.test(ex.name)) subj = ex.name;
 
       let exTeacher = 'Fachlehrkraft';
       const tId = (ex.teachers && Array.isArray(ex.teachers) && ex.teachers[0]) || ex.teacher || ex.teacherId;
       if (tId && teachersMap[tId]) {
         exTeacher = teachersMap[tId];
-      } else if (typeof ex.teacher === 'string' && ex.teacher.trim()) {
-        exTeacher = ex.teacher.trim();
+      } else if (typeof tId === 'string' && tId.trim()) {
+        exTeacher = tId.trim();
+      } else if (tId && typeof tId === 'object') {
+        exTeacher = tId.name || tId.longName || 'Fachlehrkraft';
       }
 
       let exRoom = 'Raum laut Plan';
@@ -1278,14 +1378,13 @@ async function performWebUntisSync(userOverride, passOverride) {
     });
 
     rawClassregList.forEach((evt, idx) => {
+      if (!evt) return;
       const rawDate = evt.date || evt.startDate;
       if (!rawDate) return;
-      const dStr = String(rawDate).trim();
+      const dStr = String(rawDate).replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
       if (dStr.length !== 8) return;
 
       const dateNum = parseInt(dStr);
-      if (dateNum < syRange.startDateNum || dateNum > syRange.endDateNum) return;
-
       const isoDate = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
       const catName = (evt.categoryId && classregCatsMap[evt.categoryId]) || evt.category || '';
       const reason = evt.reason || evt.text || evt.description || evt.name || '';
@@ -1410,7 +1509,15 @@ async function performWebUntisSync(userOverride, passOverride) {
     }
 
     // Es werden AUSSCHLIESSLICH echte WebUntis-Prüfungen gespeichert (keine synthetischen Standarddaten!)
-    appData.exams = newExams;
+    if (newExams.length > 0 || !appData.exams || appData.exams.length === 0) {
+      appData.exams = newExams;
+    } else {
+      newExams.forEach(ne => {
+        if (!appData.exams.some(ex => ex.id === ne.id || (ex.date === ne.date && ex.startTime === ne.startTime && ex.subject === ne.subject))) {
+          appData.exams.push(ne);
+        }
+      });
+    }
 
     // 11. Schulferien und Termine parsen (STRIKT NUR AKTUELLES SCHULJAHR 2026/2027!)
     if (holidaysRes && holidaysRes.result && Array.isArray(holidaysRes.result)) {
@@ -1532,34 +1639,56 @@ async function performWebUntisSync(userOverride, passOverride) {
     if (homeworkResponses && Array.isArray(homeworkResponses)) {
       homeworkResponses.forEach(res => {
         if (!res || !res.result) return;
-        const rawList = Array.isArray(res.result) ? res.result : (res.result.homeworks || res.result.records || []);
+
+        // Lessons-Lookup Map aufbauen, falls WebUntis Fächer/Lehrer in lessons liefert
+        const lessonsMap = {};
+        if (res.result.lessons && Array.isArray(res.result.lessons)) {
+          res.result.lessons.forEach(l => {
+            if (l && l.id !== undefined) lessonsMap[l.id] = l;
+          });
+        }
+
+        const rawList = Array.isArray(res.result) ? res.result : (res.result.homeworks || res.result.records || res.result.data || []);
         rawList.forEach((hw, idx) => {
-          const rawDate = hw.dueDate || hw.endDate || hw.date;
+          if (!hw) return;
+          const rawDate = hw.dueDate || hw.endDate || hw.date || hw.lessonDate;
           let dueStr = '';
           if (rawDate) {
-            const dStr = String(rawDate).replace(/-/g, '').trim();
-            if (dStr.length >= 8) dueStr = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
+            const dStr = String(rawDate).replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
+            if (dStr.length === 8) dueStr = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
           }
-          let subj = 'Hausaufgabe';
+
+          const lInfo = hw.lessonId ? lessonsMap[hw.lessonId] : null;
+          let subj = '';
           if (hw.subject && subjectsMap[hw.subject]) subj = subjectsMap[hw.subject];
           else if (hw.subjectId && subjectsMap[hw.subjectId]) subj = subjectsMap[hw.subjectId];
           else if (typeof hw.subject === 'string' && hw.subject.trim()) subj = hw.subject.trim();
-          else if (hw.lesson && hw.lesson.subject) subj = hw.lesson.subject;
+          else if (hw.subject && typeof hw.subject === 'object') subj = hw.subject.name || hw.subject.longName || '';
+          else if (lInfo && lInfo.subject && subjectsMap[lInfo.subject]) subj = subjectsMap[lInfo.subject];
+          else if (lInfo && lInfo.subject && typeof lInfo.subject === 'string') subj = lInfo.subject;
+          else if (hw.lesson && hw.lesson.subject) subj = typeof hw.lesson.subject === 'object' ? (hw.lesson.subject.name || '') : hw.lesson.subject;
 
-          let teach = 'Fachlehrkraft';
-          const tId = hw.teacher || hw.teacherId || (hw.lesson && hw.lesson.teacher);
+          if (!subj) subj = 'Hausaufgabe';
+
+          let teach = '';
+          const tId = hw.teacher || hw.teacherId || (lInfo && lInfo.teacher) || (hw.lesson && hw.lesson.teacher);
           if (tId && teachersMap[tId]) teach = teachersMap[tId];
           else if (typeof tId === 'string' && tId.trim()) teach = tId.trim();
+          else if (tId && typeof tId === 'object') teach = tId.name || tId.longName || '';
+          if (!teach) teach = 'Fachlehrkraft';
+
+          const textContent = hw.text || hw.remark || hw.description || hw.content || hw.title || hw.note || '';
+          if (!textContent) return;
 
           const hwId = String(hw.id || `hw-${idx}-${dueStr}`);
           const isComp = !!(preservedCompletedMap[hwId] || hw.completed === true);
 
           addUniqueHomework({
             id: hwId,
-            subject: subj,
-            teacher: teach,
+            subject: String(subj),
+            teacher: String(teach),
             dueDate: dueStr || 'Ohne Frist',
-            text: hw.text || hw.remark || hw.description || 'Hausaufgabe laut WebUntis',
+            text: String(textContent).trim(),
             completed: isComp
           });
         });
@@ -1580,11 +1709,12 @@ async function performWebUntisSync(userOverride, passOverride) {
       const rawList = Array.isArray(restRes) ? restRes : (restRes.data || restRes.homeworks || restRes.records || []);
       if (Array.isArray(rawList)) {
         rawList.forEach((hw, idx) => {
+          if (!hw) return;
           const rawDate = hw.dueDate || hw.endDate || hw.date || hw.lessonDate;
           let dueStr = '';
           if (rawDate) {
-            const dStr = String(rawDate).replace(/-/g, '').trim();
-            if (dStr.length >= 8) dueStr = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
+            const dStr = String(rawDate).replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
+            if (dStr.length === 8) dueStr = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
           }
           let subj = hw.subject || (hw.lesson && hw.lesson.subject) || 'Hausaufgabe';
           let teach = hw.teacher || (hw.lesson && hw.lesson.teacher) || 'Fachlehrkraft';
@@ -1597,8 +1727,8 @@ async function performWebUntisSync(userOverride, passOverride) {
             subject: typeof subj === 'object' ? (subj.name || subj.longName || 'Hausaufgabe') : String(subj),
             teacher: typeof teach === 'object' ? (teach.name || teach.longName || 'Fachlehrkraft') : String(teach),
             dueDate: dueStr || 'Ohne Frist',
-            text: hwText,
-            description: hwText,
+            text: String(hwText).trim(),
+            description: String(hwText).trim(),
             completed: isComp
           });
         });
@@ -1608,7 +1738,15 @@ async function performWebUntisSync(userOverride, passOverride) {
     // C. Hausaufgaben aus dem Stundenplan & Klassenbuch hinzufügen
     timetableHomeworks.forEach(addUniqueHomework);
 
-    appData.homework = newHomework;
+    if (newHomework.length > 0 || !appData.homework || appData.homework.length === 0) {
+      appData.homework = newHomework;
+    } else {
+      newHomework.forEach(nh => {
+        if (!appData.homework.some(h => h.id === nh.id || (h.dueDate === nh.dueDate && h.text === nh.text))) {
+          appData.homework.push(nh);
+        }
+      });
+    }
 
     // 13. Fehlzeiten parsen & aggregieren
     const newAbsences = [];
@@ -2540,8 +2678,30 @@ function renderHomework() {
 
   let html = '';
 
+  // Wenn keine offenen Aufgaben vorliegen, aber bereits erledigte existieren
+  if (items.length === 0 && filter === 'pending' && allHw.length > 0) {
+    html += `
+      <div class="status-box" style="padding: 24px; text-align: center; margin-bottom: 20px;">
+        <span class="emoji-icon" style="font-size: 36px;" aria-hidden="true">🎉</span>
+        <p style="font-size: var(--font-size-lg); font-weight: bold; margin-top: 8px;">Keine offenen Hausaufgaben</p>
+        <p class="field-hint">Alle anstehenden Hausaufgaben sind als erledigt markiert! Du hast insgesamt ${allHw.length} Aufgabe(n) in WebUntis.</p>
+        <button type="button" class="btn btn-secondary" style="margin-top: 12px;" onclick="setHomeworkFilter('all')">
+          Alle Hausaufgaben anzeigen (${allHw.length})
+        </button>
+      </div>`;
+  }
+
   // Hausaufgaben
   if (items.length > 0) {
+    // Offene Aufgaben vor erledigte Aufgaben sortieren
+    items.sort((a, b) => {
+      if (a.completed !== b.completed) return a.completed ? 1 : -1;
+      if (a.dueDate && b.dueDate && a.dueDate !== 'Ohne Frist' && b.dueDate !== 'Ohne Frist') {
+        return new Date(a.dueDate) - new Date(b.dueDate);
+      }
+      return 0;
+    });
+
     html += `<h3 class="section-subheading">Hausaufgaben (${items.length})</h3>`;
     items.forEach(hw => {
       const rawDue = hw.dueDate;
