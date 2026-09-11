@@ -1,11 +1,10 @@
 {
-  "version": "1.3.5",
+  "version": "1.3.6",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-11",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
-    "Rotierende Werbebanner am Seitenende mit automatischer Rotation, Zähler und Steuerung (WCAG 2.2 AAA konform)",
-    "Umfangreiche Anzeigenverwaltung in Reiter 5 mit eigenem Affiliate-/Partnerlink-Support (Geld verdienen)",
+    "Komplett werbefrei: Alle Werbeeinstellungen, Banner und Sponsoren-Funktionen restlos entfernt",
     "Klassenarbeiten und Klausuren aus dem gesamten Schuljahr werden strikt in Reiter 2 als Prüfungen angezeigt",
     "Automatische Erkennung von Hausaufgaben aus Stundenplan, Klassenbuch (lstext) und allen WebUntis-Endpunkten",
     "Erweiterte getHomeWork2017 und REST-API-Abfragen mit mehreren Parametervarianten",

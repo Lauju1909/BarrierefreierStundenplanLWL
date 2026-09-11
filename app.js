@@ -8,33 +8,6 @@
 // =============================================================================
 // 1. STANDARD-DATEN & VORKONFIGURATION (LWL-BERUFSKOLLEG SOEST)
 // =============================================================================
-const DEFAULT_SPONSORS = [
-  {
-    id: 'sp-1',
-    title: '📚 Schulbedarf, Fachbücher & Schreibwaren (Gratisversand)',
-    desc: 'Bücher, Hefte, Ordner und Taschenrechner günstig bestellen und bequem liefern lassen.',
-    url: 'https://www.amazon.de/s?k=schulbedarf+fachb%C3%BCcher',
-    badge: '💡 Empfehlung',
-    active: true
-  },
-  {
-    id: 'sp-2',
-    title: '👁️ Barrierefreie Hilfsmittel & Großdruck für Schule & Beruf',
-    desc: 'Spezialtastaturen, Lupen, Beleuchtung und ergonomische Hilfsmittel für Sehbehinderte.',
-    url: 'https://www.amazon.de/s?k=barrierefreie+hilfsmittel+sehen',
-    badge: '⭐ Hilfsmittel',
-    active: true
-  },
-  {
-    id: 'sp-3',
-    title: '💻 Laptops, Tablets & Zubehör mit Bildungsrabatt',
-    desc: 'Günstige Arbeitsgeräte, Bildschirme und Software für Berufskollegs und Ausbildung.',
-    url: 'https://www.amazon.de/s?k=laptop+tablet+schule',
-    badge: '🎒 Technik',
-    active: true
-  }
-];
-
 const DEFAULT_CONFIG = {
   schoolName: 'LWL-Berufskolleg Soest',
   schoolShort: 'lwl-bk-soest',
@@ -47,13 +20,9 @@ const DEFAULT_CONFIG = {
   fontSize: 'font-normal',
   ttsEnabled: true,
   ttsRate: 1.0,
-  textOnlyMode: false,
-  sponsors: [...DEFAULT_SPONSORS],
-  currentSponsorIndex: 0,
-  sponsorRotationSeconds: 9,
-  sponsorRotationEnabled: true,
-  sponsorVisible: true
+  textOnlyMode: false
 };
+
 
 
 const DEFAULT_PERIODS = [
@@ -209,30 +178,6 @@ function applyConfig() {
   const cfgTtsRate = document.getElementById('cfg-tts-rate');
   if (cfgTtsRate) cfgTtsRate.value = appData.config.ttsRate || 1.0;
 
-  // Partner / Sponsor Banner Einstellungen & Ansicht
-  if (!Array.isArray(appData.config.sponsors) || appData.config.sponsors.length === 0) {
-    appData.config.sponsors = [...DEFAULT_SPONSORS];
-  }
-  if (appData.config.currentSponsorIndex === undefined) {
-    appData.config.currentSponsorIndex = 0;
-  }
-
-  const spArea = document.getElementById('sponsor-banner-area');
-  if (spArea) {
-    spArea.style.display = (appData.config.sponsorVisible !== false) ? 'block' : 'none';
-  }
-
-  const cfgSpVis = document.getElementById('cfg-sponsor-visible');
-  if (cfgSpVis) cfgSpVis.checked = (appData.config.sponsorVisible !== false);
-  const cfgSpRot = document.getElementById('cfg-sponsor-rotate');
-  if (cfgSpRot) cfgSpRot.checked = (appData.config.sponsorRotationEnabled !== false);
-  const cfgSpInt = document.getElementById('cfg-sponsor-interval');
-  if (cfgSpInt) cfgSpInt.value = String(appData.config.sponsorRotationSeconds || 9);
-
-  renderSponsorBanner();
-  renderSponsorManagementList();
-  startSponsorRotationTimer();
-
   // Account Display
   const uDisp = document.getElementById('settings-username-display');
   if (uDisp) uDisp.textContent = appData.config.username || 'Nicht angemeldet';
@@ -354,7 +299,6 @@ function switchTab(tabId) {
     announceSR('Reiter 4: Fehlzeiten und Entschuldigungen ausgewählt.', 'polite');
   } else if (tabId === 'settings') {
     loadFeedbackArchive();
-    renderSponsorManagementList();
     announceSR('Reiter 5: Konto und Einstellungen ausgewählt.', 'polite');
   }
 }
@@ -2810,301 +2754,6 @@ function readAbsencesSummary() {
   speak(text, true);
 }
 
-// =============================================================================
-// 9e. ROTIERENDE WERBEBANNER & ANZEIGENVERWALTUNG (GELD VERDIENEN)
-// =============================================================================
-let sponsorRotationTimer = null;
-let isSponsorRotationPaused = false;
-
-function getActiveSponsors() {
-  const list = appData.config.sponsors || [];
-  const active = list.filter(s => s && s.active !== false);
-  return active.length > 0 ? active : list;
-}
-
-function getCurrentSponsor() {
-  const active = getActiveSponsors();
-  if (active.length === 0) return null;
-  const idx = Math.max(0, Math.min(appData.config.currentSponsorIndex || 0, active.length - 1));
-  return active[idx];
-}
-
-function renderSponsorBanner() {
-  const spArea = document.getElementById('sponsor-banner-area');
-  if (!spArea) return;
-
-  if (appData.config.sponsorVisible === false) {
-    spArea.style.display = 'none';
-    return;
-  }
-  spArea.style.display = 'block';
-
-  const active = getActiveSponsors();
-  if (active.length === 0) {
-    spArea.style.display = 'none';
-    return;
-  }
-
-  let idx = appData.config.currentSponsorIndex || 0;
-  if (idx >= active.length) idx = 0;
-  if (idx < 0) idx = active.length - 1;
-  appData.config.currentSponsorIndex = idx;
-
-  const sp = active[idx];
-  const badgeEl = document.getElementById('sponsor-banner-badge');
-  const counterEl = document.getElementById('sponsor-banner-counter');
-  const titleEl = document.getElementById('sponsor-banner-title');
-  const descEl = document.getElementById('sponsor-banner-desc');
-  const pauseBtn = document.getElementById('btn-sponsor-pause');
-
-  if (badgeEl) badgeEl.textContent = sp.badge || '💡 Empfehlung';
-  if (counterEl) counterEl.textContent = `${idx + 1} / ${active.length}`;
-  if (titleEl) titleEl.textContent = sp.title || 'Empfehlung';
-  if (descEl) descEl.textContent = sp.desc || '';
-  if (pauseBtn) {
-    pauseBtn.textContent = isSponsorRotationPaused ? '▶️' : '⏸️';
-    pauseBtn.title = isSponsorRotationPaused ? 'Wechsel fortsetzen' : 'Wechsel pausieren';
-    pauseBtn.setAttribute('aria-label', isSponsorRotationPaused ? 'Wechsel fortsetzen' : 'Wechsel pausieren');
-  }
-}
-
-function nextSponsor(manual = false) {
-  const active = getActiveSponsors();
-  if (active.length <= 1) return;
-  appData.config.currentSponsorIndex = ((appData.config.currentSponsorIndex || 0) + 1) % active.length;
-  renderSponsorBanner();
-  if (manual) {
-    const sp = getCurrentSponsor();
-    if (sp) announceSR(`Anzeige: ${sp.title}`, 'polite');
-  }
-}
-
-function prevSponsor() {
-  const active = getActiveSponsors();
-  if (active.length <= 1) return;
-  let idx = (appData.config.currentSponsorIndex || 0) - 1;
-  if (idx < 0) idx = active.length - 1;
-  appData.config.currentSponsorIndex = idx;
-  renderSponsorBanner();
-  const sp = getCurrentSponsor();
-  if (sp) announceSR(`Anzeige: ${sp.title}`, 'polite');
-}
-
-function toggleSponsorRotation() {
-  isSponsorRotationPaused = !isSponsorRotationPaused;
-  const pauseBtn = document.getElementById('btn-sponsor-pause');
-  if (pauseBtn) {
-    pauseBtn.textContent = isSponsorRotationPaused ? '▶️' : '⏸️';
-    pauseBtn.title = isSponsorRotationPaused ? 'Wechsel fortsetzen' : 'Wechsel pausieren';
-    pauseBtn.setAttribute('aria-label', isSponsorRotationPaused ? 'Wechsel fortsetzen' : 'Wechsel pausieren');
-  }
-  announceSR(isSponsorRotationPaused ? 'Anzeigen-Wechsel pausiert.' : 'Anzeigen-Wechsel fortgesetzt.', 'polite');
-}
-
-function startSponsorRotationTimer() {
-  if (sponsorRotationTimer) {
-    clearInterval(sponsorRotationTimer);
-    sponsorRotationTimer = null;
-  }
-
-  if (appData.config.sponsorVisible === false) return;
-  if (appData.config.sponsorRotationEnabled === false) return;
-
-  const seconds = Math.max(4, parseInt(appData.config.sponsorRotationSeconds, 10) || 9);
-  sponsorRotationTimer = setInterval(() => {
-    if (!isSponsorRotationPaused && document.visibilityState !== 'hidden') {
-      nextSponsor(false);
-    }
-  }, seconds * 1000);
-}
-
-function openSponsorLink() {
-  const sp = getCurrentSponsor();
-  if (!sp || !sp.url) return;
-  const url = sp.url.trim();
-  try {
-    fetch('/api/open_url?url=' + encodeURIComponent(url)).catch(() => {
-      window.open(url, '_blank', 'noopener');
-    });
-  } catch (_) {
-    window.open(url, '_blank', 'noopener');
-  }
-}
-
-function saveSponsorSettingsFromUI() {
-  const visibleEl = document.getElementById('cfg-sponsor-visible');
-  const rotateEl = document.getElementById('cfg-sponsor-rotate');
-  const intervalEl = document.getElementById('cfg-sponsor-interval');
-
-  if (visibleEl) appData.config.sponsorVisible = visibleEl.checked;
-  if (rotateEl) appData.config.sponsorRotationEnabled = rotateEl.checked;
-  if (intervalEl) appData.config.sponsorRotationSeconds = parseInt(intervalEl.value, 10) || 9;
-
-  saveAppData();
-  renderSponsorBanner();
-  startSponsorRotationTimer();
-  speak('Werbeeinstellungen gespeichert.', false);
-}
-
-function renderSponsorManagementList() {
-  const container = document.getElementById('sponsor-list-management');
-  if (!container) return;
-
-  const sponsors = appData.config.sponsors || [];
-  if (sponsors.length === 0) {
-    container.innerHTML = '<p class="field-hint">Keine Anzeigen konfiguriert. Füge deine erste Werbeanzeige hinzu!</p>';
-    return;
-  }
-
-  let html = '';
-  sponsors.forEach((sp, idx) => {
-    const isAct = sp.active !== false;
-    html += `
-      <div class="sponsor-mgmt-card${isAct ? '' : ' inactive'}">
-        <div class="sponsor-mgmt-info">
-          <div>
-            <span class="sponsor-badge" style="margin-right: 8px;">${escHtml(sp.badge || 'Anzeige')}</span>
-            <strong>${escHtml(sp.title || 'Unbenannte Anzeige')}</strong>
-          </div>
-          <p class="sponsor-desc" style="font-size: 13px;">${escHtml(sp.desc || '')}</p>
-          <span style="font-size: 12px; color: var(--accent-info); word-break: break-all;">🔗 ${escHtml(sp.url || '')}</span>
-        </div>
-        <div class="sponsor-mgmt-actions">
-          <button type="button" class="btn btn-secondary" onclick="toggleSponsorActive('${sp.id}')" title="${isAct ? 'Deaktivieren' : 'Aktivieren'}" style="min-height: 36px; padding: 4px 10px; font-size: 13px;">
-            ${isAct ? '🟢 Aktiv' : '⚪ Pausiert'}
-          </button>
-          <button type="button" class="btn btn-secondary" onclick="openEditSponsorModal('${sp.id}')" title="Bearbeiten" style="min-height: 36px; padding: 4px 10px; font-size: 13px;">
-            ✏️ Bearbeiten
-          </button>
-          <button type="button" class="btn btn-danger" onclick="deleteSponsor('${sp.id}')" title="Löschen" style="min-height: 36px; padding: 4px 10px; font-size: 13px;">
-            🗑️
-          </button>
-        </div>
-      </div>
-    `;
-  });
-
-  container.innerHTML = html;
-}
-
-function openAddSponsorModal() {
-  const modal = document.getElementById('modal-sponsor-edit');
-  if (!modal) return;
-  document.getElementById('modal-sponsor-title').textContent = 'Neue Werbeanzeige hinzufügen';
-  document.getElementById('modal-sp-id').value = '';
-  document.getElementById('modal-sp-title').value = '';
-  document.getElementById('modal-sp-desc').value = '';
-  document.getElementById('modal-sp-url').value = '';
-  document.getElementById('modal-sp-badge').value = '💡 Empfehlung';
-  document.getElementById('modal-sp-active').checked = true;
-
-  modal.style.display = 'flex';
-  modal.setAttribute('aria-hidden', 'false');
-  document.getElementById('modal-sp-title').focus();
-}
-
-function openEditSponsorModal(spId) {
-  const modal = document.getElementById('modal-sponsor-edit');
-  if (!modal) return;
-  const sp = (appData.config.sponsors || []).find(s => String(s.id) === String(spId));
-  if (!sp) return;
-
-  document.getElementById('modal-sponsor-title').textContent = 'Werbeanzeige bearbeiten';
-  document.getElementById('modal-sp-id').value = sp.id;
-  document.getElementById('modal-sp-title').value = sp.title || '';
-  document.getElementById('modal-sp-desc').value = sp.desc || '';
-  document.getElementById('modal-sp-url').value = sp.url || '';
-  document.getElementById('modal-sp-badge').value = sp.badge || '💡 Empfehlung';
-  document.getElementById('modal-sp-active').checked = (sp.active !== false);
-
-  modal.style.display = 'flex';
-  modal.setAttribute('aria-hidden', 'false');
-  document.getElementById('modal-sp-title').focus();
-}
-
-function closeSponsorModal() {
-  const modal = document.getElementById('modal-sponsor-edit');
-  if (!modal) return;
-  modal.style.display = 'none';
-  modal.setAttribute('aria-hidden', 'true');
-}
-
-function handleSponsorModalBackdropClick(event) {
-  const modal = document.getElementById('modal-sponsor-edit');
-  if (!modal) return;
-  if (event.target === modal) closeSponsorModal();
-}
-
-function saveSponsorFromModal(event) {
-  if (event && event.preventDefault) event.preventDefault();
-
-  const idVal = document.getElementById('modal-sp-id').value.trim();
-  const titleVal = document.getElementById('modal-sp-title').value.trim();
-  const descVal = document.getElementById('modal-sp-desc').value.trim();
-  const urlVal = document.getElementById('modal-sp-url').value.trim();
-  const badgeVal = document.getElementById('modal-sp-badge').value.trim() || '💡 Empfehlung';
-  const activeVal = document.getElementById('modal-sp-active').checked;
-
-  if (!titleVal || !urlVal) {
-    alert('Bitte gib mindestens einen Titel und eine Ziel-URL ein.');
-    return;
-  }
-
-  if (!Array.isArray(appData.config.sponsors)) {
-    appData.config.sponsors = [...DEFAULT_SPONSORS];
-  }
-
-  if (idVal) {
-    const existing = appData.config.sponsors.find(s => String(s.id) === String(idVal));
-    if (existing) {
-      existing.title = titleVal;
-      existing.desc = descVal;
-      existing.url = urlVal;
-      existing.badge = badgeVal;
-      existing.active = activeVal;
-    }
-  } else {
-    appData.config.sponsors.push({
-      id: 'sp-' + Date.now(),
-      title: titleVal,
-      desc: descVal,
-      url: urlVal,
-      badge: badgeVal,
-      active: activeVal
-    });
-  }
-
-  saveAppData();
-  closeSponsorModal();
-  renderSponsorBanner();
-  renderSponsorManagementList();
-  startSponsorRotationTimer();
-  speak('Werbeanzeige erfolgreich gespeichert.', false);
-}
-
-function toggleSponsorActive(spId) {
-  const sp = (appData.config.sponsors || []).find(s => String(s.id) === String(spId));
-  if (!sp) return;
-  sp.active = !sp.active;
-  saveAppData();
-  renderSponsorBanner();
-  renderSponsorManagementList();
-  announceSR(`Anzeige ${sp.active ? 'aktiviert' : 'pausiert'}.`, 'polite');
-}
-
-function deleteSponsor(spId) {
-  if (confirm('Möchtest du diese Werbeanzeige wirklich löschen?')) {
-    appData.config.sponsors = (appData.config.sponsors || []).filter(s => String(s.id) !== String(spId));
-    if (appData.config.sponsors.length === 0) {
-      appData.config.sponsors = [...DEFAULT_SPONSORS];
-    }
-    saveAppData();
-    renderSponsorBanner();
-    renderSponsorManagementList();
-    speak('Werbeanzeige gelöscht.', false);
-  }
-}
-
 
 // =============================================================================
 // 10. INITIALISIERUNG & TASTEN-STEUERUNG
@@ -3190,18 +2839,8 @@ function initApp() {
       triggerManualSync();
     } else if (e.key === 'Escape') {
       closeLessonDetails();
-      closeSponsorModal();
     }
   });
-
-  // WCAG 2.2 AAA: Werbe-Rotation pausieren wenn Benutzer den Banner fokussiert oder mit der Maus darüber fährt
-  const spArea = document.getElementById('sponsor-banner-area');
-  if (spArea) {
-    spArea.addEventListener('mouseenter', () => { isSponsorRotationPaused = true; });
-    spArea.addEventListener('mouseleave', () => { isSponsorRotationPaused = false; });
-    spArea.addEventListener('focusin', () => { isSponsorRotationPaused = true; });
-    spArea.addEventListener('focusout', () => { isSponsorRotationPaused = false; });
-  }
 
 
   // Automatische Anmeldung & Synchronisation beim Start
