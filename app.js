@@ -763,15 +763,48 @@ async function performWebUntisSync(userOverride, passOverride) {
     const { sessionId, personId, personType } = authRes.result;
     webuntisSessionId = sessionId;
 
-    // 1b. Untis Mobile App-Shared-Secret & OTP Authentifizierung (getAppSharedSecret + getAuthToken)
+    // 1b. Untis Mobile Authentifizierung über lokalen C#-Server (getAppSharedSecret + TOTP + getAuthToken)
     let appSharedSecret = appData.config.appSharedSecret || null;
+    let jwtToken = null;
+    let mobilePersonId = null;
+
+    try {
+      const mobRes = await fetch('/api/untis/mobile_auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: username,
+          password: password,
+          school: appData.config.schoolShort || 'lwl-bk-soest',
+          server: appData.config.server || 'lwl-bk-soest.webuntis.com'
+        })
+      });
+      if (mobRes.ok) {
+        const mobData = await mobRes.json();
+        if (mobData.appSharedSecret) {
+          appSharedSecret = mobData.appSharedSecret;
+          appData.config.appSharedSecret = appSharedSecret;
+          saveAppData();
+        }
+        if (mobData.jwtToken) {
+          jwtToken = mobData.jwtToken;
+        }
+        if (mobData.personId) {
+          mobilePersonId = mobData.personId;
+        }
+      }
+    } catch (e) {
+      console.warn('Hinweis zu /api/untis/mobile_auth:', e);
+    }
+
+    // Client-seitiger Fallback falls nicht über Proxy authentifiziert
     if (!appSharedSecret) {
       try {
         const secRes = await callWebUntisRest('/jsonrpc_intern.do?m=getAppSharedSecret', null, 'POST', {
-          id: 'sec-' + Date.now(),
+          id: 'untis-mobile-android-6.7.0',
           jsonrpc: '2.0',
           method: 'getAppSharedSecret',
-          params: [{ userName: username, password: password, token: '' }]
+          params: [{ userName: username, password: password }]
         });
         if (secRes && secRes.result && typeof secRes.result === 'string') {
           appSharedSecret = secRes.result.trim();
@@ -784,12 +817,11 @@ async function performWebUntisSync(userOverride, passOverride) {
     let nowClientTime = Date.now();
     let curOtp = appSharedSecret ? generateTotpCode(appSharedSecret, nowClientTime) : 0;
 
-    // JWT Bearer Token für WebUntis REST- & App-APIs abrufen (getAuthToken mit TOTP)
-    let jwtToken = null;
-    if (appSharedSecret && curOtp) {
+    // JWT Bearer Token über getAuthToken mit TOTP
+    if (!jwtToken && appSharedSecret && curOtp) {
       try {
         const tokRes = await callWebUntisRest('/jsonrpc_intern.do?m=getAuthToken', null, 'POST', {
-          id: 'tok-' + Date.now(),
+          id: 'untis-mobile-android-6.7.0',
           jsonrpc: '2.0',
           method: 'getAuthToken',
           params: [{
@@ -950,6 +982,7 @@ async function performWebUntisSync(userOverride, passOverride) {
       if (personType === 1) detectedKlasseIds.add(personId);
       else detectedStudentIds.add(personId);
     }
+    if (mobilePersonId) detectedStudentIds.add(mobilePersonId);
     if (authRes.result) {
       if (authRes.result.klasseId) detectedKlasseIds.add(authRes.result.klasseId);
       if (authRes.result.classId) detectedKlasseIds.add(authRes.result.classId);
@@ -1243,6 +1276,11 @@ async function performWebUntisSync(userOverride, passOverride) {
         detectedKlasseIds.forEach(kId => {
           restTtCalls.push(callWebUntisRest(
             `/api/rest/view/v1/timetable/entries?start=${win.startIso}&end=${win.endIso}&format=1&resourceType=CLASS&resources=${kId}&periodTypes=${pTypes}&layout=PRIORITY`,
+            jwtToken
+          ).catch(() => null));
+
+          restCalDetailCalls.push(callWebUntisRest(
+            `/api/rest/view/v2/calendar-entry/detail?elementType=1&elementId=${kId}&startDateTime=${win.startIso}T00:00:00&endDateTime=${win.endIso}T23:59:59`,
             jwtToken
           ).catch(() => null));
         });
@@ -1548,6 +1586,85 @@ async function performWebUntisSync(userOverride, passOverride) {
         item.kl.forEach(k => { if (k && k.id) detectedKlasseIds.add(k.id); });
       }
     });
+
+    // 9b. Gezielt getPeriodData2017 für alle Unterrichtsstunden des aktuellen Zeitfensters abrufen
+    const activePeriodIds = new Set();
+    const pStartNum = formatDateToUntis(pStart);
+    const pEndNum = formatDateToUntis(pEnd);
+
+    allTtSource.forEach(item => {
+      if (item && item.id && item.date) {
+        const dNum = parseInt(String(item.date).replace(/\D/g, '').slice(0, 8));
+        if (dNum >= pStartNum && dNum <= pEndNum) {
+          activePeriodIds.add(item.id);
+        }
+      }
+    });
+
+    if (activePeriodIds.size > 0) {
+      const pIdArray = Array.from(activePeriodIds);
+      const chunkSize = 25;
+      const periodDetailPromises = [];
+
+      for (let i = 0; i < pIdArray.length; i += chunkSize) {
+        const chunk = pIdArray.slice(i, i + chunkSize);
+        periodDetailPromises.push(
+          callWebUntisRest('/jsonrpc_intern.do?m=getPeriodData2017', jwtToken, 'POST', {
+            id: 'untis-mobile-android-6.7.0',
+            jsonrpc: '2.0',
+            method: 'getPeriodData2017',
+            params: [{ ttIds: chunk }]
+          }).catch(() => null)
+        );
+      }
+
+      try {
+        const pdResponses = await Promise.all(periodDetailPromises);
+        pdResponses.forEach(res => {
+          if (!res) return;
+          const resObj = res.result || res;
+          if (!resObj || !resObj.dataByTTId || typeof resObj.dataByTTId !== 'object') return;
+
+          Object.keys(resObj.dataByTTId).forEach(ttId => {
+            const entry = resObj.dataByTTId[ttId];
+            if (!entry) return;
+
+            const matchedLesson = allTtSource.find(l => String(l.id) === String(ttId));
+            const dStr = matchedLesson ? String(matchedLesson.date).replace(/\D/g, '').slice(0, 8) : '';
+            const isoDate = (dStr.length === 8) ? `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}` : '';
+            const subj = matchedLesson && matchedLesson.su && matchedLesson.su[0]
+              ? (subjectsMap[matchedLesson.su[0].id] || matchedLesson.su[0].name || 'Unterricht')
+              : 'Unterricht';
+            const teach = matchedLesson && matchedLesson.te && matchedLesson.te[0]
+              ? (teachersMap[matchedLesson.te[0].id] || matchedLesson.te[0].name || 'Fachlehrkraft')
+              : 'Fachlehrkraft';
+
+            // Hausaufgaben aus getPeriodData2017 hinzufügen
+            if (entry.homeWorks && Array.isArray(entry.homeWorks)) {
+              entry.homeWorks.forEach((hw, hIdx) => {
+                if (!hw) return;
+                const hwText = hw.text || hw.remark || hw.description || '';
+                if (hwText && hwText.trim()) {
+                  const dueRaw = hw.dueDate || hw.endDate || isoDate;
+                  const dueIso = normalizeToIsoDate(dueRaw) || isoDate || 'Ohne Frist';
+                  const hwId = String(hw.id || `pd-hw-${ttId}-${hIdx}-${dueIso}`);
+                  timetableHomeworks.push({
+                    id: hwId,
+                    subject: String(subj),
+                    teacher: String(teach),
+                    dueDate: dueIso,
+                    text: String(hwText).trim(),
+                    completed: !!hw.completed
+                  });
+                }
+              });
+            }
+          });
+        });
+      } catch (e) {
+        console.warn('Hinweis zu getPeriodData2017:', e);
+      }
+    }
 
     // Stundenplan der aktuellen Schulwoche in appData.timetable überführen
     if (ttRes && ttRes.result && Array.isArray(ttRes.result)) {

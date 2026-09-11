@@ -250,7 +250,7 @@ namespace BarrierefreierStundenplan
                 }
                 catch { }
             }
-            return "1.4.0";
+            return "1.4.1";
         }
 
         private static bool IsNewerVersion(string remote, string local)
@@ -364,8 +364,8 @@ namespace BarrierefreierStundenplan
             HttpListenerResponse resp = context.Response;
 
             resp.Headers["Access-Control-Allow-Origin"] = "*";
-            resp.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
-            resp.Headers["Access-Control-Allow-Headers"] = "Content-Type, X-School, X-Server, X-JSESSIONID, X-Endpoint, Authorization";
+            resp.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
+            resp.Headers["Access-Control-Allow-Headers"] = "Content-Type, X-School, X-Server, X-JSESSIONID, X-Endpoint, X-Untis-Secret, X-Untis-User, Authorization, *";
 
             if (req.HttpMethod == "OPTIONS")
             {
@@ -518,7 +518,57 @@ namespace BarrierefreierStundenplan
                 return;
             }
 
-            // 3c. Externe URLs sicher im Standard-Browser öffnen
+            // 3c. Untis Mobile Authentifizierung (C# Server-Side)
+            if (req.HttpMethod == "POST" && rawUrl == "/api/untis/mobile_auth")
+            {
+                string body = "";
+                using (var reader = new StreamReader(req.InputStream, req.ContentEncoding))
+                {
+                    body = reader.ReadToEnd();
+                }
+
+                string u = "", p = "", sc = "lwl-bk-soest", sv = "lwl-bk-soest.webuntis.com";
+                Match mu = Regex.Match(body, "\"username\"\\s*:\\s*\"([^\"]+)\"");
+                if (!mu.Success) mu = Regex.Match(body, "\"user\"\\s*:\\s*\"([^\"]+)\"");
+                if (mu.Success) u = mu.Groups[1].Value;
+
+                Match mp = Regex.Match(body, "\"password\"\\s*:\\s*\"([^\"]+)\"");
+                if (mp.Success) p = mp.Groups[1].Value;
+
+                Match msc = Regex.Match(body, "\"school\"\\s*:\\s*\"([^\"]+)\"");
+                if (msc.Success) sc = msc.Groups[1].Value;
+
+                Match msv = Regex.Match(body, "\"server\"\\s*:\\s*\"([^\"]+)\"");
+                if (msv.Success) sv = msv.Groups[1].Value;
+
+                string authResJson = ExecuteUntisMobileAuth(u, p, sc, sv);
+
+                resp.StatusCode = 200;
+                resp.ContentType = "application/json; charset=utf-8";
+                byte[] okData = Encoding.UTF8.GetBytes(authResJson);
+                resp.OutputStream.Write(okData, 0, okData.Length);
+                resp.Close();
+                return;
+            }
+
+            // 3d. Debug Log API (Abruf des Live-WebUntis-Logs)
+            if (rawUrl == "/api/debug_log")
+            {
+                string logContent = "Kein Log vorhanden.";
+                string p1 = Path.Combine(@"C:\Users\lauri\Documents", "webuntis_debug.log");
+                string p2 = Path.Combine(_baseDir, "webuntis_debug.log");
+                if (File.Exists(p1)) { try { logContent = File.ReadAllText(p1, Encoding.UTF8); } catch { } }
+                else if (File.Exists(p2)) { try { logContent = File.ReadAllText(p2, Encoding.UTF8); } catch { } }
+
+                resp.StatusCode = 200;
+                resp.ContentType = "text/plain; charset=utf-8";
+                byte[] logData = Encoding.UTF8.GetBytes(logContent);
+                resp.OutputStream.Write(logData, 0, logData.Length);
+                resp.Close();
+                return;
+            }
+
+            // 3e. Externe URLs sicher im Standard-Browser öffnen
             if (rawUrl.StartsWith("/api/open_url"))
             {
                 string url = req.QueryString["url"];
@@ -756,6 +806,164 @@ namespace BarrierefreierStundenplan
             return null;
         }
 
+        private static string _untisUser = null;
+        private static string _untisSecret = null;
+        private static string _untisJwt = null;
+        private static string _untisSchool = "lwl-bk-soest";
+        private static string _untisServer = "lwl-bk-soest.webuntis.com";
+        private static int _untisPersonId = 0;
+
+        private static string ExecuteUntisMobileAuth(string user, string pass, string sch, string srv)
+        {
+            if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(pass)) return "{\"error\":\"Missing credentials\"}";
+            if (string.IsNullOrEmpty(sch)) sch = "lwl-bk-soest";
+            if (string.IsNullOrEmpty(srv)) srv = "lwl-bk-soest.webuntis.com";
+
+            _untisUser = user;
+            _untisSchool = sch;
+            _untisServer = srv;
+
+            LogUntis(string.Format("Starting Untis Mobile Auth for user={0}, school={1}", user, sch));
+
+            // Step 1: getAppSharedSecret
+            try
+            {
+                string secUrl = string.Format("https://{0}/WebUntis/jsonrpc_intern.do?school={1}&m=getAppSharedSecret&a=false&s={0}&v=a6.7.0", srv, sch);
+                HttpWebRequest req = (HttpWebRequest)WebRequest.Create(secUrl);
+                req.Method = "POST";
+                req.ContentType = "application/json; charset=utf-8";
+                req.UserAgent = "WebUntis/Mobile (Android; de)";
+                req.Timeout = 15000;
+
+                string secBody = string.Format("{{\"id\":\"untis-mobile-android-6.7.0\",\"jsonrpc\":\"2.0\",\"method\":\"getAppSharedSecret\",\"params\":[{{\"password\":\"{0}\",\"userName\":\"{1}\"}}]}}",
+                    EscapeJsonString(pass), EscapeJsonString(user));
+                byte[] b = Encoding.UTF8.GetBytes(secBody);
+                req.ContentLength = b.Length;
+                using (Stream s = req.GetRequestStream()) { s.Write(b, 0, b.Length); }
+
+                using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
+                using (StreamReader sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
+                {
+                    string resJson = sr.ReadToEnd();
+                    LogUntis("getAppSharedSecret RESP: " + resJson);
+                    Match m = Regex.Match(resJson, "\"result\"\\s*:\\s*\"([^\"]+)\"");
+                    if (m.Success && !string.IsNullOrEmpty(m.Groups[1].Value))
+                    {
+                        _untisSecret = m.Groups[1].Value.Trim();
+                        LogUntis("App Shared Secret obtained: " + _untisSecret.Substring(0, Math.Min(4, _untisSecret.Length)) + "***");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogUntis("getAppSharedSecret EX: " + ex.Message);
+            }
+
+            // Step 2: getAuthToken with TOTP if secret available
+            if (!string.IsNullOrEmpty(_untisSecret))
+            {
+                try
+                {
+                    long nowMs = (long)(DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds;
+                    int otp = GenerateTotp(_untisSecret, nowMs);
+
+                    string tokUrl = string.Format("https://{0}/WebUntis/jsonrpc_intern.do?school={1}&m=getAuthToken&a=false&s={0}&v=a6.7.0", srv, sch);
+                    HttpWebRequest req = (HttpWebRequest)WebRequest.Create(tokUrl);
+                    req.Method = "POST";
+                    req.ContentType = "application/json; charset=utf-8";
+                    req.UserAgent = "WebUntis/Mobile (Android; de)";
+                    req.Timeout = 15000;
+
+                    string tokBody = string.Format("{{\"id\":\"untis-mobile-android-6.7.0\",\"jsonrpc\":\"2.0\",\"method\":\"getAuthToken\",\"params\":[{{\"auth\":{{\"clientTime\":{0},\"otp\":{1},\"user\":\"{2}\"}}}}]}}",
+                        nowMs, otp, EscapeJsonString(user));
+                    byte[] b = Encoding.UTF8.GetBytes(tokBody);
+                    req.ContentLength = b.Length;
+                    using (Stream s = req.GetRequestStream()) { s.Write(b, 0, b.Length); }
+
+                    using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
+                    using (StreamReader sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
+                    {
+                        string resJson = sr.ReadToEnd();
+                        LogUntis("getAuthToken RESP: " + resJson.Substring(0, Math.Min(120, resJson.Length)));
+                        Match m = Regex.Match(resJson, "\"token\"\\s*:\\s*\"([^\"]+)\"");
+                        if (m.Success)
+                        {
+                            _untisJwt = m.Groups[1].Value.Trim();
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogUntis("getAuthToken EX: " + ex.Message);
+                }
+            }
+
+            // Step 3: Fallback /api/mobile/v2/{school}/authentication if no JWT yet
+            if (string.IsNullOrEmpty(_untisJwt))
+            {
+                try
+                {
+                    string authUrl = string.Format("https://{0}/WebUntis/api/mobile/v2/{1}/authentication", srv, sch);
+                    HttpWebRequest req = (HttpWebRequest)WebRequest.Create(authUrl);
+                    req.Method = "POST";
+                    req.ContentType = "application/json; charset=utf-8";
+                    req.UserAgent = "WebUntis/Mobile (Android; de)";
+                    req.Timeout = 15000;
+
+                    string authBody = string.Format("{{\"username\":\"{0}\",\"password\":\"{1}\"}}", EscapeJsonString(user), EscapeJsonString(pass));
+                    byte[] b = Encoding.UTF8.GetBytes(authBody);
+                    req.ContentLength = b.Length;
+                    using (Stream s = req.GetRequestStream()) { s.Write(b, 0, b.Length); }
+
+                    using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
+                    using (StreamReader sr = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
+                    {
+                        string resJson = sr.ReadToEnd();
+                        LogUntis("mobile/v2/authentication RESP: " + resJson.Substring(0, Math.Min(120, resJson.Length)));
+                        Match m = Regex.Match(resJson, "\"jwt\"\\s*:\\s*\"([^\"]+)\"");
+                        if (m.Success)
+                        {
+                            _untisJwt = m.Groups[1].Value.Trim();
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogUntis("mobile/v2/authentication EX: " + ex.Message);
+                }
+            }
+
+            // Step 4: Extract person_id from JWT payload if present
+            if (!string.IsNullOrEmpty(_untisJwt))
+            {
+                try
+                {
+                    string[] parts = _untisJwt.Split('.');
+                    if (parts.Length >= 2)
+                    {
+                        string payload = parts[1];
+                        int pad = 4 - (payload.Length % 4);
+                        if (pad < 4) payload += new string('=', pad);
+                        byte[] claimsBytes = Convert.FromBase64String(payload.Replace('-', '+').Replace('_', '/'));
+                        string claimsJson = Encoding.UTF8.GetString(claimsBytes);
+                        LogUntis("JWT Claims: " + claimsJson);
+                        Match mp = Regex.Match(claimsJson, "\"person_id\"\\s*:\\s*(\\d+)");
+                        if (mp.Success)
+                        {
+                            _untisPersonId = int.Parse(mp.Groups[1].Value);
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            return string.Format("{{\"success\":{0},\"appSharedSecret\":\"{1}\",\"jwtToken\":\"{2}\",\"personId\":{3}}}",
+                (!string.IsNullOrEmpty(_untisJwt) || !string.IsNullOrEmpty(_untisSecret)) ? "true" : "false",
+                EscapeJsonString(_untisSecret ?? ""),
+                EscapeJsonString(_untisJwt ?? ""),
+                _untisPersonId);
+        }
+
         private static readonly object _debugLock = new object();
         private static void LogUntis(string msg)
         {
@@ -763,13 +971,35 @@ namespace BarrierefreierStundenplan
             {
                 lock (_debugLock)
                 {
-                    string docDir = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-                    string logFile = Path.Combine(docDir, "webuntis_debug.log");
-                    if (File.Exists(logFile) && new FileInfo(logFile).Length > 1024 * 1024)
+                    string line = "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + "] " + msg + "\r\n";
+                    List<string> targetPaths = new List<string>();
+
+                    targetPaths.Add(Path.Combine(@"C:\Users\lauri\Documents", "webuntis_debug.log"));
+                    targetPaths.Add(Path.Combine(_baseDir, "webuntis_debug.log"));
+                    targetPaths.Add(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "webuntis_debug.log"));
+                    try
                     {
-                        try { File.Delete(logFile); } catch { }
+                        string docDir = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                        if (!string.IsNullOrEmpty(docDir)) targetPaths.Add(Path.Combine(docDir, "webuntis_debug.log"));
                     }
-                    File.AppendAllText(logFile, "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + "] " + msg + "\r\n", Encoding.UTF8);
+                    catch { }
+
+                    foreach (string logFile in targetPaths)
+                    {
+                        try
+                        {
+                            string dir = Path.GetDirectoryName(logFile);
+                            if (Directory.Exists(dir))
+                            {
+                                if (File.Exists(logFile) && new FileInfo(logFile).Length > 1024 * 1024)
+                                {
+                                    try { File.Delete(logFile); } catch { }
+                                }
+                                File.AppendAllText(logFile, line, Encoding.UTF8);
+                            }
+                        }
+                        catch { }
+                    }
                 }
             }
             catch { }
@@ -839,10 +1069,12 @@ namespace BarrierefreierStundenplan
             string sessionId = req.Headers["X-JSESSIONID"];
             string customEndpoint = req.Headers["X-Endpoint"];
             string untisSecret = req.Headers["X-Untis-Secret"];
+            if (string.IsNullOrEmpty(untisSecret)) untisSecret = _untisSecret;
             string untisUser = req.Headers["X-Untis-User"];
+            if (string.IsNullOrEmpty(untisUser)) untisUser = _untisUser;
 
-            string srv = !string.IsNullOrEmpty(serverHeader) ? serverHeader : "lwl-bk-soest.webuntis.com";
-            string sch = !string.IsNullOrEmpty(schoolHeader) ? schoolHeader : "lwl-bk-soest";
+            string srv = !string.IsNullOrEmpty(serverHeader) ? serverHeader : (!string.IsNullOrEmpty(_untisServer) ? _untisServer : "lwl-bk-soest.webuntis.com");
+            string sch = !string.IsNullOrEmpty(schoolHeader) ? schoolHeader : (!string.IsNullOrEmpty(_untisSchool) ? _untisSchool : "lwl-bk-soest");
 
             string targetUrl;
             if (!string.IsNullOrEmpty(customEndpoint))
@@ -856,6 +1088,12 @@ namespace BarrierefreierStundenplan
                 {
                     string queryChar = ep.Contains("?") ? "&" : "?";
                     ep = ep + queryChar + "school=" + sch;
+                }
+                if (ep.Contains("jsonrpc_intern.do"))
+                {
+                    if (!ep.Contains("v=")) ep += "&v=a6.7.0";
+                    if (!ep.Contains("a=")) ep += "&a=false";
+                    if (!ep.Contains("s=")) ep += "&s=" + srv;
                 }
                 targetUrl = string.Format("https://{0}/WebUntis{1}", srv, ep);
             }
@@ -896,6 +1134,10 @@ namespace BarrierefreierStundenplan
                 {
                     outReq.Headers["Authorization"] = authHeader;
                 }
+                else if (!string.IsNullOrEmpty(_untisJwt))
+                {
+                    outReq.Headers["Authorization"] = "Bearer " + _untisJwt;
+                }
 
                 byte[] postBytes = null;
                 if (req.HttpMethod == "POST" || req.HttpMethod == "PUT")
@@ -913,10 +1155,11 @@ namespace BarrierefreierStundenplan
                         try
                         {
                             string jsonStr = Encoding.UTF8.GetString(postBytes);
+                            long nowMs = (long)(DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds;
+                            int otpVal = GenerateTotp(untisSecret, nowMs);
+
                             if (jsonStr.Contains("\"method\"") && !jsonStr.Contains("\"auth\""))
                             {
-                                long nowMs = (long)(DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalMilliseconds;
-                                int otpVal = GenerateTotp(untisSecret, nowMs);
                                 string authSnippet = string.Format("\"auth\":{{\"clientTime\":{0},\"otp\":{1},\"user\":\"{2}\"}}", nowMs, otpVal, EscapeJsonString(untisUser));
 
                                 if (Regex.IsMatch(jsonStr, "\"params\"\\s*:\\s*\\[\\s*\\{"))
@@ -924,6 +1167,12 @@ namespace BarrierefreierStundenplan
                                     jsonStr = Regex.Replace(jsonStr, "(\"params\"\\s*:\\s*\\[\\s*\\{)", "$1" + authSnippet + ",");
                                     postBytes = Encoding.UTF8.GetBytes(jsonStr);
                                 }
+                            }
+                            else if (jsonStr.Contains("\"auth\"") && jsonStr.Contains("\"otp\""))
+                            {
+                                jsonStr = Regex.Replace(jsonStr, "\"otp\"\\s*:\\s*\\d+", "\"otp\":" + otpVal);
+                                jsonStr = Regex.Replace(jsonStr, "\"clientTime\"\\s*:\\s*\\d+", "\"clientTime\":" + nowMs);
+                                postBytes = Encoding.UTF8.GetBytes(jsonStr);
                             }
                         }
                         catch { }

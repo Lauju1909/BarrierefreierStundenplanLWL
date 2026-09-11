@@ -1,14 +1,14 @@
 {
-  "version": "1.4.0",
+  "version": "1.4.1",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-11",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
-    "Untis Mobile TOTP Authentication: Vollständige Unterstützung von getAppSharedSecret + getAuthToken mit 6-stelligem TOTP (RFC 6238)",
-    "Untis Mobile REST calendar-entry/detail Integration: Detaillierte Hausaufgaben, Klassenarbeiten, Prüfungen und Lehrstoff für alle Schüler",
-    "Untis Mobile REST timetable/entries Integration mit vollständigem periodTypes-Filtersatz (EXAM, NORMAL_TEACHING_PERIOD)",
-    "Automatische TOTP-Auth-Injektion für getHomeWork2017 & getExams2017 (clientTime, otp, user) in Proxy und Frontend",
-    "Lokales Proxy-Debug-Logging in webuntis_debug.log zur lückenlosen Diagnose",
+    "Untis Mobile Serverseitige TOTP- und JWT-Authentifizierung via C#-Proxy (/api/untis/mobile_auth)",
+    "Automatische Injektion von Bearer-Tokens & frischen TOTP-Codes (RFC 6238) für getHomeWork2017, getExams2017, getPeriodData2017",
+    "Untis Mobile REST calendar-entry/detail Integration auf Klassen- und Schülerebene für Hausaufgaben & Klausurtermine",
+    "Untis Mobile getPeriodData2017 Batch-Abfrage zur lückenlosen Extraktion von Hausaufgaben und Unterrichtsstoff",
+    "Vollständiges lokales Logging in C:\\Users\\lauri\\Documents\\webuntis_debug.log zur Echtzeit-Diagnose",
     "Komplett werbefrei (100% werbefrei)",
     "100% barrierefrei nach WCAG 2.2 AAA & NVDA/JAWS Screenreader optimiert"
   ]
