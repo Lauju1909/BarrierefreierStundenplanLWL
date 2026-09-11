@@ -86,6 +86,7 @@ namespace BarrierefreierStundenplan
                 try
                 {
                     ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072 | (SecurityProtocolType)12288 | SecurityProtocolType.Tls12;
+                    ServicePointManager.DefaultConnectionLimit = 50;
                 }
                 catch { }
 
@@ -248,7 +249,7 @@ namespace BarrierefreierStundenplan
                 }
                 catch { }
             }
-            return "1.3.3";
+            return "1.3.8";
         }
 
         private static bool IsNewerVersion(string remote, string local)
@@ -363,7 +364,7 @@ namespace BarrierefreierStundenplan
 
             resp.Headers["Access-Control-Allow-Origin"] = "*";
             resp.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
-            resp.Headers["Access-Control-Allow-Headers"] = "Content-Type, X-School, X-Server, X-JSESSIONID";
+            resp.Headers["Access-Control-Allow-Headers"] = "Content-Type, X-School, X-Server, X-JSESSIONID, X-Endpoint, Authorization";
 
             if (req.HttpMethod == "OPTIONS")
             {
@@ -783,8 +784,15 @@ namespace BarrierefreierStundenplan
                     {
                         Uri targetUri = new Uri(targetUrl);
                         outReq.CookieContainer.Add(new Cookie("JSESSIONID", sessionId, "/", targetUri.Host));
+                        outReq.CookieContainer.Add(new Cookie("JSESSIONID", sessionId, "/WebUntis", targetUri.Host));
                     }
                     catch { }
+                }
+
+                string authHeader = req.Headers["Authorization"];
+                if (!string.IsNullOrEmpty(authHeader))
+                {
+                    outReq.Headers["Authorization"] = authHeader;
                 }
 
                 if (req.HttpMethod == "POST")

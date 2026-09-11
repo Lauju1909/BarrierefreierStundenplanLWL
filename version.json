@@ -1,16 +1,16 @@
 {
-  "version": "1.3.7",
+  "version": "1.3.8",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-11",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
-    "Klassenarbeiten, Klausuren und Prüfungen werden nun zuverlässig synchronisiert und im Prüfungsmanager (Reiter 2) dargestellt",
-    "Hausaufgaben aus WebUntis (getHomeWork2017, REST-Endpunkte und Stundenplan/Klassenbuch) werden lückenlos geladen und in Reiter 3 angezeigt",
-    "Kritischer Synchronisationsfehler behoben (sIsoStr/eIsoStr-Defekt und strikte Filter behoben)",
-    "Dauerhafte Speicherung: Prüfungen und Hausaufgaben bleiben beim App-Start erhalten",
+    "Echte Klassenarbeiten und Klausuren vor den Herbstferien (und im gesamten Schuljahr) werden nun zuverlässig aus WebUntis synchronisiert und in Reiter 2 angezeigt",
+    "Untis Mobile JWT Bearer Auth Unterstützung (/api/token/new, /api/rest/view/v1/app/data, /api/calendar/events)",
+    "Klassenbuch-Termine in 30-Tage-Intervallen (verhindert 'Date range too large' Fehler bei WebUntis)",
+    "Erhöhung des Verbindungslimits (DefaultConnectionLimit = 50) im lokalen C#-Proxy gegen Timeouts",
+    "Robuste Datums- und Zeitnormalisierung für alle Prüfungs- und Terminformate",
     "Komplett werbefrei (100% werbefrei)",
-    "Vollständiges automatisches Beenden der App bei Alt+F4, Fensterschließen oder Beenden des Browsers",
-    "100% Tastatur- und Screenreader-optimiert (NVDA / JAWS, WCAG 2.2 AAA)"
+    "100% barrierefrei nach WCAG 2.2 AAA & NVDA/JAWS Screenreader optimiert"
   ]
 }
 
