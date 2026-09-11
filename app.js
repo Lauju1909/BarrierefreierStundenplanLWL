@@ -1153,7 +1153,33 @@ async function performWebUntisSync(userOverride, passOverride) {
     examCalls.push(callWebUntisApi('getStudentExams', { id: personId, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
     examCalls.push(callWebUntisApi('getStudentExamList', { startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})));
 
-    // getExams2017 in Intervallen für alle erkannten Schüler & Klassen (Untis Mobile Format mit OTP)
+    // 6a. getExams2017 für alle erkannten Schüler & Klassen (Untis Mobile Format mit OTP)
+    // A1. Vollständiges Schuljahr auf einen Schlag abfragen (wie in offizieller App)
+    const authObjFull = appSharedSecret ? {
+      clientTime: Date.now(),
+      otp: generateTotpCode(appSharedSecret, Date.now()),
+      user: username
+    } : null;
+
+    detectedStudentIds.forEach(sId => {
+      examCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getExams2017', jwtToken, 'POST', {
+        id: 'ex-full-stud-' + Date.now(),
+        jsonrpc: '2.0',
+        method: 'getExams2017',
+        params: [{ id: sId, type: 'STUDENT', startDate: sIsoStr, endDate: eIsoStr, ...(authObjFull ? { auth: authObjFull } : {}) }]
+      }).catch(() => ({})));
+    });
+
+    detectedKlasseIds.forEach(kId => {
+      examCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getExams2017', jwtToken, 'POST', {
+        id: 'ex-full-cls-' + Date.now(),
+        jsonrpc: '2.0',
+        method: 'getExams2017',
+        params: [{ id: kId, type: 'CLASS', startDate: sIsoStr, endDate: eIsoStr, ...(authObjFull ? { auth: authObjFull } : {}) }]
+      }).catch(() => ({})));
+    });
+
+    // A2. In Zeitfenstern abfragen (inklusive getExams2017 mit Untis Mobile Format)
     dateWindows.forEach(win => {
       const authObj = appSharedSecret ? {
         clientTime: Date.now(),
@@ -1162,10 +1188,6 @@ async function performWebUntisSync(userOverride, passOverride) {
       } : null;
 
       detectedStudentIds.forEach(sId => {
-        examCalls.push(callWebUntisApi('getExams2017', [{ id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
-        examCalls.push(callWebUntisApi('getExams2017', [{ id: sId, type: 5, startDate: win.startNum, endDate: win.endNum, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
-        examCalls.push(callWebUntisApi('getExams2017', { id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
-        examCalls.push(callWebUntisApi('getExams2017', { id: sId, type: 5, startDate: win.startNum, endDate: win.endNum, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
         examCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getExams2017', jwtToken, 'POST', {
           id: 'ex-' + Date.now(),
           jsonrpc: '2.0',
@@ -1175,10 +1197,6 @@ async function performWebUntisSync(userOverride, passOverride) {
       });
 
       detectedKlasseIds.forEach(kId => {
-        examCalls.push(callWebUntisApi('getExams2017', [{ id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
-        examCalls.push(callWebUntisApi('getExams2017', [{ id: kId, type: 1, startDate: win.startNum, endDate: win.endNum, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
-        examCalls.push(callWebUntisApi('getExams2017', { id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
-        examCalls.push(callWebUntisApi('getExams2017', { id: kId, type: 1, startDate: win.startNum, endDate: win.endNum, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
         examCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getExams2017', jwtToken, 'POST', {
           id: 'ex-' + Date.now(),
           jsonrpc: '2.0',
@@ -1186,9 +1204,6 @@ async function performWebUntisSync(userOverride, passOverride) {
           params: [{ id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }]
         }).catch(() => ({})));
       });
-
-      examCalls.push(callWebUntisApi('getExams2017', [{ startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
-      examCalls.push(callWebUntisApi('getExams2017', { startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
     });
 
     // 6b. Klassenbuch-Termine & Ereignisse in 30-Tage-Fenstern
@@ -1206,6 +1221,27 @@ async function performWebUntisSync(userOverride, passOverride) {
 
     // 6c. Hausaufgaben-Abfragen (getHomeWork2017 für alle Schüler & Klassen mit OTP)
     const homeworkCalls = [];
+
+    // B1. Vollständiges Schuljahr auf einen Schlag abfragen (wie in offizieller Untis Mobile App)
+    detectedStudentIds.forEach(sId => {
+      homeworkCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getHomeWork2017', jwtToken, 'POST', {
+        id: 'hw-full-stud-' + Date.now(),
+        jsonrpc: '2.0',
+        method: 'getHomeWork2017',
+        params: [{ id: sId, type: 'STUDENT', startDate: sIsoStr, endDate: eIsoStr, ...(authObjFull ? { auth: authObjFull } : {}) }]
+      }).catch(() => ({})));
+    });
+
+    detectedKlasseIds.forEach(kId => {
+      homeworkCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getHomeWork2017', jwtToken, 'POST', {
+        id: 'hw-full-cls-' + Date.now(),
+        jsonrpc: '2.0',
+        method: 'getHomeWork2017',
+        params: [{ id: kId, type: 'CLASS', startDate: sIsoStr, endDate: eIsoStr, ...(authObjFull ? { auth: authObjFull } : {}) }]
+      }).catch(() => ({})));
+    });
+
+    // B2. Zusätzlich in Intervallen abfragen
     dateWindows.forEach(win => {
       const authObj = appSharedSecret ? {
         clientTime: Date.now(),
@@ -1214,10 +1250,6 @@ async function performWebUntisSync(userOverride, passOverride) {
       } : null;
 
       detectedStudentIds.forEach(sId => {
-        homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
-        homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ id: sId, type: 5, startDate: win.startNum, endDate: win.endNum, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
-        homeworkCalls.push(callWebUntisApi('getHomeWork2017', { id: sId, type: 'STUDENT', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
-        homeworkCalls.push(callWebUntisApi('getHomeWork2017', { id: sId, type: 5, startDate: win.startNum, endDate: win.endNum, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
         homeworkCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getHomeWork2017', jwtToken, 'POST', {
           id: 'hw-' + Date.now(),
           jsonrpc: '2.0',
@@ -1227,10 +1259,6 @@ async function performWebUntisSync(userOverride, passOverride) {
       });
 
       detectedKlasseIds.forEach(kId => {
-        homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
-        homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ id: kId, type: 1, startDate: win.startNum, endDate: win.endNum, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
-        homeworkCalls.push(callWebUntisApi('getHomeWork2017', { id: kId, type: 'CLASS', startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
-        homeworkCalls.push(callWebUntisApi('getHomeWork2017', { id: kId, type: 1, startDate: win.startNum, endDate: win.endNum, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
         homeworkCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getHomeWork2017', jwtToken, 'POST', {
           id: 'hw-' + Date.now(),
           jsonrpc: '2.0',
@@ -1239,8 +1267,6 @@ async function performWebUntisSync(userOverride, passOverride) {
         }).catch(() => ({})));
       });
 
-      homeworkCalls.push(callWebUntisApi('getHomeWork2017', [{ startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }]).catch(() => ({})));
-      homeworkCalls.push(callWebUntisApi('getHomeWork2017', { startDate: win.startIso, endDate: win.endIso, ...(authObj ? { auth: authObj } : {}) }).catch(() => ({})));
       homeworkCalls.push(callWebUntisApi('getHomeWorks', { startDate: win.startNum, endDate: win.endNum }).catch(() => ({})));
       homeworkCalls.push(callWebUntisApi('getHomeWorks', { startDate: win.startIso, endDate: win.endIso }).catch(() => ({})));
     });
@@ -1754,16 +1780,46 @@ async function performWebUntisSync(userOverride, passOverride) {
 
 
     // 10. Prüfungen zusammenführen & deduplizieren
-    const examKeySet = new Set();
     const newExams = [];
 
     function addUniqueExam(exItem) {
       if (!exItem || !exItem.date || !exItem.subject) return;
-      const key = `${exItem.date}_${exItem.startTime}_${exItem.subject.toLowerCase().trim()}`;
-      if (!examKeySet.has(key)) {
-        examKeySet.add(key);
-        newExams.push(exItem);
+
+      // Volle Fachbezeichnung expandieren falls Kürzel
+      const sTrim = String(exItem.subject).trim();
+      if (sTrim === 'M' || sTrim === 'm') exItem.subject = 'Mathematik (M)';
+      else if (sTrim === 'E' || sTrim === 'e') exItem.subject = 'Englisch (E)';
+      else if (sTrim === 'D' || sTrim === 'd') exItem.subject = 'Deutsch (D)';
+      else if (sTrim === 'PP' || sTrim === 'pp') exItem.subject = 'Praktische Philosophie (PP)';
+      else if (subjectsMap[sTrim]) exItem.subject = subjectsMap[sTrim];
+
+      const isGeneric = /^(klassenarbeit|klausur|prüfung|pruefung|klassenarbeit\s*\/\s*klausur)$/i.test(exItem.subject.trim());
+
+      // Prüfen ob bereits eine Prüfung am selben Tag im selben oder überlappenden Zeitfenster existiert
+      const existingIdx = newExams.findIndex(e => {
+        if (e.date !== exItem.date) return false;
+        if (e.startTime === exItem.startTime) return true;
+        // Überlappendes Zeitfenster (z.B. 08:30-10:20 überspannt Einzelstunden)
+        if (exItem.startTime >= e.startTime && exItem.startTime < e.endTime) return true;
+        if (e.startTime >= exItem.startTime && e.startTime < exItem.endTime) return true;
+        return false;
+      });
+
+      if (existingIdx >= 0) {
+        const existing = newExams[existingIdx];
+        const existingIsGeneric = /^(klassenarbeit|klausur|prüfung|pruefung|klassenarbeit\s*\/\s*klausur)$/i.test(existing.subject.trim());
+        if (existingIsGeneric && !isGeneric) {
+          newExams[existingIdx] = exItem;
+        } else if (!existingIsGeneric && isGeneric) {
+          // Spezifischeres Fach bereits vorhanden
+          return;
+        } else if (String(exItem.id).startsWith('untis-exam') && !String(existing.id).startsWith('untis-exam')) {
+          newExams[existingIdx] = exItem;
+        }
+        return;
       }
+
+      newExams.push(exItem);
     }
 
     // A. WebUntis getExams & getExams2017 parsen
@@ -2241,15 +2297,36 @@ async function performWebUntisSync(userOverride, passOverride) {
     }
 
     const newHomework = [];
-    const homeworkKeySet = new Set();
 
     function addUniqueHomework(hwItem) {
       if (!hwItem || !hwItem.text) return;
-      const key = `${hwItem.dueDate}_${(hwItem.subject || '').toLowerCase()}_${hwItem.text.toLowerCase().trim()}`;
-      if (!homeworkKeySet.has(key)) {
-        homeworkKeySet.add(key);
-        newHomework.push(hwItem);
+
+      const sTrim = String(hwItem.subject || '').trim();
+      if (sTrim === 'M' || sTrim === 'm') hwItem.subject = 'Mathematik (M)';
+      else if (sTrim === 'E' || sTrim === 'e') hwItem.subject = 'Englisch (E)';
+      else if (sTrim === 'D' || sTrim === 'd') hwItem.subject = 'Deutsch (D)';
+      else if (sTrim === 'PP' || sTrim === 'pp') hwItem.subject = 'Praktische Philosophie (PP)';
+      else if (subjectsMap[sTrim]) hwItem.subject = subjectsMap[sTrim];
+
+      // Duplikaterkennung nach ID und nach Inhalt (Text + Fälligkeitsdatum)
+      const idMatch = hwItem.id ? newHomework.findIndex(h => String(h.id) === String(hwItem.id)) : -1;
+      const contentMatch = newHomework.findIndex(h =>
+        h.dueDate === hwItem.dueDate &&
+        h.text.toLowerCase().trim() === hwItem.text.toLowerCase().trim()
+      );
+
+      const matchIdx = idMatch >= 0 ? idMatch : contentMatch;
+      if (matchIdx >= 0) {
+        const existing = newHomework[matchIdx];
+        const existingIsGeneric = /^(unterricht|hausaufgabe)$/i.test(String(existing.subject || '').trim());
+        const newIsGeneric = /^(unterricht|hausaufgabe)$/i.test(String(hwItem.subject || '').trim());
+        if (existingIsGeneric && !newIsGeneric) {
+          newHomework[matchIdx] = hwItem;
+        }
+        return;
       }
+
+      newHomework.push(hwItem);
     }
 
     // A. JSON-RPC Hausaufgaben (getHomeWork2017 / getHomeWorks)
@@ -2307,7 +2384,10 @@ async function performWebUntisSync(userOverride, passOverride) {
           if (!subj && hw.lesson && hw.lesson.subject) {
             subj = typeof hw.lesson.subject === 'object' ? (hw.lesson.subject.name || hw.lesson.subject.longName || '') : hw.lesson.subject;
           }
-          if (!subj) subj = 'Hausaufgabe';
+          if (!subj || subj === 'Hausaufgabe') {
+            if (lInfo && lInfo.subjectId === 0) subj = 'Klassenorganisation / Allgemein';
+            else subj = 'Hausaufgabe';
+          }
 
           let teach = '';
           if (lInfo) {

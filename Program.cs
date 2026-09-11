@@ -63,6 +63,9 @@ namespace BarrierefreierStundenplan
 
             _baseDir = AppDomain.CurrentDomain.BaseDirectory;
             _assembly = Assembly.GetExecutingAssembly();
+            AppDomain.CurrentDomain.ProcessExit += (s, e) => LogUntis("=== ProcessExit event fired ===");
+            AppDomain.CurrentDomain.UnhandledException += (s, e) => LogUntis("=== UnhandledException: " + (e.ExceptionObject != null ? e.ExceptionObject.ToString() : "null") + " ===");
+            LogUntis("=== PROGRAM START v" + GetLocalVersion() + " ===");
 
             // Vorherige temporäre Update-Dateien bereinigen
             try
@@ -76,8 +79,10 @@ namespace BarrierefreierStundenplan
             catch { }
 
             // 2. Prüfen, ob bereits eine Instanz auf Port 48250 lauscht
+            LogUntis("Checking if port " + DEFAULT_PORT + " is in use");
             if (IsPortInUse(DEFAULT_PORT))
             {
+                LogUntis("Port " + DEFAULT_PORT + " is already in use, opening browser and exiting secondary instance");
                 LaunchBestBrowser("http://127.0.0.1:" + DEFAULT_PORT + "/index.html");
                 return;
             }
@@ -102,16 +107,19 @@ namespace BarrierefreierStundenplan
                         _listener.Start();
                         _activePort = p;
                         serverStarted = true;
+                        LogUntis("HttpListener started successfully on port " + p);
                         break;
                     }
-                    catch
+                    catch (Exception lex)
                     {
+                        LogUntis("Failed to start HttpListener on port " + p + ": " + lex.Message);
                         try { _listener.Close(); } catch { }
                     }
                 }
 
                 if (!serverStarted)
                 {
+                    LogUntis("No HttpListener port could be started!");
                     MessageBox.Show("Der lokale Webserver konnte nicht gestartet werden. Bitte starte deinen Rechner neu.",
                         "Stundenplan LWL", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
@@ -121,6 +129,7 @@ namespace BarrierefreierStundenplan
                 Thread serverThread = new Thread(ListenLoop);
                 serverThread.IsBackground = true;
                 serverThread.Start();
+                LogUntis("Server listen thread started");
 
                 // 5. Asynchronen Auto-Update-Check beim Start ausführen
                 CheckAndApplyUpdateAsync();
@@ -148,9 +157,10 @@ namespace BarrierefreierStundenplan
                         lock (_shutdownLock)
                         {
                             // Sobald die Seite mindestens einmal geladen wurde und im sichtbaren Fenster
-                            // seit über 8 Sekunden kein Signal mehr empfangen wurde: Beenden
-                            if (_pageHasLoaded && !_isWindowHidden && (DateTime.UtcNow - _lastActivity).TotalSeconds > 8)
+                            // seit über 60 Sekunden kein Signal mehr empfangen wurde: Beenden
+                            if (_pageHasLoaded && !_isWindowHidden && (DateTime.UtcNow - _lastActivity).TotalSeconds > 60)
                             {
+                                LogUntis("Watchdog triggered exit after 60s inactivity");
                                 Environment.Exit(0);
                                 break;
                             }
@@ -163,14 +173,18 @@ namespace BarrierefreierStundenplan
                 string launchUrl = "http://127.0.0.1:" + _activePort + "/index.html";
 
                 // 8. Browser öffnen
+                LogUntis("Launching browser with URL: " + launchUrl);
                 LaunchBestBrowser(launchUrl);
 
                 // 9. Blockieren bis Beenden-Signal
+                LogUntis("Entering _exitEvent.WaitOne()...");
                 _exitEvent.WaitOne();
+                LogUntis("_exitEvent was released, exiting");
                 Environment.Exit(0);
             }
             catch (Exception ex)
             {
+                LogUntis("FATAL EXCEPTION in Main: " + ex.ToString());
                 try
                 {
                     File.WriteAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "error.log"), ex.ToString());
@@ -181,6 +195,7 @@ namespace BarrierefreierStundenplan
             }
             finally
             {
+                LogUntis("Main finally block entered");
                 _isRunning = false;
                 if (_listener != null && _listener.IsListening)
                 {
@@ -250,20 +265,25 @@ namespace BarrierefreierStundenplan
                 }
                 catch { }
             }
-            return "1.4.1";
+            return "1.4.2";
         }
 
         private static bool IsNewerVersion(string remote, string local)
         {
             try
             {
-                Version r = new Version(remote.Trim('v', 'V'));
-                Version l = new Version(local.Trim('v', 'V'));
+                string rStr = remote.Trim().TrimStart('v', 'V');
+                string lStr = local.Trim().TrimStart('v', 'V');
+                // Erweitere x.y auf x.y.0 falls nötig
+                if (rStr.Split('.').Length == 2) rStr += ".0";
+                if (lStr.Split('.').Length == 2) lStr += ".0";
+                Version r = new Version(rStr);
+                Version l = new Version(lStr);
                 return r > l;
             }
             catch
             {
-                return !string.Equals(remote.Trim(), local.Trim(), StringComparison.OrdinalIgnoreCase);
+                return false;
             }
         }
 
@@ -298,8 +318,12 @@ namespace BarrierefreierStundenplan
                     if (!m.Success) return false;
 
                     string remoteVer = m.Groups[1].Value.Trim();
-                    if (IsNewerVersion(remoteVer, localVer))
+                    bool isNewer = IsNewerVersion(remoteVer, localVer);
+                    LogUntis(string.Format("AutoUpdater: remote={0}, local={1}, isNewer={2}", remoteVer, localVer, isNewer));
+
+                    if (isNewer)
                     {
+                        LogUntis("Starting automatic update download from GitHub...");
                         string currentExe = Process.GetCurrentProcess().MainModule.FileName;
                         string tempExe = Path.Combine(_baseDir, "Stundenplan_LWL_Update.exe");
                         string oldExe = currentExe + ".old";
@@ -386,14 +410,15 @@ namespace BarrierefreierStundenplan
                 }
             }
 
-            // Nur wenn die HTML-Hauptseite neu geladen wird (z. B. bei F5/Reload),
-            // wird ein anstehender Schließ-Timer storniert:
-            if (rawUrl == "/index.html" || rawUrl == "/")
+            // Wenn ein aktiver Request eingeht (außer window_closing oder shutdown),
+            // wird ein anstehender Schließ-Timer sofort storniert (z. B. bei F5, Navigation, Ping):
+            if (rawUrl != "/api/window_closing" && rawUrl != "/api/shutdown")
             {
                 lock (_shutdownLock)
                 {
                     if (_closingPending)
                     {
+                        LogUntis("Canceling pending window_closing because of active request: " + rawUrl);
                         _closingPending = false;
                         if (_closingTimer != null)
                         {
@@ -428,6 +453,7 @@ namespace BarrierefreierStundenplan
             // 2. Fenster wird geschlossen / Entladen (Alt+F4, Kreuz oder Tab schließen)
             if (rawUrl == "/api/window_closing")
             {
+                LogUntis("API /api/window_closing received, scheduling shutdown in 5000ms");
                 resp.StatusCode = 200;
                 resp.ContentType = "application/json";
                 byte[] bye = Encoding.UTF8.GetBytes("{\"status\":\"closing_scheduled\"}");
@@ -447,10 +473,11 @@ namespace BarrierefreierStundenplan
                         {
                             if (_closingPending)
                             {
+                                LogUntis("Executing delayed shutdown from window_closing");
                                 Environment.Exit(0);
                             }
                         }
-                    }, null, 1500, Timeout.Infinite);
+                    }, null, 5000, Timeout.Infinite);
                 }
                 return;
             }
@@ -458,6 +485,7 @@ namespace BarrierefreierStundenplan
             // 3. Sofortiges Beenden-Signal (Alt+F4 Tastendruck oder Beenden-Button)
             if (rawUrl == "/api/shutdown")
             {
+                LogUntis("API /api/shutdown received, exiting");
                 resp.StatusCode = 200;
                 resp.ContentType = "application/json";
                 byte[] bye = Encoding.UTF8.GetBytes("{\"status\":\"shutting_down\"}");
@@ -1076,6 +1104,29 @@ namespace BarrierefreierStundenplan
             string srv = !string.IsNullOrEmpty(serverHeader) ? serverHeader : (!string.IsNullOrEmpty(_untisServer) ? _untisServer : "lwl-bk-soest.webuntis.com");
             string sch = !string.IsNullOrEmpty(schoolHeader) ? schoolHeader : (!string.IsNullOrEmpty(_untisSchool) ? _untisSchool : "lwl-bk-soest");
 
+            byte[] postBytes = null;
+            if (req.HttpMethod == "POST" || req.HttpMethod == "PUT")
+            {
+                using (Stream inStream = req.InputStream)
+                using (MemoryStream inMs = new MemoryStream())
+                {
+                    inStream.CopyTo(inMs);
+                    postBytes = inMs.ToArray();
+                }
+            }
+
+            // Automatische Erkennung von Untis Mobile Methoden (getHomeWork2017, getExams2017, getPeriodData2017 etc.)
+            // Falls kein customEndpoint übergeben wurde, aber der Request-Body eine Mobile-Methode aufruft:
+            if (string.IsNullOrEmpty(customEndpoint) && postBytes != null && postBytes.Length > 0)
+            {
+                string preview = Encoding.UTF8.GetString(postBytes, 0, Math.Min(300, postBytes.Length));
+                Match mm = Regex.Match(preview, "\"method\"\\s*:\\s*\"(getHomeWork2017|getExams2017|getPeriodData2017|getUserData2017|getTimetable2017|getStudentAbsences2017)\"");
+                if (mm.Success)
+                {
+                    customEndpoint = "/jsonrpc_intern.do?m=" + mm.Groups[1].Value;
+                }
+            }
+
             string targetUrl;
             if (!string.IsNullOrEmpty(customEndpoint))
             {
@@ -1139,15 +1190,8 @@ namespace BarrierefreierStundenplan
                     outReq.Headers["Authorization"] = "Bearer " + _untisJwt;
                 }
 
-                byte[] postBytes = null;
-                if (req.HttpMethod == "POST" || req.HttpMethod == "PUT")
+                if (postBytes != null && postBytes.Length > 0)
                 {
-                    using (Stream inStream = req.InputStream)
-                    using (MemoryStream inMs = new MemoryStream())
-                    {
-                        inStream.CopyTo(inMs);
-                        postBytes = inMs.ToArray();
-                    }
 
                     // Automatische Auth-Injektion für Untis Mobile JSON-RPC Calls falls X-Untis-Secret & X-Untis-User übergeben wurden
                     if (!string.IsNullOrEmpty(untisSecret) && !string.IsNullOrEmpty(untisUser) && postBytes != null && postBytes.Length > 0)
