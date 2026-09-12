@@ -14,7 +14,7 @@
 
   <!-- Schnellsprunglinks für Tastaturbedienung -->
   <nav class="skip-links" aria-label="Schnellnavigation">
-    <a href="#main-nav-tabs" class="skip-link">Zur Menüauswahl springen (Tasten 1-5)</a>
+    <a href="#main-nav-tabs" class="skip-link">Zur Menüauswahl springen (Tasten 1-7)</a>
     <a href="#day-picker-bar" class="skip-link">Zur Tagesauswahl springen</a>
     <a href="#view-content-area" class="skip-link">Direkt zum Hauptinhalt springen</a>
   </nav>
@@ -114,7 +114,7 @@
   </div>
 
   <!-- =========================================================================
-       HAUPTNAVIGATION (5 TABS - TASTEN 1 BIS 5)
+       HAUPTNAVIGATION (7 TABS - TASTEN 1 BIS 7)
        ========================================================================= -->
   <nav class="nav-tabs-wrapper" aria-label="Hauptmenü" id="main-nav-tabs">
     <div class="tab-list" role="tablist">
@@ -134,8 +134,16 @@
         <span class="tab-key-hint" aria-hidden="true">4</span>
         <span><span class="emoji-icon" aria-hidden="true">⏱️ </span><strong>Fehlzeiten</strong></span>
       </button>
-      <button id="tab-settings" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-settings" onclick="switchTab('settings')" tabindex="-1">
+      <button id="tab-messages" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-messages" onclick="switchTab('messages')" tabindex="-1">
         <span class="tab-key-hint" aria-hidden="true">5</span>
+        <span><span class="emoji-icon" aria-hidden="true">💬 </span><strong>Tagesnachrichten &amp; Mitteilungen</strong></span>
+      </button>
+      <button id="tab-grades" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-grades" onclick="switchTab('grades')" tabindex="-1">
+        <span class="tab-key-hint" aria-hidden="true">6</span>
+        <span><span class="emoji-icon" aria-hidden="true">📊 </span><strong>Noten &amp; Leistungen</strong></span>
+      </button>
+      <button id="tab-settings" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-settings" onclick="switchTab('settings')" tabindex="-1">
+        <span class="tab-key-hint" aria-hidden="true">7</span>
         <span><span class="emoji-icon" aria-hidden="true">⚙️ </span><strong>Konto &amp; Einstellungen</strong></span>
       </button>
     </div>
@@ -367,7 +375,139 @@
     </div>
 
     <!-- =======================================================================
-         REITER 5: KONTO, SYNCHRONISATION & EINSTELLUNGEN
+         REITER 5: TAGESNACHRICHTEN & MITTEILUNGEN (WEBUNTIS & MESSENGER)
+         ======================================================================= -->
+    <div id="view-messages" class="view-panel" role="tabpanel" aria-labelledby="tab-messages">
+
+      <div class="banner-header">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <h2 class="banner-title" id="messages-view-title">Tagesnachrichten &amp; Mitteilungen</h2>
+            <p class="banner-subtitle">Offizielle Schulinformationen, Tagesnachrichten und Mitteilungen an Lehrkräfte des LWL-Berufskollegs Soest.</p>
+          </div>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-primary" onclick="toggleMessageComposer()" id="btn-compose-toggle">
+              <span class="emoji-icon" aria-hidden="true">✍️ </span><strong>Neue Mitteilung verfassen</strong>
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="readMessagesSummary()" aria-label="Mitteilungen vorlesen">
+              <span class="emoji-icon" aria-hidden="true">🔊 </span>Mitteilungen vorlesen (V)
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="syncMessagesAndNews()" title="Nachrichten aktualisieren">
+              <span class="emoji-icon" aria-hidden="true">🔄 </span>Aktualisieren
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- FORMULAR ZUM VERFASSEN EINER NEUEN MITTEILUNG (EINKLAPPBAR) -->
+      <section id="message-composer-card" class="section-card" style="display: none; border-color: var(--accent-primary);" aria-labelledby="composer-heading">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+          <h3 id="composer-heading" style="font-size: var(--font-size-lg); color: var(--accent-primary);">✍️ Neue Mitteilung verfassen</h3>
+          <button type="button" class="btn btn-secondary" style="min-height: 36px; padding: 4px 10px;" onclick="toggleMessageComposer(false)" aria-label="Formular schließen">✕ Schließen</button>
+        </div>
+        <form id="form-send-message" onsubmit="handleSendMessageSubmit(event)" class="accessible-form">
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="msg-recipient" class="field-label"><strong>Empfänger (Lehrkraft / Ansprechpartner):</strong> <span class="required-star">*</span></label>
+              <select id="msg-recipient" class="large-select" required>
+                <!-- Wird dynamisch mit den 71 Lehrkräften aus WebUntis befüllt -->
+                <option value="">-- Lehrkraft auswählen --</option>
+              </select>
+              <span class="field-hint">Wähle die Lehrkraft aus dem WebUntis-Lehrerverzeichnis.</span>
+            </div>
+            <div class="form-group">
+              <label for="msg-subject" class="field-label"><strong>Betreff:</strong> <span class="required-star">*</span></label>
+              <input type="text" id="msg-subject" class="large-input" placeholder="z. B. Entschuldigung wegen Krankheit, Rückfrage zur Hausaufgabe..." required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="msg-text" class="field-label"><strong>Nachrichtentext:</strong> <span class="required-star">*</span></label>
+            <textarea id="msg-text" class="large-input" rows="4" placeholder="Schreibe hier deine Nachricht an die Lehrkraft..." required style="resize: vertical; font-family: inherit; font-size: inherit;"></textarea>
+          </div>
+          <div class="form-actions" style="margin-top: 14px; display: flex; gap: 10px; justify-content: flex-end;">
+            <button type="button" class="btn btn-secondary" onclick="toggleMessageComposer(false)">Abbrechen</button>
+            <button type="submit" class="btn btn-primary" id="btn-submit-message">
+              <span class="emoji-icon" aria-hidden="true">✉️ </span><strong>Mitteilung absenden</strong>
+            </button>
+          </div>
+        </form>
+        <div id="composer-status-box" style="display: none; margin-top: 12px;"></div>
+      </section>
+
+      <!-- FILTERLEISTE FÜR MITTEILUNGEN -->
+      <div class="filter-bar" role="group" aria-label="Mitteilungsfilter" style="margin-bottom: 16px;">
+        <button type="button" class="filter-btn active" id="btn-filter-msg-all" onclick="filterMessages('all')">
+          <span>📬 Alle Nachrichten</span> <span class="filter-count" id="count-msg-all">0</span>
+        </button>
+        <button type="button" class="filter-btn" id="btn-filter-msg-news" onclick="filterMessages('news')">
+          <span>📢 Tagesnachrichten / Ticker</span> <span class="filter-count" id="count-msg-news">0</span>
+        </button>
+        <button type="button" class="filter-btn" id="btn-filter-msg-inbox" onclick="filterMessages('inbox')">
+          <span>📥 Posteingang</span> <span class="filter-count" id="count-msg-inbox">0</span>
+        </button>
+        <button type="button" class="filter-btn" id="btn-filter-msg-sent" onclick="filterMessages('sent')">
+          <span>📤 Gesendet</span> <span class="filter-count" id="count-msg-sent">0</span>
+        </button>
+      </div>
+
+      <!-- LISTE DER MITTEILUNGEN & TAGESNACHRICHTEN -->
+      <section id="messages-list-container" aria-live="polite" aria-label="Liste der Tagesnachrichten und Mitteilungen">
+        <!-- Wird per JavaScript befüllt -->
+      </section>
+
+    </div>
+
+    <!-- =======================================================================
+         REITER 6: NOTEN & LEISTUNGSÜBERSICHT
+         ======================================================================= -->
+    <div id="view-grades" class="view-panel" role="tabpanel" aria-labelledby="tab-grades">
+
+      <div class="banner-header">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <h2 class="banner-title" id="grades-view-title">Noten &amp; Leistungsübersicht</h2>
+            <p class="banner-subtitle">Notenspiegel deiner Fächer, Ergebnisse der 13 Klassenarbeiten und Berechnung des Notendurchschnitts.</p>
+          </div>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-primary" onclick="openAddGradeModal()" id="btn-add-grade">
+              <span class="emoji-icon" aria-hidden="true">➕ </span><strong>Klausurnote eintragen</strong>
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="readGradesSummary()" aria-label="Notenübersicht vorlesen">
+              <span class="emoji-icon" aria-hidden="true">🔊 </span>Noten vorlesen
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- KENNZAHLEN / STATISTIK-KARTEN -->
+      <div class="absence-stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 20px;">
+        <div class="absence-stat-card">
+          <div class="absence-stat-number" id="stat-grade-gpa" style="color: var(--accent-primary);">--</div>
+          <div class="absence-stat-label">📊 Gesamtschnitt</div>
+        </div>
+        <div class="absence-stat-card">
+          <div class="absence-stat-number" id="stat-grade-total-exams">13</div>
+          <div class="absence-stat-label">📝 Klausuren im Schuljahr</div>
+        </div>
+        <div class="absence-stat-card">
+          <div class="absence-stat-number" id="stat-grade-graded-exams" style="color: var(--accent-ok);">0 / 13</div>
+          <div class="absence-stat-label">✅ Bewertete Arbeiten</div>
+        </div>
+        <div class="absence-stat-card">
+          <div class="absence-stat-number" id="stat-grade-subjects-count">12</div>
+          <div class="absence-stat-label">📚 Schulfächer gesamt</div>
+        </div>
+      </div>
+
+      <!-- NOTENÜBERSICHT NACH FÄCHERN -->
+      <section id="grades-list-container" aria-live="polite" aria-label="Notenspiegel nach Fächern">
+        <!-- Wird per JavaScript befüllt -->
+      </section>
+
+    </div>
+
+    <!-- =======================================================================
+         REITER 7: KONTO, SYNCHRONISATION & EINSTELLUNGEN
          ======================================================================= -->
     <div id="view-settings" class="view-panel" role="tabpanel" aria-labelledby="tab-settings">
 
@@ -583,6 +723,63 @@
           Schließen (Esc)
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       MODAL: KLAUSURNOTE EINTRAGEN / BEARBEITEN
+       ========================================================================= -->
+  <div id="modal-add-grade" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modal-grade-title" style="display: none;" onclick="handleGradeModalBackdropClick(event)">
+    <div class="modal-card" role="document">
+      <div class="modal-header">
+        <h3 id="modal-grade-title" class="modal-title">Klausurnote eintragen</h3>
+        <button type="button" class="modal-close-btn" onclick="closeGradeModal()" aria-label="Modal schließen (Taste Esc)">✕</button>
+      </div>
+      <form id="form-save-grade" onsubmit="handleSaveGradeSubmit(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="grade-exam-select" class="field-label"><strong>Klausur / Termin auswählen:</strong> <span class="required-star">*</span></label>
+            <select id="grade-exam-select" class="large-select" required onchange="handleGradeExamSelectionChange(event)">
+              <!-- Dynamisch mit den 13 Klausuren befüllt -->
+            </select>
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="grade-mark-select" class="field-label"><strong>Erzielte Note:</strong> <span class="required-star">*</span></label>
+              <select id="grade-mark-select" class="large-select" required>
+                <option value="1.0">1,0 (Sehr gut)</option>
+                <option value="1.3">1,3 (Sehr gut -)</option>
+                <option value="1.7">1,7 (Gut +)</option>
+                <option value="2.0" selected>2,0 (Gut)</option>
+                <option value="2.3">2,3 (Gut -)</option>
+                <option value="2.7">2,7 (Befriedigend +)</option>
+                <option value="3.0">3,0 (Befriedigend)</option>
+                <option value="3.3">3,3 (Befriedigend -)</option>
+                <option value="3.7">3,7 (Ausreichend +)</option>
+                <option value="4.0">4,0 (Ausreichend)</option>
+                <option value="5.0">5,0 (Mangelhaft)</option>
+                <option value="6.0">6,0 (Ungenügend)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="grade-points-input" class="field-label"><strong>Punkte / Prozent (optional):</strong></label>
+              <input type="text" id="grade-points-input" class="large-input" placeholder="z. B. 45 / 50 Pkt (90%)">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="grade-note-input" class="field-label"><strong>Bemerkung der Lehrkraft (optional):</strong></label>
+            <input type="text" id="grade-note-input" class="large-input" placeholder="z. B. Gute Argumentation in Teil 2">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeGradeModal()">
+            Abbrechen (Esc)
+          </button>
+          <button type="submit" class="btn btn-primary" id="btn-save-grade-submit">
+            <span class="emoji-icon" aria-hidden="true">💾 </span><strong>Note speichern</strong>
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 

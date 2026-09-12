@@ -1753,3 +1753,235 @@ body.theme-high-contrast .urgent-badge.exam {
   background: #55ffff !important;
   color: #000000 !important;
 }
+
+/* ==========================================================================
+   MITTEILUNGEN & TAGESNACHRICHTEN STYLES
+   ========================================================================== */
+.msg-card {
+  background: var(--bg-surface);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  margin-bottom: 14px;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.msg-card:hover, .msg-card:focus-within {
+  border-color: var(--accent-primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.msg-card.news-highlight {
+  border-left: 6px solid #eab308;
+  background: var(--bg-surface-elevated);
+}
+
+.msg-card.sent-highlight {
+  border-left: 6px solid #8b5cf6;
+}
+
+.msg-card.inbox-highlight {
+  border-left: 6px solid var(--accent-primary);
+}
+
+.msg-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.msg-badges {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.msg-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: bold;
+}
+
+.msg-badge-news {
+  background: #fef08a;
+  color: #854d0e;
+}
+
+.msg-badge-inbox {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.msg-badge-sent {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.msg-date {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.msg-title {
+  font-size: var(--font-size-base, 16px);
+  font-weight: bold;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.msg-author-line {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.msg-body {
+  font-size: var(--font-size-base, 16px);
+  line-height: 1.6;
+  color: var(--text-primary);
+  white-space: pre-line;
+}
+
+/* ==========================================================================
+   NOTEN & LEISTUNGSÜBERSICHT STYLES
+   ========================================================================== */
+.grade-subject-card {
+  background: var(--bg-surface);
+  border: 2px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 18px 22px;
+  margin-bottom: 16px;
+}
+
+.grade-subject-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.grade-subject-title {
+  font-size: var(--font-size-lg, 18px);
+  font-weight: bold;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.grade-average-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  font-size: 16px;
+  font-weight: 800;
+  background: var(--bg-surface-elevated);
+  border: 2px solid var(--border-color);
+}
+
+.grade-exams-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.grade-exam-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.grade-badge-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  font-weight: 900;
+  font-size: 18px;
+  color: #ffffff;
+  background: #3b82f6;
+}
+
+.grade-badge-value.grade-1 {
+  background: #16a34a;
+}
+.grade-badge-value.grade-2 {
+  background: #2563eb;
+}
+.grade-badge-value.grade-3 {
+  background: #d97706;
+}
+.grade-badge-value.grade-4 {
+  background: #ea580c;
+}
+.grade-badge-value.grade-5 {
+  background: #dc2626;
+}
+.grade-badge-value.grade-pending {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border: 2px dashed var(--border-color);
+}
+
+/* HIGH-CONTRAST OVERRIDES */
+body.theme-high-contrast .msg-card {
+  background: #000000 !important;
+  border: 3px solid #ffffff !important;
+}
+body.theme-high-contrast .msg-card.news-highlight {
+  border-left: 8px solid #ffff00 !important;
+}
+body.theme-high-contrast .msg-card.inbox-highlight {
+  border-left: 8px solid #55ffff !important;
+}
+body.theme-high-contrast .msg-card.sent-highlight {
+  border-left: 8px solid #ff55ff !important;
+}
+body.theme-high-contrast .msg-badge-news {
+  background: #ffff00 !important;
+  color: #000000 !important;
+}
+body.theme-high-contrast .msg-badge-inbox {
+  background: #55ffff !important;
+  color: #000000 !important;
+}
+body.theme-high-contrast .msg-badge-sent {
+  background: #ff55ff !important;
+  color: #000000 !important;
+}
+body.theme-high-contrast .grade-subject-card {
+  background: #000000 !important;
+  border: 3px solid #ffff00 !important;
+}
+body.theme-high-contrast .grade-exam-row {
+  background: #000000 !important;
+  border: 1px solid #ffffff !important;
+}
+body.theme-high-contrast .grade-badge-value {
+  background: #ffff00 !important;
+  color: #000000 !important;
+  border: 2px solid #ffffff !important;
+}
+

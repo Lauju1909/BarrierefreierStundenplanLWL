@@ -97,10 +97,13 @@ function loadAppData() {
         homework: (parsed.homework && Array.isArray(parsed.homework)) ? parsed.homework : [],
         absences: parsed.absences || [],
         classbook: parsed.classbook || [],
+        messages: (parsed.messages && Array.isArray(parsed.messages)) ? parsed.messages : [],
+        grades: (parsed.grades && typeof parsed.grades === 'object') ? parsed.grades : {},
         holidays: (parsed.holidays && parsed.holidays.length > 0) ? parsed.holidays : [...DEFAULT_NRW_HOLIDAYS_2026_2027],
         schoolYear: parsed.schoolYear || null,
         examFilter: 'all',
-        homeworkFilter: parsed.homeworkFilter || 'all'
+        homeworkFilter: parsed.homeworkFilter || 'all',
+        messagesFilter: 'all'
       };
 
       // Gecachte synthetische Fake-Prüfungen def-exam- aus früheren Versionen entfernen, aber ALLE echten Prüfungen beibehalten
@@ -264,6 +267,8 @@ function switchTab(tabId) {
     { id: 'exams', btn: 'tab-exams', view: 'view-exams' },
     { id: 'homework', btn: 'tab-homework', view: 'view-homework' },
     { id: 'absences', btn: 'tab-absences', view: 'view-absences' },
+    { id: 'messages', btn: 'tab-messages', view: 'view-messages' },
+    { id: 'grades', btn: 'tab-grades', view: 'view-grades' },
     { id: 'settings', btn: 'tab-settings', view: 'view-settings' }
   ];
 
@@ -296,9 +301,15 @@ function switchTab(tabId) {
   } else if (tabId === 'absences') {
     renderAbsences();
     announceSR('Reiter 4: Fehlzeiten und Entschuldigungen ausgewählt.', 'polite');
+  } else if (tabId === 'messages') {
+    renderMessagesView();
+    announceSR('Reiter 5: Tagesnachrichten und Mitteilungen ausgewählt.', 'polite');
+  } else if (tabId === 'grades') {
+    renderGradesView();
+    announceSR('Reiter 6: Noten und Leistungsübersicht ausgewählt.', 'polite');
   } else if (tabId === 'settings') {
     loadFeedbackArchive();
-    announceSR('Reiter 5: Konto und Einstellungen ausgewählt.', 'polite');
+    announceSR('Reiter 7: Konto und Einstellungen ausgewählt.', 'polite');
   }
 }
 
@@ -2350,6 +2361,11 @@ async function performWebUntisSync(userOverride, passOverride) {
       }
     }
 
+    // Bisherige Klassenbucheinträge (z.B. aus dem gesamten Schuljahr) erhalten und einbeziehen
+    if (Array.isArray(appData.classbook)) {
+      appData.classbook.forEach(cb => addUniqueClassbook(cb));
+    }
+
     allTtSource.forEach((item, idx) => {
       const topicText = (item.lstext || item.lessonText || '').trim();
       if (!topicText) return;
@@ -2422,6 +2438,8 @@ async function performWebUntisSync(userOverride, passOverride) {
     renderExams();
     renderHomework();
     renderAbsences();
+    renderMessagesView();
+    renderGradesView();
     renderUrgentNotificationBanner();
     triggerDesktopNotification();
     updateSyncDisplay();
@@ -3291,7 +3309,7 @@ function renderHomework() {
   // Klassenbuch (Lehrstoff der Stunden)
   if (classbook.length > 0 && (filter === 'all' || filter === 'classbook')) {
     html += `<h3 class="section-subheading" style="margin-top:1.5rem;">Klassenbuch / Lehrstoff (${classbook.length})</h3>`;
-    classbook.slice(0, 50).forEach(entry => {
+    classbook.forEach(entry => {
       let dObj = null;
       if (entry.date) {
         const dRaw = String(entry.date).replace(/-/g, '');
@@ -3507,8 +3525,11 @@ function renderUrgentNotificationBanner() {
 
   const nextExam = upcomingExams.length > 0 ? upcomingExams[0] : null;
 
-  // Wenn keine offenen Aufgaben und keine anstehende Klausur existieren, ausblenden
-  if (homework.length === 0 && !nextExam) {
+  const messages = appData.messages || [];
+  const activeNews = messages.filter(m => m.type === 'news' || m.type === 'inbox');
+
+  // Wenn keine offenen Aufgaben, keine anstehende Klausur und keine Mitteilungen existieren, ausblenden
+  if (homework.length === 0 && !nextExam && activeNews.length === 0) {
     card.style.display = 'none';
     return;
   }
@@ -3517,6 +3538,9 @@ function renderUrgentNotificationBanner() {
 
   // Text-Zusammenfassung generieren
   const summaryParts = [];
+  if (activeNews.length > 0) {
+    summaryParts.push(`📢 ${activeNews.length} Schulinformation / Mitteilung`);
+  }
   if (overdueHw.length > 0) {
     summaryParts.push(`🚨 ${overdueHw.length} überfällige Aufgabe${overdueHw.length > 1 ? 'n' : ''}`);
   }
@@ -3533,6 +3557,27 @@ function renderUrgentNotificationBanner() {
 
   // Grid-Karten aufbauen
   let itemsHtml = '';
+
+  // 0. Schulinformationen / Tagesnachrichten
+  activeNews.forEach(msg => {
+    const isNews = msg.type === 'news';
+    const badgeLabel = isNews ? '📢 Tagesnachricht' : '💬 Neue Mitteilung';
+    const dateFormatted = msg.date ? formatGermanDate(new Date(msg.date)) : 'Aktuell';
+    itemsHtml += `
+      <div class="urgent-item" style="border-left: 6px solid #eab308;" tabindex="0" role="article" aria-label="${badgeLabel}: ${escHtml(msg.subject || 'Nachricht')}">
+        <div class="urgent-item-header">
+          <span class="urgent-badge" style="background: #fef08a; color: #854d0e;">${badgeLabel}</span>
+          <span class="field-hint" style="font-weight: bold;">${escHtml(dateFormatted)}</span>
+        </div>
+        <div>
+          <div class="urgent-item-subject">${escHtml(msg.subject || 'Schulinformation')}</div>
+          <p class="urgent-item-desc">${escHtml(msg.text || msg.body || '')}</p>
+        </div>
+        <button type="button" class="btn btn-secondary urgent-action-btn" onclick="switchTab('messages')" aria-label="Zu den Mitteilungen wechseln">
+          <span>💬 Zur Mitteilung</span>
+        </button>
+      </div>`;
+  });
 
   // 1. Überfällige Hausaufgaben
   overdueHw.forEach(hw => {
@@ -3727,6 +3772,12 @@ function initApp() {
       switchTab('absences');
     } else if (e.key === '5') {
       e.preventDefault();
+      switchTab('messages');
+    } else if (e.key === '6') {
+      e.preventDefault();
+      switchTab('grades');
+    } else if (e.key === '7') {
+      e.preventDefault();
       switchTab('settings');
     } else if (e.key === 'h' || e.key === 'H') {
       e.preventDefault();
@@ -3735,8 +3786,11 @@ function initApp() {
       e.preventDefault();
       // Vorlesen kontextabhängig je nach aktivem Tab und Modal
       const modal = document.getElementById('modal-lesson-details');
+      const gradeModal = document.getElementById('modal-add-grade');
       if (modal && modal.style.display !== 'none') {
         speakCurrentLessonDetails();
+      } else if (gradeModal && gradeModal.style.display !== 'none') {
+        speak('Klausurnote eintragen Dialog geöffnet.', true);
       } else if (currentTab === 'overview') {
         readTodayTimetable();
       } else if (currentTab === 'exams') {
@@ -3745,12 +3799,18 @@ function initApp() {
         readHomeworkSummary();
       } else if (currentTab === 'absences') {
         readAbsencesSummary();
+      } else if (currentTab === 'messages') {
+        readMessagesSummary();
+      } else if (currentTab === 'grades') {
+        readGradesSummary();
       }
     } else if (e.key === 'a' || e.key === 'A') {
       e.preventDefault();
       triggerManualSync();
     } else if (e.key === 'Escape') {
       closeLessonDetails();
+      closeGradeModal();
+      toggleMessageComposer(false);
     }
   });
 
@@ -3762,6 +3822,8 @@ function initApp() {
     renderExams();
     renderHomework();
     renderAbsences();
+    renderMessagesView();
+    renderGradesView();
     renderUrgentNotificationBanner();
     performWebUntisSync();
   } else {
@@ -4076,4 +4138,555 @@ async function openFeedbackZentraleApp() {
   window.open('/Feedback_Inbox.html', '_blank');
 }
 
+// =============================================================================
+// 12. TAGESNACHRICHTEN & MITTEILUNGEN (WEBUNTIS & MESSENGER)
+// =============================================================================
+
+const DEFAULT_TEACHERS_FALLBACK = [
+  { id: 87, name: 'HAN', longName: 'Hanauer' },
+  { id: 37, name: 'FE', longName: 'Feix' },
+  { id: 187, name: 'MON', longName: 'Monser' },
+  { id: 92, name: 'HUE', longName: 'Hübner' },
+  { id: 24, name: 'DRE', longName: 'Drewianka' },
+  { id: 102, name: 'M-I', longName: 'Marschinke-Ives' },
+  { id: 2, name: 'ALT', longName: 'Altmann' },
+  { id: 317, name: 'BER', longName: 'Berger' },
+  { id: 266, name: 'BUE', longName: 'Büngeler' },
+  { id: 319, name: 'CAL', longName: 'Calvano' },
+  { id: 137, name: 'KUE', longName: 'Küppers' },
+  { id: 72, name: 'HEN', longName: 'Henze' },
+  { id: 187, name: 'RUE', longName: 'Rüberg' },
+  { id: 102, name: 'JAC', longName: 'Jacob' },
+  { id: 198, name: 'SON', longName: 'Sonntag' },
+  { id: 212, name: 'ZOE', longName: 'Zörner' },
+  { id: 999, name: 'SL', longName: 'Schulleitung / Sekretariat' }
+];
+
+function getTeachersList() {
+  if (appData.teachers && Array.isArray(appData.teachers) && appData.teachers.length > 0) {
+    return appData.teachers;
+  }
+  return DEFAULT_TEACHERS_FALLBACK;
+}
+
+function renderMessagesView() {
+  const container = document.getElementById('messages-list-container');
+  if (!container) return;
+
+  const messages = appData.messages || [];
+  const filter = appData.messagesFilter || 'all';
+
+  // Zähler aktualisieren
+  const allCount = messages.length;
+  const newsCount = messages.filter(m => m.type === 'news').length;
+  const inboxCount = messages.filter(m => m.type === 'inbox').length;
+  const sentCount = messages.filter(m => m.type === 'sent').length;
+
+  const cAll = document.getElementById('count-msg-all');
+  const cNews = document.getElementById('count-msg-news');
+  const cInbox = document.getElementById('count-msg-inbox');
+  const cSent = document.getElementById('count-msg-sent');
+  if (cAll) cAll.textContent = String(allCount);
+  if (cNews) cNews.textContent = String(newsCount);
+  if (cInbox) cInbox.textContent = String(inboxCount);
+  if (cSent) cSent.textContent = String(sentCount);
+
+  // Filter Buttons Styling
+  ['all', 'news', 'inbox', 'sent'].forEach(f => {
+    const btn = document.getElementById(`btn-filter-msg-${f}`);
+    if (btn) {
+      btn.classList.toggle('active', f === filter);
+      btn.setAttribute('aria-pressed', String(f === filter));
+    }
+  });
+
+  // Empfänger-Dropdown im Sendeformular befüllen
+  const recipientSelect = document.getElementById('msg-recipient');
+  if (recipientSelect && recipientSelect.options.length <= 1) {
+    recipientSelect.innerHTML = '<option value="">-- Lehrkraft auswählen --</option>';
+    const teachers = getTeachersList().sort((a, b) => (a.longName || a.name || '').localeCompare(b.longName || b.name || ''));
+    teachers.forEach(t => {
+      const opt = document.createElement('option');
+      const displayName = `${t.longName || t.name}${t.foreName ? ' ' + t.foreName : ''} (${t.name || ''})`;
+      opt.value = displayName;
+      opt.textContent = displayName;
+      recipientSelect.appendChild(opt);
+    });
+  }
+
+  // Filtern
+  let filtered = messages;
+  if (filter === 'news') filtered = messages.filter(m => m.type === 'news');
+  else if (filter === 'inbox') filtered = messages.filter(m => m.type === 'inbox');
+  else if (filter === 'sent') filtered = messages.filter(m => m.type === 'sent');
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state" role="status" aria-live="polite">
+        <span aria-hidden="true">💬</span>
+        <p>Keine Mitteilungen in dieser Kategorie vorhanden.</p>
+        <p class="empty-hint">Klicke oben auf „Neue Mitteilung verfassen“, um eine Nachricht an eine Lehrkraft zu senden, oder aktualisiere die Tagesnachrichten.</p>
+      </div>`;
+    return;
+  }
+
+  let html = '<div class="messages-stack" role="list">';
+  filtered.forEach(msg => {
+    const isNews = msg.type === 'news';
+    const isSent = msg.type === 'sent';
+    const isInbox = msg.type === 'inbox' || (!isNews && !isSent);
+
+    let badgeClass = 'msg-badge-inbox';
+    let badgeLabel = '📥 Posteingang';
+    let highlightClass = 'inbox-highlight';
+
+    if (isNews) {
+      badgeClass = 'msg-badge-news';
+      badgeLabel = '📢 Tagesnachricht der Schule';
+      highlightClass = 'news-highlight';
+    } else if (isSent) {
+      badgeClass = 'msg-badge-sent';
+      badgeLabel = '📤 Gesendet';
+      highlightClass = 'sent-highlight';
+    }
+
+    const dateFormatted = msg.date ? formatGermanDate(new Date(msg.date)) : 'Aktuell';
+    const timeFormatted = msg.date ? new Date(msg.date).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '';
+
+    html += `
+      <article class="msg-card ${highlightClass}" role="listitem" tabindex="0" aria-label="${badgeLabel}: ${escHtml(msg.subject || 'Mitteilung')}">
+        <div class="msg-header">
+          <div class="msg-badges">
+            <span class="msg-badge ${badgeClass}">${badgeLabel}</span>
+            <span class="msg-date">📅 ${escHtml(dateFormatted)}${timeFormatted ? ' um ' + escHtml(timeFormatted) + ' Uhr' : ''}</span>
+          </div>
+          <div>
+            <button type="button" class="btn btn-secondary" style="min-height: 34px; padding: 4px 10px; font-size: 13px;" onclick="speakMsg('${msg.id}')" aria-label="Diese Mitteilung vorlesen">
+              <span class="emoji-icon" aria-hidden="true">🔊 </span>Vorlesen
+            </button>
+          </div>
+        </div>
+        <h3 class="msg-title">${escHtml(msg.subject || 'Ohne Betreff')}</h3>
+        <div class="msg-author-line">
+          ${isSent ? `👤 <strong>Empfänger:</strong> ${escHtml(msg.recipient || 'Lehrkraft')}` : `👤 <strong>Von:</strong> ${escHtml(msg.sender || 'LWL-Berufskolleg Soest')}`}
+        </div>
+        <div class="msg-body">${escHtml(msg.text || msg.body || '')}</div>
+      </article>
+    `;
+  });
+  html += '</div>';
+
+  container.innerHTML = html;
+}
+
+function speakMsg(msgId) {
+  const msg = (appData.messages || []).find(m => String(m.id) === String(msgId));
+  if (!msg) return;
+  const isSent = msg.type === 'sent';
+  const person = isSent ? `an ${msg.recipient}` : `von ${msg.sender || 'der Schule'}`;
+  const text = `Mitteilung ${person}: Betreff ${msg.subject || 'Kein Betreff'}. Inhalt: ${msg.text || msg.body || ''}`;
+  speak(text, true);
+  announceSR(text, 'assertive');
+}
+
+function toggleMessageComposer(forceState) {
+  const card = document.getElementById('message-composer-card');
+  if (!card) return;
+
+  const willShow = typeof forceState === 'boolean' ? forceState : (card.style.display === 'none');
+  card.style.display = willShow ? 'block' : 'none';
+
+  if (willShow) {
+    const rec = document.getElementById('msg-recipient');
+    if (rec) rec.focus();
+    announceSR('Mitteilungs-Formular geöffnet. Wähle eine Lehrkraft als Empfänger.', 'polite');
+  }
+}
+
+function handleSendMessageSubmit(event) {
+  if (event && event.preventDefault) event.preventDefault();
+
+  const recEl = document.getElementById('msg-recipient');
+  const subjEl = document.getElementById('msg-subject');
+  const textEl = document.getElementById('msg-text');
+  const statusBox = document.getElementById('composer-status-box');
+
+  if (!recEl || !recEl.value || !subjEl || !subjEl.value.trim() || !textEl || !textEl.value.trim()) {
+    alert('Bitte wähle einen Empfänger aus und fülle Betreff sowie Nachrichtentext aus.');
+    return;
+  }
+
+  const recipient = recEl.value.trim();
+  const subject = subjEl.value.trim();
+  const text = textEl.value.trim();
+
+  const newMsg = {
+    id: 'msg-' + Date.now(),
+    type: 'sent',
+    sender: appData.config.username ? `Schüler (${appData.config.username})` : 'Laurin Schneider',
+    recipient: recipient,
+    subject: subject,
+    text: text,
+    date: new Date().toISOString()
+  };
+
+  if (!appData.messages) appData.messages = [];
+  appData.messages.unshift(newMsg);
+  saveAppData();
+
+  // Desktop Toast Notification
+  fetch('/api/notify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: 'Mitteilung gesendet',
+      message: `An ${recipient}: ${subject}`
+    })
+  }).catch(() => {});
+
+  // Formular zurücksetzen und schließen
+  subjEl.value = '';
+  textEl.value = '';
+  recEl.selectedIndex = 0;
+  toggleMessageComposer(false);
+
+  renderMessagesView();
+  renderUrgentNotificationBanner();
+
+  const successMsg = `Mitteilung an ${recipient} wurde erfolgreich erfasst und im Archiv gespeichert.`;
+  speak(successMsg, true);
+  announceSR(successMsg, 'assertive');
+}
+
+function filterMessages(type) {
+  appData.messagesFilter = type;
+  renderMessagesView();
+}
+
+function readMessagesSummary() {
+  const msgs = appData.messages || [];
+  const news = msgs.filter(m => m.type === 'news');
+  const inbox = msgs.filter(m => m.type === 'inbox');
+  const sent = msgs.filter(m => m.type === 'sent');
+
+  let text = `Mitteilungs-Übersicht: Du hast ${msgs.length} Mitteilung${msgs.length !== 1 ? 'en' : ''}. `;
+  if (news.length > 0) text += `Davon ${news.length} Tagesnachricht${news.length > 1 ? 'en' : ''} der Schule. `;
+  if (inbox.length > 0) text += `Du hast ${inbox.length} Nachricht${inbox.length > 1 ? 'en' : ''} im Posteingang. `;
+  if (sent.length > 0) text += `Du hast ${sent.length} Nachricht${sent.length > 1 ? 'en' : ''} gesendet. `;
+
+  if (msgs.length === 0) {
+    text += 'Aktuell liegen keine neuen Mitteilungen oder Tagesnachrichten vor.';
+  } else {
+    text += `Neueste Mitteilung: ${msgs[0].subject || 'Ohne Betreff'}.`;
+  }
+
+  speak(text, true);
+  announceSR(text, 'assertive');
+}
+
+async function syncMessagesAndNews() {
+  announceSR('Synchronisiere Tagesnachrichten aus WebUntis...', 'polite');
+  try {
+    const todayNum = parseInt(new Date().toISOString().slice(0,10).replace(/-/g, ''), 10);
+    const res = await callWebUntisApi('getMessagesOfDay2017', [{ date: todayNum }]);
+    if (res && res.result && res.result.messages && Array.isArray(res.result.messages)) {
+      if (!appData.messages) appData.messages = [];
+      res.result.messages.forEach(m => {
+        const id = `webuntis-news-${m.id || Date.now()}`;
+        if (!appData.messages.some(x => x.id === id)) {
+          appData.messages.unshift({
+            id: id,
+            type: 'news',
+            sender: 'Schulleitung / WebUntis',
+            subject: m.subject || m.title || 'Tagesnachricht',
+            text: m.text || m.body || m.content || '',
+            date: new Date().toISOString()
+          });
+        }
+      });
+      saveAppData();
+    }
+  } catch (e) {}
+
+  renderMessagesView();
+  renderUrgentNotificationBanner();
+  announceSR('Tagesnachrichten aktualisiert.', 'polite');
+}
+
+// =============================================================================
+// 13. NOTEN & LEISTUNGSÜBERSICHT (FEATURE 6)
+// =============================================================================
+
+const CURRICULUM_SUBJECTS = [
+  { id: 672, code: 'M', name: 'Mathematik', teacher: 'Hanauer' },
+  { id: 62, code: 'D', name: 'Deutsch', teacher: 'Feix' },
+  { id: 67, code: 'E', name: 'Englisch', teacher: 'Monser' },
+  { id: 312, code: 'FB GWP', name: 'Fachpraxis Wirtschaft & Politik', teacher: 'Hübner' },
+  { id: 180, code: 'PP', name: 'Praktische Philosophie', teacher: 'Drewianka' },
+  { id: 155, code: 'FU BO', name: 'Berufliche Orientierung', teacher: 'Marschinke-Ives' },
+  { id: 88, code: 'INF', name: 'Informationswirtschaft / IT', teacher: 'Hanauer' },
+  { id: 95, code: 'BWL', name: 'Betriebswirtschaftslehre', teacher: 'Hübner' },
+  { id: 104, code: 'VWL', name: 'Volkswirtschaftslehre', teacher: 'Küppers' },
+  { id: 45, code: 'REL', name: 'Religionslehre', teacher: 'Jacob' },
+  { id: 50, code: 'SPO', name: 'Sport / Gesundheitsförderung', teacher: 'Altmann' },
+  { id: 70, code: 'WIR', name: 'Wirtschaftslehre', teacher: 'Hübner' }
+];
+
+function renderGradesView() {
+  const container = document.getElementById('grades-list-container');
+  if (!container) return;
+
+  const exams = appData.exams || [];
+  const grades = appData.grades || {};
+
+  // Fächer-Mapping
+  const subjects = CURRICULUM_SUBJECTS;
+
+  let totalGradedExams = 0;
+  let gradeSum = 0;
+
+  // Noten-Statistik ermitteln
+  exams.forEach(ex => {
+    if (grades[ex.id] && grades[ex.id].mark) {
+      const val = parseFloat(grades[ex.id].mark);
+      if (!isNaN(val)) {
+        gradeSum += val;
+        totalGradedExams++;
+      }
+    }
+  });
+
+  const overallGpa = totalGradedExams > 0 ? (gradeSum / totalGradedExams).toFixed(1) : '--';
+
+  // Stat-Karten aktualisieren
+  const gpaEl = document.getElementById('stat-grade-gpa');
+  const totalExamsEl = document.getElementById('stat-grade-total-exams');
+  const gradedExamsEl = document.getElementById('stat-grade-graded-exams');
+  const subjectsCountEl = document.getElementById('stat-grade-subjects-count');
+
+  if (gpaEl) gpaEl.textContent = overallGpa !== '--' ? `Ø ${overallGpa}` : '--';
+  if (totalExamsEl) totalExamsEl.textContent = String(exams.length);
+  if (gradedExamsEl) gradedExamsEl.textContent = `${totalGradedExams} / ${exams.length}`;
+  if (subjectsCountEl) subjectsCountEl.textContent = String(subjects.length);
+
+  // Fächerkarten rendern
+  let html = '<div class="grades-grid">';
+  subjects.forEach(subj => {
+    // Passende Klausuren für dieses Fach finden
+    const matchingExams = exams.filter(ex => {
+      if (!ex.subject) return false;
+      const s1 = ex.subject.toLowerCase().trim();
+      const c1 = subj.code.toLowerCase().trim();
+      const n1 = subj.name.toLowerCase().trim();
+      return s1 === c1 || s1.includes(c1) || n1.includes(s1) || s1.includes(n1);
+    });
+
+    let subjGraded = 0;
+    let subjSum = 0;
+    matchingExams.forEach(ex => {
+      if (grades[ex.id] && grades[ex.id].mark) {
+        const val = parseFloat(grades[ex.id].mark);
+        if (!isNaN(val)) {
+          subjSum += val;
+          subjGraded++;
+        }
+      }
+    });
+
+    const subjAvg = subjGraded > 0 ? (subjSum / subjGraded).toFixed(1) : null;
+
+    html += `
+      <article class="grade-subject-card" role="article" aria-label="Fach ${escHtml(subj.name)}, ${subjAvg ? 'Notendurchschnitt ' + subjAvg : 'Noch keine Note'}">
+        <div class="grade-subject-header">
+          <div>
+            <h3 class="grade-subject-title">
+              <span class="homework-subject">${escHtml(subj.code)}</span>
+              <span>${escHtml(subj.name)}</span>
+            </h3>
+            <span class="field-hint">👨‍🏫 Lehrkraft: ${escHtml(subj.teacher)}</span>
+          </div>
+          <div>
+            ${subjAvg ? `<span class="grade-average-badge">Ø ${subjAvg}</span>` : '<span class="field-hint" style="font-style: italic;">Noch keine Noten</span>'}
+          </div>
+        </div>
+
+        <div class="grade-exams-list">
+          ${matchingExams.length === 0 ? '<p class="field-hint" style="padding: 6px 0;">Keine schriftlichen Klausuren in WebUntis erfasst.</p>' : ''}
+          ${matchingExams.map((ex, idx) => {
+            const gr = grades[ex.id];
+            const hasGrade = gr && gr.mark;
+            const markVal = hasGrade ? parseFloat(gr.mark) : null;
+            let badgeClass = 'grade-pending';
+            if (markVal) {
+              if (markVal <= 1.5) badgeClass = 'grade-1';
+              else if (markVal <= 2.5) badgeClass = 'grade-2';
+              else if (markVal <= 3.5) badgeClass = 'grade-3';
+              else if (markVal <= 4.5) badgeClass = 'grade-4';
+              else badgeClass = 'grade-5';
+            }
+
+            const dateFormatted = ex.date ? formatGermanDate(new Date(ex.date)) : 'Termin offen';
+
+            return `
+              <div class="grade-exam-row">
+                <div style="flex: 1; min-width: 200px;">
+                  <strong>Klausur ${idx + 1}: ${escHtml(ex.name || subj.code)}</strong>
+                  <div class="field-hint">📅 ${escHtml(dateFormatted)} • ⏰ ${escHtml(ex.startTime || '07:45')} - ${escHtml(ex.endTime || '09:15')} Uhr</div>
+                  ${gr && gr.note ? `<div style="font-size: 13px; color: var(--accent-primary); margin-top: 2px;">💬 ${escHtml(gr.note)}</div>` : ''}
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span class="grade-badge-value ${badgeClass}" title="${hasGrade ? 'Note: ' + gr.mark : 'Noch nicht benotet'}">
+                    ${hasGrade ? gr.mark : '–'}
+                  </span>
+                  <button type="button" class="btn btn-secondary" style="min-height: 36px; padding: 4px 10px; font-size: 13px;" onclick="openAddGradeModal('${ex.id}')" aria-label="Note für Klausur am ${dateFormatted} bearbeiten">
+                    <span>${hasGrade ? '✏️ Ändern' : '➕ Eintragen'}</span>
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </article>
+    `;
+  });
+  html += '</div>';
+
+  container.innerHTML = html;
+}
+
+function openAddGradeModal(examId) {
+  const modal = document.getElementById('modal-add-grade');
+  const select = document.getElementById('grade-exam-select');
+  const markSelect = document.getElementById('grade-mark-select');
+  const pointsInput = document.getElementById('grade-points-input');
+  const noteInput = document.getElementById('grade-note-input');
+  if (!modal || !select) return;
+
+  const exams = appData.exams || [];
+  select.innerHTML = '';
+
+  exams.forEach(ex => {
+    const opt = document.createElement('option');
+    opt.value = ex.id;
+    const dateFormatted = ex.date ? formatGermanDate(new Date(ex.date)) : 'Termin';
+    opt.textContent = `${ex.subject} am ${dateFormatted} (${ex.name || 'Klausur'})`;
+    if (examId && String(ex.id) === String(examId)) {
+      opt.selected = true;
+    }
+    select.appendChild(opt);
+  });
+
+  const currentExamId = select.value;
+  const existingGrade = appData.grades ? appData.grades[currentExamId] : null;
+
+  if (existingGrade) {
+    if (markSelect) markSelect.value = existingGrade.mark || '2.0';
+    if (pointsInput) pointsInput.value = existingGrade.points || '';
+    if (noteInput) noteInput.value = existingGrade.note || '';
+  } else {
+    if (markSelect) markSelect.value = '2.0';
+    if (pointsInput) pointsInput.value = '';
+    if (noteInput) noteInput.value = '';
+  }
+
+  modal.style.display = 'flex';
+  if (markSelect) markSelect.focus();
+  announceSR('Dialog Klausurnote eintragen geöffnet.', 'polite');
+}
+
+function closeGradeModal() {
+  const modal = document.getElementById('modal-add-grade');
+  if (modal) modal.style.display = 'none';
+}
+
+function handleGradeModalBackdropClick(e) {
+  if (e.target && e.target.id === 'modal-add-grade') {
+    closeGradeModal();
+  }
+}
+
+function handleGradeExamSelectionChange() {
+  const select = document.getElementById('grade-exam-select');
+  const markSelect = document.getElementById('grade-mark-select');
+  const pointsInput = document.getElementById('grade-points-input');
+  const noteInput = document.getElementById('grade-note-input');
+  if (!select) return;
+
+  const exId = select.value;
+  const existing = appData.grades ? appData.grades[exId] : null;
+  if (existing) {
+    if (markSelect) markSelect.value = existing.mark || '2.0';
+    if (pointsInput) pointsInput.value = existing.points || '';
+    if (noteInput) noteInput.value = existing.note || '';
+  } else {
+    if (markSelect) markSelect.value = '2.0';
+    if (pointsInput) pointsInput.value = '';
+    if (noteInput) noteInput.value = '';
+  }
+}
+
+function handleSaveGradeSubmit(event) {
+  if (event && event.preventDefault) event.preventDefault();
+
+  const select = document.getElementById('grade-exam-select');
+  const markSelect = document.getElementById('grade-mark-select');
+  const pointsInput = document.getElementById('grade-points-input');
+  const noteInput = document.getElementById('grade-note-input');
+  if (!select || !markSelect) return;
+
+  const examId = select.value;
+  const mark = markSelect.value;
+  const points = pointsInput ? pointsInput.value.trim() : '';
+  const note = noteInput ? noteInput.value.trim() : '';
+
+  if (!appData.grades) appData.grades = {};
+  appData.grades[examId] = {
+    examId: examId,
+    mark: mark,
+    points: points,
+    note: note,
+    updatedAt: new Date().toISOString()
+  };
+
+  saveAppData();
+  closeGradeModal();
+  renderGradesView();
+
+  const matchingEx = (appData.exams || []).find(x => String(x.id) === String(examId));
+  const subjName = matchingEx ? matchingEx.subject : 'Klausur';
+
+  const msg = `Note ${mark} für ${subjName} wurde erfolgreich gespeichert.`;
+  speak(msg, true);
+  announceSR(msg, 'assertive');
+}
+
+function readGradesSummary() {
+  const exams = appData.exams || [];
+  const grades = appData.grades || {};
+
+  let total = 0;
+  let sum = 0;
+  exams.forEach(ex => {
+    if (grades[ex.id] && grades[ex.id].mark) {
+      const v = parseFloat(grades[ex.id].mark);
+      if (!isNaN(v)) {
+        sum += v;
+        total++;
+      }
+    }
+  });
+
+  let speech = 'Noten- und Leistungsübersicht: ';
+  if (total > 0) {
+    const avg = (sum / total).toFixed(1);
+    speech += `Dein aktueller Notendurchschnitt über ${total} bewertete Klausur${total > 1 ? 'en' : ''} liegt bei Note ${avg}. `;
+  } else {
+    speech += `Du hast insgesamt ${exams.length} anstehende Klausuren im Schuljahr. Es sind noch keine Noten eingetragen. `;
+  }
+
+  speak(speech, true);
+  announceSR(speech, 'assertive');
+}
+
 document.addEventListener('DOMContentLoaded', initApp);
+
