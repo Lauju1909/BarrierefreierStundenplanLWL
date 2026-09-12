@@ -1,10 +1,12 @@
 {
-  "version": "1.8.3",
+  "version": "1.8.4",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-12",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
-    "Schutz gegen versehentliches Beenden: Nur noch explizites Beenden per Dialog ('confirmed=true') beendet den Server",
+    "Sitzungs- und Fehlerentkopplung: Kein 'Falsche Anmeldedaten' mehr bei internen Verarbeitungsfehlern nach erfolgreicher Authentifizierung",
+    "Robuste Render-Absicherung: Einzelfehler beim Zeichnen einzelner Tabs bringen nicht mehr die gesamte App zum Absturz",
+    "Client-Logging direkt in webuntis_debug.log zur lückenlosen Diagnose",
     "Entfernung fehlerhafter Tastatur-Hooks für Alt-Tastenkombinationen",
     "Dauerhafter Server-Dienst: Kein automatisches Beenden mehr nach 60s Inaktivität oder beim Tab-Wechsel",
     "Robuste WebUntis-Brücke: Automatisches Bereinigen von blockierten Hintergrund-Instanzen",

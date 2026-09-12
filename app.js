@@ -118,6 +118,27 @@ let lastSyncTimestamp = null;
 let autoSyncIntervalTimer = null;
 let isSyncInProgress = false;
 
+function logClient(msg, data) {
+  try {
+    const text = typeof msg === 'string' ? msg : JSON.stringify(msg);
+    const extra = data ? ' ' + (typeof data === 'string' ? data : (data.stack || JSON.stringify(data))) : '';
+    fetch('/api/client_log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      body: text + extra
+    }).catch(() => {});
+  } catch (e) {}
+}
+
+window.onerror = function(msg, url, lineNo, columnNo, error) {
+  logClient(`[WINDOW.ONERROR] ${msg} at ${url}:${lineNo}:${columnNo}`, error ? error.stack : '');
+  return false;
+};
+
+window.addEventListener('unhandledrejection', function(event) {
+  logClient(`[UNHANDLED REJECTION] ${event.reason ? (event.reason.stack || event.reason.message || event.reason) : 'unknown'}`);
+});
+
 // =============================================================================
 // 2. SPEICHERUNG & KONFIGURATION (LOCALSTORAGE)
 // =============================================================================
@@ -482,8 +503,11 @@ async function handleLoginSubmit(e) {
 
   try {
     lastLoginAuthError = null;
+    logClient('handleLoginSubmit starting for user: ' + userVal);
     const success = await performWebUntisSync(userVal, passVal);
-    if (success) {
+    logClient('handleLoginSubmit performWebUntisSync finished with result: ' + success + ', sessionId: ' + (webuntisSessionId ? 'present' : 'null'));
+
+    if (success || webuntisSessionId) {
       appData.config.username = userVal;
       if (remVal) {
         appData.config.password = passVal;
@@ -507,7 +531,10 @@ async function handleLoginSubmit(e) {
         } else if (lastLoginAuthError.message) {
           errDetail = `WebUntis meldet: ${lastLoginAuthError.message}`;
         }
+      } else {
+        errDetail = 'WebUntis-Anmeldung war erfolgreich, aber beim Laden der Daten ist ein Verarbeitungsfehler aufgetreten. Bitte versuche es erneut.';
       }
+      logClient('handleLoginSubmit failed with error: ' + errDetail);
       if (statusBox) {
         statusBox.style.display = 'block';
         statusBox.innerHTML = `
@@ -525,6 +552,7 @@ async function handleLoginSubmit(e) {
       }
     }
   } catch (err) {
+    logClient('handleLoginSubmit caught exception: ' + (err ? (err.stack || err.message || err) : 'unknown'));
     if (statusBox) {
       statusBox.style.display = 'block';
       statusBox.innerHTML = `
@@ -886,6 +914,8 @@ async function performWebUntisSync(userOverride, passOverride) {
 
     const { sessionId, personId, personType } = authRes.result;
     webuntisSessionId = sessionId;
+    lastLoginAuthError = null;
+    logClient('WebUntis authenticate successful! sessionId=' + sessionId + ', personId=' + personId + ', personType=' + personType);
 
     // 1b. Untis Mobile Authentifizierung über lokalen C#-Server (getAppSharedSecret + TOTP + getAuthToken)
     let appSharedSecret = appData.config.appSharedSecret || null;
@@ -2635,19 +2665,21 @@ async function performWebUntisSync(userOverride, passOverride) {
 
     lastSyncTimestamp = new Date();
     saveAppData();
-    renderTimetable();
-    renderExams();
-    renderHomework();
-    renderAbsences();
-    renderMessagesView();
-    renderGradesView();
-    renderUrgentNotificationBanner();
-    triggerDesktopNotification();
-    updateSyncDisplay();
+    try { renderTimetable(); } catch (e) { logClient('renderTimetable error: ' + (e.stack || e)); }
+    try { renderExams(); } catch (e) { logClient('renderExams error: ' + (e.stack || e)); }
+    try { renderHomework(); } catch (e) { logClient('renderHomework error: ' + (e.stack || e)); }
+    try { renderAbsences(); } catch (e) { logClient('renderAbsences error: ' + (e.stack || e)); }
+    try { renderMessagesView(); } catch (e) { logClient('renderMessagesView error: ' + (e.stack || e)); }
+    try { renderGradesView(); } catch (e) { logClient('renderGradesView error: ' + (e.stack || e)); }
+    try { renderUrgentNotificationBanner(); } catch (e) { logClient('renderUrgentNotificationBanner error: ' + (e.stack || e)); }
+    try { triggerDesktopNotification(); } catch (e) { logClient('triggerDesktopNotification error: ' + (e.stack || e)); }
+    try { updateSyncDisplay(); } catch (e) { logClient('updateSyncDisplay error: ' + (e.stack || e)); }
 
     announceSR(`Stundenplan aktualisiert. ${appData.timetable.length} Stunden geladen.`, 'polite');
+    logClient('performWebUntisSync completed successfully! timetable count: ' + appData.timetable.length);
     return true;
   } catch (err) {
+    logClient('Fehler bei WebUntis Synchronisation: ' + (err ? (err.stack || err.message || err) : 'unbekannt'));
     console.error('Fehler bei WebUntis Synchronisation:', err);
     if (syncStatusText) syncStatusText.textContent = 'Sync fehlgeschlagen';
     return false;

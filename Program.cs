@@ -496,6 +496,26 @@ namespace BarrierefreierStundenplan
                 return;
             }
 
+            // Client-seitiges Logging (JavaScript Konsole & Fehler)
+            if (rawUrl == "/api/client_log")
+            {
+                try
+                {
+                    using (StreamReader reader = new StreamReader(req.InputStream, req.ContentEncoding))
+                    {
+                        string logMsg = reader.ReadToEnd();
+                        LogUntis("[CLIENT-JS] " + logMsg);
+                    }
+                }
+                catch { }
+                resp.StatusCode = 200;
+                resp.ContentType = "application/json";
+                byte[] ok = Encoding.UTF8.GetBytes("{\"logged\":true}");
+                resp.OutputStream.Write(ok, 0, ok.Length);
+                resp.Close();
+                return;
+            }
+
             // Windows Desktop Benachrichtigung (Toast / Tray Notification)
             if (rawUrl == "/api/notify")
             {
