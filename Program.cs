@@ -531,22 +531,36 @@ namespace BarrierefreierStundenplan
                 return;
             }
 
-            // 3. Sofortiges Beenden-Signal (Alt+F4 Tastendruck oder Beenden-Button)
+            // 3. Beenden-Signal (nur wenn explizit vom Nutzer bestätigt)
             if (rawUrl == "/api/shutdown")
             {
-                LogUntis("API /api/shutdown received, exiting");
-                resp.StatusCode = 200;
-                resp.ContentType = "application/json";
-                byte[] bye = Encoding.UTF8.GetBytes("{\"status\":\"shutting_down\"}");
-                resp.OutputStream.Write(bye, 0, bye.Length);
-                resp.Close();
-
-                ThreadPool.QueueUserWorkItem((_) =>
+                string q = req.Url != null ? req.Url.Query : "";
+                if (!string.IsNullOrEmpty(q) && q.IndexOf("confirmed=true", StringComparison.OrdinalIgnoreCase) >= 0)
                 {
-                    Thread.Sleep(150);
-                    Environment.Exit(0);
-                });
-                return;
+                    LogUntis("API /api/shutdown?confirmed=true received, exiting application gracefully");
+                    resp.StatusCode = 200;
+                    resp.ContentType = "application/json";
+                    byte[] bye = Encoding.UTF8.GetBytes("{\"status\":\"shutting_down\"}");
+                    resp.OutputStream.Write(bye, 0, bye.Length);
+                    resp.Close();
+
+                    ThreadPool.QueueUserWorkItem((_) =>
+                    {
+                        Thread.Sleep(300);
+                        Environment.Exit(0);
+                    });
+                    return;
+                }
+                else
+                {
+                    LogUntis("API /api/shutdown ignored (confirmed=true missing)");
+                    resp.StatusCode = 200;
+                    resp.ContentType = "application/json";
+                    byte[] bye = Encoding.UTF8.GetBytes("{\"status\":\"ignored\"}");
+                    resp.OutputStream.Write(bye, 0, bye.Length);
+                    resp.Close();
+                    return;
+                }
             }
 
             // 3. Version & Auto-Update API

@@ -556,7 +556,7 @@ function logoutUser() {
 function exitApp() {
   if (confirm('Möchtest du die Stundenplan-Anwendung und den Server wirklich beenden?')) {
     announceSR('Stundenplan-App wird beendet. Auf Wiedersehen.', 'assertive');
-    fetch('/api/shutdown').catch(() => {}).finally(() => {
+    fetch('/api/shutdown?confirmed=true').catch(() => {}).finally(() => {
       document.body.innerHTML = `
         <div style="text-align: center; padding: 60px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
           <h1 style="font-size: 28px; margin-bottom: 16px;">✅ Stundenplan-App beendet</h1>
@@ -4445,18 +4445,7 @@ function initApp() {
   loadAppData();
   updateTodayBadge();
 
-  // 1. Alt+F4 Sofort-Beenden Erkennung (Capture-Phase, gilt überall)
-  window.addEventListener('keydown', e => {
-    if (e.altKey && (e.key === 'F4' || e.code === 'F4' || e.keyCode === 115)) {
-      try {
-        if (navigator.sendBeacon) {
-          navigator.sendBeacon('/api/shutdown');
-        } else {
-          fetch('/api/shutdown', { method: 'POST', keepalive: true }).catch(() => {});
-        }
-      } catch (_) {}
-    }
-  }, true);
+  // 1. Tastatur- und Screenreader-Steuerung bereitstellen
 
   // 2. Kein versehentliches Beenden bei Tabwechsel oder Neuladen
   // (Server bleibt stabil und dauerhaft aktiv)
