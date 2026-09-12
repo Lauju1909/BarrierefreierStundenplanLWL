@@ -155,33 +155,34 @@
   <main class="main-container" id="view-content-area" role="main">
 
     <!-- =======================================================================
-         ZENTRALE ÜBERSICHTSSEITE: TAGESNACHRICHTEN, WARNUNGEN & FRISTEN
-         ======================================================================= -->
-    <section id="urgent-notifications-card" class="urgent-card" aria-live="polite" aria-label="Zentrale Übersicht: Tagesnachrichten, Warnungen und Fristen">
-      <div class="urgent-card-header">
-        <div class="urgent-title-group">
-          <span class="urgent-icon" aria-hidden="true">📢</span>
-          <div>
-            <h2 class="urgent-title" id="urgent-card-heading">Tagesnachrichten, Warnungen &amp; Fristen</h2>
-            <p class="urgent-subtitle" id="urgent-card-summary">Tagesaktuelle Schulinformationen, Klausuren-Countdown und Fristen auf einen Blick.</p>
-          </div>
-        </div>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <button type="button" class="btn btn-secondary urgent-tts-btn" onclick="readCombinedOverview()" aria-label="Tagesnachrichten und Warnungen vorlesen">
-            <span class="emoji-icon" aria-hidden="true">🔊 </span>Übersicht vorlesen
-          </button>
-        </div>
-      </div>
-
-      <div class="urgent-grid" id="urgent-items-grid">
-        <!-- Dynamisch befüllt via app.js -->
-      </div>
-    </section>
-
-    <!-- =======================================================================
          REITER 1: STUNDENPLAN & VERTRETUNGSPLAN (LIVE WEBUNTIS)
          ======================================================================= -->
     <div id="view-overview" class="view-panel active" role="tabpanel" aria-labelledby="tab-overview">
+
+      <!-- =======================================================================
+           ZENTRALE ÜBERSICHTSSEITE: TAGESNACHRICHTEN, WARNUNGEN & FRISTEN
+           (NUR IN DER ÜBERSICHT SICHTBAR)
+           ======================================================================= -->
+      <section id="urgent-notifications-card" class="urgent-card" aria-live="polite" aria-label="Zentrale Übersicht: Tagesnachrichten, Warnungen und Fristen">
+        <div class="urgent-card-header">
+          <div class="urgent-title-group">
+            <span class="urgent-icon" aria-hidden="true">📢</span>
+            <div>
+              <h2 class="urgent-title" id="urgent-card-heading">Tagesnachrichten, Warnungen &amp; Fristen</h2>
+              <p class="urgent-subtitle" id="urgent-card-summary">Tagesaktuelle Schulinformationen, Klausuren-Countdown und Fristen auf einen Blick.</p>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-secondary urgent-tts-btn" onclick="readCombinedOverview()" aria-label="Tagesnachrichten und Warnungen vorlesen">
+              <span class="emoji-icon" aria-hidden="true">🔊 </span>Übersicht vorlesen
+            </button>
+          </div>
+        </div>
+
+        <div class="urgent-grid" id="urgent-items-grid">
+          <!-- Dynamisch befüllt via app.js -->
+        </div>
+      </section>
 
       <div class="banner-header">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">

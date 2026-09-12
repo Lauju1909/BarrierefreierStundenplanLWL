@@ -291,7 +291,8 @@ function switchTab(tabId) {
 
   if (tabId === 'overview') {
     renderTimetable();
-    announceSR('Reiter 1: Stundenplan und Vertretungsplan ausgewählt.', 'polite');
+    renderUrgentNotificationBanner();
+    announceSR('Reiter 1: Übersicht und Stundenplan ausgewählt.', 'polite');
   } else if (tabId === 'exams') {
     renderExams();
     announceSR('Reiter 2: Prüfungen und Termine für das gesamte Schuljahr ausgewählt.', 'polite');
