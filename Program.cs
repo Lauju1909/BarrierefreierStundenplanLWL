@@ -265,7 +265,7 @@ namespace BarrierefreierStundenplan
                 }
                 catch { }
             }
-            return "1.4.2";
+            return "1.4.3";
         }
 
         private static bool IsNewerVersion(string remote, string local)
@@ -1000,7 +1000,7 @@ namespace BarrierefreierStundenplan
                 lock (_debugLock)
                 {
                     string line = "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + "] " + msg + "\r\n";
-                    List<string> targetPaths = new List<string>();
+                    HashSet<string> targetPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
                     targetPaths.Add(Path.Combine(@"C:\Users\lauri\Documents", "webuntis_debug.log"));
                     targetPaths.Add(Path.Combine(_baseDir, "webuntis_debug.log"));
@@ -1019,7 +1019,7 @@ namespace BarrierefreierStundenplan
                             string dir = Path.GetDirectoryName(logFile);
                             if (Directory.Exists(dir))
                             {
-                                if (File.Exists(logFile) && new FileInfo(logFile).Length > 1024 * 1024)
+                                if (File.Exists(logFile) && new FileInfo(logFile).Length > 10 * 1024 * 1024)
                                 {
                                     try { File.Delete(logFile); } catch { }
                                 }
