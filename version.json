@@ -1,15 +1,16 @@
 {
-  "version": "1.4.3",
+  "version": "1.5.0",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-12",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
+    "Live-Dringlichkeitsbanner & Countdowns: Barrierefreie Sofort-Übersicht über überfällige Aufgaben, anstehende Fälligkeiten und die nächste Klausur mit Live-Tage-Countdown",
+    "Native Windows-Benachrichtigungen (Desktop-Toast / Tray-Notification) bei bevorstehenden Abgaben und Klausuren",
+    "Automatische mobile Fehlzeiten-Synchronisation (getStudentAbsences2017) via WebUntis Mobile API mit TOTP-Sicherheit",
+    "Screenreader-optimierte Dringlichkeits-Ansage (Taste V / aria-live) für NVDA und JAWS",
+    "Direkt-Sprungfunktionen zu betroffenen Aufgaben im Klassenbuch und Prüfungsplan",
     "Sofortige Synchronisation: Optimierte Abfrage aller Hausaufgaben und Prüfungen in unter 2 Sekunden",
-    "Ganzjahres-Direktabfrage ohne überflüssige Lesson-Loops (behebt 'Synchronisiere...' Hänger und leere Einträge)",
     "Zuverlässiger Cache: Hausaufgaben und Klausuren bleiben auch beim Neustart sofort sichtbar",
-    "Untis Mobile Auto-Routing: Intelligentes Proxy-Routing aller mobilen JSON-RPC Methoden (getHomeWork2017, getExams2017) auf jsonrpc_intern.do mit TOTP",
-    "Watchdog-Stabilität: Zuverlässiges 60s-Fenster verhindert vorzeitiges Beenden während Synchronisationsläufen",
-    "Präzise Zuordnung von Fach, Lehrkraft und Fälligkeitsdatum für alle Hausaufgaben und Klausuren",
     "100% werbefrei und barrierefrei nach WCAG 2.2 AAA"
   ]
 }

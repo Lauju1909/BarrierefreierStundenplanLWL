@@ -147,6 +147,28 @@
   <main class="main-container" id="view-content-area" role="main">
 
     <!-- =======================================================================
+         DRINGLICHKEITS- & COUNTDOWN-BANNER (HAUSAUFGABEN & KLAUSUREN)
+         ======================================================================= -->
+    <section id="urgent-notifications-card" class="urgent-card" aria-live="polite" aria-label="Wichtige Termine und anstehende Aufgaben" style="display: none;">
+      <div class="urgent-card-header">
+        <div class="urgent-title-group">
+          <span class="urgent-icon" aria-hidden="true">🔔</span>
+          <div>
+            <h2 class="urgent-title" id="urgent-card-heading">Wichtige anstehende Aufgaben &amp; Klausuren</h2>
+            <p class="urgent-subtitle" id="urgent-card-summary">Lade anstehende Fristen...</p>
+          </div>
+        </div>
+        <button type="button" class="btn btn-secondary urgent-tts-btn" onclick="readUrgentSummary()" aria-label="Anstehende Fristen vorlesen">
+          <span class="emoji-icon" aria-hidden="true">🔊 </span>Fristen vorlesen
+        </button>
+      </div>
+
+      <div class="urgent-grid" id="urgent-items-grid">
+        <!-- Dynamisch befüllt via app.js -->
+      </div>
+    </section>
+
+    <!-- =======================================================================
          REITER 1: STUNDENPLAN & VERTRETUNGSPLAN (LIVE WEBUNTIS)
          ======================================================================= -->
     <div id="view-overview" class="view-panel active" role="tabpanel" aria-labelledby="tab-overview">

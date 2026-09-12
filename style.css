@@ -1580,3 +1580,176 @@ body.theme-high-contrast .gpa-big-number {
   color: var(--text-muted);
   margin-top: 8px;
 }
+
+/* ==========================================================================
+   DRINGLICHKEITS- & COUNTDOWN-BANNER (FEATURE 4 - WCAG 2.2 AAA)
+   ========================================================================== */
+.urgent-card {
+  background: var(--bg-surface-elevated);
+  border: 3px solid var(--accent-warn, #d97706);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  transition: border-color 0.2s ease;
+}
+
+.urgent-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 2px solid var(--border-subtle);
+  margin-bottom: 16px;
+}
+
+.urgent-title-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.urgent-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+
+.urgent-title {
+  font-size: var(--font-size-xl, 20px);
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.urgent-subtitle {
+  font-size: var(--font-size-sm, 14px);
+  color: var(--text-secondary);
+  margin: 4px 0 0 0;
+  font-weight: 600;
+}
+
+.urgent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.urgent-item {
+  background: var(--bg-surface);
+  border: 2px solid var(--border-color);
+  border-left: 6px solid var(--accent-info);
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.urgent-item:hover, .urgent-item:focus-within {
+  transform: translateY(-2px);
+  border-color: var(--accent-highlight);
+}
+
+.urgent-item.overdue {
+  border-left-color: var(--accent-danger, #dc2626);
+  background: rgba(220, 38, 38, 0.05);
+}
+
+.urgent-item.due-soon {
+  border-left-color: var(--accent-warn, #d97706);
+  background: rgba(217, 119, 6, 0.05);
+}
+
+.urgent-item.exam-countdown {
+  border-left-color: #7c3aed;
+  background: rgba(124, 58, 237, 0.05);
+}
+
+.urgent-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.urgent-badge {
+  font-size: 13px;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.urgent-badge.overdue {
+  background: var(--accent-danger, #dc2626);
+  color: #ffffff;
+}
+
+.urgent-badge.due-soon {
+  background: var(--accent-warn, #d97706);
+  color: #ffffff;
+}
+
+.urgent-badge.exam {
+  background: #7c3aed;
+  color: #ffffff;
+}
+
+.urgent-item-subject {
+  font-weight: bold;
+  font-size: var(--font-size-base, 16px);
+  color: var(--text-primary);
+}
+
+.urgent-item-desc {
+  font-size: var(--font-size-sm, 14px);
+  color: var(--text-secondary);
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.urgent-action-btn {
+  align-self: flex-start;
+  margin-top: 4px;
+}
+
+/* High-Contrast Modus (Gelb/Schwarz) */
+body.theme-high-contrast .urgent-card {
+  background: #000000 !important;
+  border: 4px solid #ffff00 !important;
+}
+body.theme-high-contrast .urgent-item {
+  background: #000000 !important;
+  border: 3px solid #ffffff !important;
+}
+body.theme-high-contrast .urgent-item.overdue {
+  border-left: 8px solid #ff5555 !important;
+}
+body.theme-high-contrast .urgent-item.due-soon {
+  border-left: 8px solid #ffff00 !important;
+}
+body.theme-high-contrast .urgent-item.exam-countdown {
+  border-left: 8px solid #55ffff !important;
+}
+body.theme-high-contrast .urgent-badge.overdue {
+  background: #ff5555 !important;
+  color: #000000 !important;
+}
+body.theme-high-contrast .urgent-badge.due-soon {
+  background: #ffff00 !important;
+  color: #000000 !important;
+}
+body.theme-high-contrast .urgent-badge.exam {
+  background: #55ffff !important;
+  color: #000000 !important;
+}

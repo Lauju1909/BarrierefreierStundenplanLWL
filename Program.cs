@@ -46,6 +46,35 @@ namespace BarrierefreierStundenplan
         private static DateTime _lastActivity = DateTime.UtcNow;
         private static bool _pageHasLoaded = false;
         private static bool _isWindowHidden = false;
+        private static NotifyIcon _trayIcon = null;
+
+        private static void InitTrayIcon()
+        {
+            try
+            {
+                _trayIcon = new NotifyIcon();
+                _trayIcon.Icon = SystemIcons.Information;
+                _trayIcon.Text = "Barrierefreier Stundenplan LWL";
+                _trayIcon.Visible = true;
+            }
+            catch { }
+        }
+
+        public static void ShowWindowsNotification(string title, string text)
+        {
+            try
+            {
+                if (_trayIcon == null) InitTrayIcon();
+                if (_trayIcon != null)
+                {
+                    _trayIcon.BalloonTipTitle = !string.IsNullOrEmpty(title) ? title : "LWL Stundenplan";
+                    _trayIcon.BalloonTipText = !string.IsNullOrEmpty(text) ? text : "Aktualisierung verfügbar.";
+                    _trayIcon.BalloonTipIcon = ToolTipIcon.Info;
+                    _trayIcon.ShowBalloonTip(5000);
+                }
+            }
+            catch { }
+        }
 
         [STAThread]
         static void Main()
@@ -197,6 +226,11 @@ namespace BarrierefreierStundenplan
             {
                 LogUntis("Main finally block entered");
                 _isRunning = false;
+                if (_trayIcon != null)
+                {
+                    try { _trayIcon.Visible = false; _trayIcon.Dispose(); } catch { }
+                    _trayIcon = null;
+                }
                 if (_listener != null && _listener.IsListening)
                 {
                     try { _listener.Stop(); } catch { }
@@ -265,7 +299,7 @@ namespace BarrierefreierStundenplan
                 }
                 catch { }
             }
-            return "1.4.3";
+            return "1.5.0";
         }
 
         private static bool IsNewerVersion(string remote, string local)
@@ -446,6 +480,29 @@ namespace BarrierefreierStundenplan
                 resp.ContentType = "application/json";
                 byte[] pong = Encoding.UTF8.GetBytes("{\"status\":\"ok\"}");
                 resp.OutputStream.Write(pong, 0, pong.Length);
+                resp.Close();
+                return;
+            }
+
+            // Windows Desktop Benachrichtigung (Toast / Tray Notification)
+            if (rawUrl == "/api/notify")
+            {
+                string title = "LWL Stundenplan";
+                string msg = "";
+                string q = req.Url != null ? req.Url.Query : "";
+                if (!string.IsNullOrEmpty(q))
+                {
+                    Match mt = Regex.Match(q, @"[?&]title=([^&]+)");
+                    if (mt.Success) title = Uri.UnescapeDataString(mt.Groups[1].Value);
+                    Match mm = Regex.Match(q, @"[?&]msg=([^&]+)");
+                    if (mm.Success) msg = Uri.UnescapeDataString(mm.Groups[1].Value);
+                }
+                LogUntis(string.Format("API /api/notify: title='{0}', msg='{1}'", title, msg));
+                ShowWindowsNotification(title, msg);
+                resp.StatusCode = 200;
+                resp.ContentType = "application/json";
+                byte[] ok = Encoding.UTF8.GetBytes("{\"success\":true}");
+                resp.OutputStream.Write(ok, 0, ok.Length);
                 resp.Close();
                 return;
             }
@@ -1120,7 +1177,7 @@ namespace BarrierefreierStundenplan
             if (string.IsNullOrEmpty(customEndpoint) && postBytes != null && postBytes.Length > 0)
             {
                 string preview = Encoding.UTF8.GetString(postBytes, 0, Math.Min(300, postBytes.Length));
-                Match mm = Regex.Match(preview, "\"method\"\\s*:\\s*\"(getHomeWork2017|getExams2017|getPeriodData2017|getUserData2017|getTimetable2017|getStudentAbsences2017)\"");
+                Match mm = Regex.Match(preview, "\"method\"\\s*:\\s*\"(getHomeWork2017|getExams2017|getPeriodData2017|getUserData2017|getTimetable2017|getStudentAbsences2017|getOfficeHours2017|getMessagesOfDay2017)\"");
                 if (mm.Success)
                 {
                     customEndpoint = "/jsonrpc_intern.do?m=" + mm.Groups[1].Value;

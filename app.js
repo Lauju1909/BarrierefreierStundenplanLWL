@@ -1145,10 +1145,14 @@ async function performWebUntisSync(userOverride, passOverride) {
       classregCalls.push(callWebUntisApi('getClassregEvents', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, id: kId, type: 1 }).catch(() => ({})));
     });
 
-    // E. Fehlzeiten
+    // E. Fehlzeiten (getStudentAbsences2017 mit TOTP über ganzes Schuljahr)
     const absenceCalls = [
-      callWebUntisApi('getStudentAbsences2017', { id: personId, type: personType, startDate: syRange.startDateNum, endDate: syRange.endDateNum }).catch(() => ({})),
-      callWebUntisApi('getAbsenceReasons', {}).catch(() => ({}))
+      callWebUntisRest('/jsonrpc_intern.do?m=getStudentAbsences2017', jwtToken, 'POST', {
+        id: 'abs-' + Date.now(),
+        jsonrpc: '2.0',
+        method: 'getStudentAbsences2017',
+        params: [{ startDate: sIsoStr, endDate: eIsoStr, ...(authObjFull ? { auth: authObjFull } : {}) }]
+      }).catch(() => ({}))
     ];
 
     // 7. Alles parallel in einem schnellen Durchlauf abrufen (Dauer: ~1-2 Sekunden!)
@@ -2418,6 +2422,8 @@ async function performWebUntisSync(userOverride, passOverride) {
     renderExams();
     renderHomework();
     renderAbsences();
+    renderUrgentNotificationBanner();
+    triggerDesktopNotification();
     updateSyncDisplay();
 
     announceSR(`Stundenplan aktualisiert. ${appData.timetable.length} Stunden geladen.`, 'polite');
@@ -3325,6 +3331,7 @@ function toggleHomeworkCompleted(hwId) {
   hw.completed = !hw.completed;
   saveAppData();
   renderHomework();
+  renderUrgentNotificationBanner();
   speak(hw.completed ? 'Als erledigt markiert.' : 'Als nicht erledigt markiert.', false);
 }
 
@@ -3457,6 +3464,208 @@ function readAbsencesSummary() {
   speak(text, true);
 }
 
+// =============================================================================
+// 9e. DRINGLICHKEITS- & COUNTDOWN-BANNER (FEATURE 4)
+// =============================================================================
+function renderUrgentNotificationBanner() {
+  const card = document.getElementById('urgent-notifications-card');
+  const grid = document.getElementById('urgent-items-grid');
+  const summaryEl = document.getElementById('urgent-card-summary');
+  if (!card || !grid) return;
+
+  const homework = (appData.homework || []).filter(h => !h.completed);
+  const exams = (appData.exams || []);
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
+  const overdueHw = [];
+  const soonHw = [];
+
+  homework.forEach(hw => {
+    if (!hw.dueDate) return;
+    const dParts = hw.dueDate.split('-');
+    if (dParts.length !== 3) return;
+    const due = new Date(parseInt(dParts[0], 10), parseInt(dParts[1], 10) - 1, parseInt(dParts[2], 10));
+    const diffDays = Math.ceil((due - now) / (1000 * 60 * 60 * 24));
+    if (diffDays < 0) {
+      overdueHw.push({ ...hw, diffDays });
+    } else if (diffDays <= 7) {
+      soonHw.push({ ...hw, diffDays });
+    }
+  });
+
+  // Nächste anstehende Klausuren im Schuljahr
+  const upcomingExams = exams.map(ex => {
+    if (!ex.date) return null;
+    const dParts = ex.date.split('-');
+    if (dParts.length !== 3) return null;
+    const exDate = new Date(parseInt(dParts[0], 10), parseInt(dParts[1], 10) - 1, parseInt(dParts[2], 10));
+    const diffDays = Math.ceil((exDate - now) / (1000 * 60 * 60 * 24));
+    return { ...ex, exDate, diffDays };
+  }).filter(ex => ex && ex.diffDays >= 0).sort((a, b) => a.diffDays - b.diffDays);
+
+  const nextExam = upcomingExams.length > 0 ? upcomingExams[0] : null;
+
+  // Wenn keine offenen Aufgaben und keine anstehende Klausur existieren, ausblenden
+  if (homework.length === 0 && !nextExam) {
+    card.style.display = 'none';
+    return;
+  }
+
+  card.style.display = 'block';
+
+  // Text-Zusammenfassung generieren
+  const summaryParts = [];
+  if (overdueHw.length > 0) {
+    summaryParts.push(`🚨 ${overdueHw.length} überfällige Aufgabe${overdueHw.length > 1 ? 'n' : ''}`);
+  }
+  if (soonHw.length > 0) {
+    summaryParts.push(`⏳ ${soonHw.length} anstehende Frist${soonHw.length > 1 ? 'en' : ''} in den nächsten 7 Tagen`);
+  }
+  if (nextExam) {
+    const daysLabel = nextExam.diffDays === 0 ? 'Heute!' : (nextExam.diffDays === 1 ? 'Morgen!' : `in ${nextExam.diffDays} Tagen`);
+    summaryParts.push(`📝 Nächste Klausur: ${nextExam.subject || 'Klausur'} (${daysLabel})`);
+  }
+  if (summaryEl) {
+    summaryEl.textContent = summaryParts.join(' • ') || 'Aktuelle Fristenübersicht aus WebUntis.';
+  }
+
+  // Grid-Karten aufbauen
+  let itemsHtml = '';
+
+  // 1. Überfällige Hausaufgaben
+  overdueHw.forEach(hw => {
+    const daysOverdue = Math.abs(hw.diffDays);
+    const dateFormatted = formatGermanDate(new Date(hw.dueDate));
+    itemsHtml += `
+      <div class="urgent-item overdue" tabindex="0" role="article" aria-label="Überfällige Hausaufgabe in ${escHtml(hw.subject || 'Hausaufgabe')}">
+        <div class="urgent-item-header">
+          <span class="urgent-badge overdue">🚨 Überfällig (seit ${daysOverdue} Tag${daysOverdue === 1 ? '' : 'en'})</span>
+          <span class="field-hint" style="font-weight: bold;">${escHtml(dateFormatted)}</span>
+        </div>
+        <div>
+          <div class="urgent-item-subject">${escHtml(hw.subject || 'Hausaufgabe')}</div>
+          <p class="urgent-item-desc">${escHtml(hw.text || 'Hausaufgabe ohne Text')}</p>
+        </div>
+        <button type="button" class="btn btn-secondary urgent-action-btn" onclick="switchTab('homework')" aria-label="Zu den Hausaufgaben wechseln">
+          <span>📚 Zu den Hausaufgaben</span>
+        </button>
+      </div>`;
+  });
+
+  // 2. Anstehende Hausaufgaben
+  soonHw.forEach(hw => {
+    const dText = hw.diffDays === 0 ? 'Heute fällig!' : (hw.diffDays === 1 ? 'Morgen fällig!' : `In ${hw.diffDays} Tagen fällig`);
+    const dateFormatted = formatGermanDate(new Date(hw.dueDate));
+    itemsHtml += `
+      <div class="urgent-item due-soon" tabindex="0" role="article" aria-label="Anstehende Hausaufgabe in ${escHtml(hw.subject || 'Hausaufgabe')}, ${dText}">
+        <div class="urgent-item-header">
+          <span class="urgent-badge due-soon">⏳ ${dText}</span>
+          <span class="field-hint" style="font-weight: bold;">${escHtml(dateFormatted)}</span>
+        </div>
+        <div>
+          <div class="urgent-item-subject">${escHtml(hw.subject || 'Hausaufgabe')}</div>
+          <p class="urgent-item-desc">${escHtml(hw.text || 'Hausaufgabe ohne Text')}</p>
+        </div>
+        <button type="button" class="btn btn-secondary urgent-action-btn" onclick="switchTab('homework')" aria-label="Zu den Hausaufgaben wechseln">
+          <span>📚 Zu den Hausaufgaben</span>
+        </button>
+      </div>`;
+  });
+
+  // 3. Nächste Klausur mit Live-Countdown
+  if (nextExam) {
+    const dText = nextExam.diffDays === 0 ? 'Heute!' : (nextExam.diffDays === 1 ? 'Morgen!' : `Noch ${nextExam.diffDays} Tage`);
+    const dateFormatted = formatGermanDate(new Date(nextExam.date));
+    const timeFormatted = `${nextExam.startTime || '07:45'} - ${nextExam.endTime || '09:15'} Uhr`;
+    itemsHtml += `
+      <div class="urgent-item exam-countdown" tabindex="0" role="article" aria-label="Nächste Klausur in ${escHtml(nextExam.subject)}, ${dText}">
+        <div class="urgent-item-header">
+          <span class="urgent-badge exam">📝 Klausur-Countdown</span>
+          <span class="urgent-badge exam" style="background: rgba(124,58,237,0.25); color: var(--text-primary); border: 1.5px solid #7c3aed;">⏳ ${dText}</span>
+        </div>
+        <div>
+          <div class="urgent-item-subject">${escHtml(nextExam.subject)}</div>
+          <p class="urgent-item-desc">
+            📅 ${escHtml(dateFormatted)} • ⏰ ${escHtml(timeFormatted)}<br>
+            👨‍🏫 ${escHtml(nextExam.teacher || 'Fachlehrkraft')} • 🚪 ${escHtml(nextExam.room || 'Raum laut Plan')}
+          </p>
+        </div>
+        <button type="button" class="btn btn-secondary urgent-action-btn" onclick="switchTab('exams')" aria-label="Zum Prüfungskalender wechseln">
+          <span>📝 Zum Prüfungskalender</span>
+        </button>
+      </div>`;
+  }
+
+  grid.innerHTML = itemsHtml;
+}
+
+function readUrgentSummary() {
+  const homework = (appData.homework || []).filter(h => !h.completed);
+  const exams = appData.exams || [];
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
+  let overdue = 0;
+  let soon = 0;
+  homework.forEach(h => {
+    if (!h.dueDate) return;
+    const p = h.dueDate.split('-');
+    if (p.length !== 3) return;
+    const due = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+    const diff = Math.ceil((due - now) / 86400000);
+    if (diff < 0) overdue++;
+    else if (diff <= 7) soon++;
+  });
+
+  const upcomingExams = exams.map(ex => {
+    if (!ex.date) return null;
+    const p = ex.date.split('-');
+    if (p.length !== 3) return null;
+    const d = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+    return { ...ex, diff: Math.ceil((d - now) / 86400000) };
+  }).filter(e => e && e.diff >= 0).sort((a, b) => a.diff - b.diff);
+
+  const nextEx = upcomingExams[0];
+
+  let speech = 'Wichtige Fristen und Termine: ';
+  if (overdue > 0) speech += `Achtung: Du hast ${overdue} überfällige Aufgabe${overdue > 1 ? 'n' : ''}. `;
+  if (soon > 0) speech += `In den nächsten 7 Tagen stehen ${soon} Hausaufgabe${soon > 1 ? 'n' : ''} an. `;
+  if (nextEx) {
+    const daysStr = nextEx.diff === 0 ? 'heute' : (nextEx.diff === 1 ? 'morgen' : `in ${nextEx.diff} Tagen`);
+    speech += `Deine nächste Klausur ist ${nextEx.subject} ${daysStr}, am ${formatGermanDate(new Date(nextEx.date))}. `;
+  }
+  if (overdue === 0 && soon === 0 && !nextEx) {
+    speech += 'Aktuell sind keine überfälligen oder dringenden Aufgaben erfasst.';
+  }
+
+  speak(speech, true);
+  announceSR(speech, 'assertive');
+}
+
+function triggerDesktopNotification() {
+  const homework = (appData.homework || []).filter(h => !h.completed);
+  const exams = appData.exams || [];
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
+  const upcomingExams = exams.map(ex => {
+    if (!ex.date) return null;
+    const p = ex.date.split('-');
+    if (p.length !== 3) return null;
+    const d = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+    return { ...ex, diff: Math.ceil((d - now) / 86400000) };
+  }).filter(e => e && e.diff >= 0).sort((a, b) => a.diff - b.diff);
+
+  const nextEx = upcomingExams[0];
+  let msg = `${homework.length} offene Aufgabe${homework.length === 1 ? '' : 'n'}`;
+  if (nextEx) {
+    msg += ` • Nächste Klausur: ${nextEx.subject} in ${nextEx.diff} Tagen (${nextEx.date})`;
+  }
+
+  fetch(`/api/notify?title=${encodeURIComponent('LWL Stundenplan & Prüfungen')}&msg=${encodeURIComponent(msg)}`).catch(() => {});
+}
 
 // =============================================================================
 // 10. INITIALISIERUNG & TASTEN-STEUERUNG
@@ -3553,6 +3762,7 @@ function initApp() {
     renderExams();
     renderHomework();
     renderAbsences();
+    renderUrgentNotificationBanner();
     performWebUntisSync();
   } else {
     showLoginView();
