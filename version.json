@@ -1,9 +1,11 @@
 {
-  "version": "1.8.4",
+  "version": "1.8.5",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-12",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
+    "Behebung des ReferenceError bei extractRoomFromObj und isValidRoomCandidate im globalen Scope",
+    "Stundenplan-Synchronisation und Wochenauswahl laufen wieder einwandfrei durch",
     "Sitzungs- und Fehlerentkopplung: Kein 'Falsche Anmeldedaten' mehr bei internen Verarbeitungsfehlern nach erfolgreicher Authentifizierung",
     "Robuste Render-Absicherung: Einzelfehler beim Zeichnen einzelner Tabs bringen nicht mehr die gesamte App zum Absturz",
     "Client-Logging direkt in webuntis_debug.log zur lückenlosen Diagnose",

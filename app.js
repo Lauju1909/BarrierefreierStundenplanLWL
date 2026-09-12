@@ -1385,29 +1385,8 @@ async function performWebUntisSync(userOverride, passOverride) {
     // 8. Sitzung bleibt für Folgebefehle und Navigation aktiv (kein vorzeitiges Logout)
 
     // -------------------------------------------------------------
-    // Hilfsfunktionen für Raum- und Prüfungsvalidierung
+    // Hilfsfunktionen für Raum- und Prüfungsvalidierung sind global definiert
     // -------------------------------------------------------------
-    function isValidRoomCandidate(candidate) {
-      if (!candidate || typeof candidate !== 'string') return false;
-      const clean = candidate.trim().toLowerCase();
-      if (!clean || clean === 'raum' || clean === 'null' || clean === 'undefined') return false;
-      if (clean === 'unterricht' || clean === 'lehrkraft') return false;
-      if (clean === 'hanauer' || clean === 'raum hanauer') return false;
-      return true;
-    }
-
-    function extractRoomFromObj(r) {
-      if (!r) return '';
-      if (typeof r === 'string' && isValidRoomCandidate(r)) return r.trim();
-      if (typeof r === 'number') {
-        if (roomsMap[r] && isValidRoomCandidate(roomsMap[r])) return roomsMap[r];
-        return '';
-      }
-      let candidate = r.name || r.longname || r.longName;
-      if (candidate && isValidRoomCandidate(candidate)) return candidate.trim();
-      if (r.id && roomsMap[r.id] && isValidRoomCandidate(roomsMap[r.id])) return roomsMap[r.id];
-      return '';
-    }
 
     // 9. Stundenplan der aktuellen Schulwoche & des gesamten Schuljahres parsen
     const timetableExams = [];
@@ -2748,6 +2727,31 @@ function updateTodayBadge() {
   const str = now.toLocaleDateString('de-DE', options);
   const badge = document.getElementById('today-date-text');
   if (badge) badge.textContent = str;
+}
+
+function isValidRoomCandidate(candidate) {
+  if (!candidate || typeof candidate !== 'string') return false;
+  const clean = candidate.trim().toLowerCase();
+  if (!clean || clean === 'raum' || clean === 'null' || clean === 'undefined') return false;
+  if (clean === 'unterricht' || clean === 'lehrkraft') return false;
+  if (clean === 'hanauer' || clean === 'raum hanauer') return false;
+  return true;
+}
+
+function extractRoomFromObj(r, customRoomsMap) {
+  if (!r) return '';
+  const rMap = (customRoomsMap && typeof customRoomsMap === 'object')
+    ? customRoomsMap
+    : ((appData && appData.metadata && appData.metadata.roomsMap) || {});
+  if (typeof r === 'string' && isValidRoomCandidate(r)) return r.trim();
+  if (typeof r === 'number') {
+    if (rMap[r] && isValidRoomCandidate(rMap[r])) return rMap[r];
+    return '';
+  }
+  let candidate = r.name || r.longname || r.longName;
+  if (candidate && isValidRoomCandidate(candidate)) return candidate.trim();
+  if (r.id && rMap[r.id] && isValidRoomCandidate(rMap[r.id])) return rMap[r.id];
+  return '';
 }
 
 function formatRoomDisplay(roomStr, teacherStr) {
