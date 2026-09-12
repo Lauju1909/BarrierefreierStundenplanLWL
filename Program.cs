@@ -423,7 +423,7 @@ namespace BarrierefreierStundenplan
 
             resp.Headers["Access-Control-Allow-Origin"] = "*";
             resp.Headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS";
-            resp.Headers["Access-Control-Allow-Headers"] = "Content-Type, X-School, X-Server, X-JSESSIONID, X-Endpoint, X-Untis-Secret, X-Untis-User, Authorization, *";
+            resp.Headers["Access-Control-Allow-Headers"] = "Content-Type, X-School, X-Server, X-JSESSIONID, X-Endpoint, X-Untis-Secret, X-Untis-User, Authorization, tenant-id, x-webuntis-api-school-year-id, *";
 
             if (req.HttpMethod == "OPTIONS")
             {
@@ -1226,16 +1226,27 @@ namespace BarrierefreierStundenplan
                 outReq.Accept = "application/json, text/plain, */*";
 
                 outReq.CookieContainer = new CookieContainer();
-                if (!string.IsNullOrEmpty(sessionId))
+                try
                 {
-                    try
+                    Uri targetUri = new Uri(targetUrl);
+                    if (!string.IsNullOrEmpty(sessionId))
                     {
-                        Uri targetUri = new Uri(targetUrl);
                         outReq.CookieContainer.Add(new Cookie("JSESSIONID", sessionId, "/", targetUri.Host));
                         outReq.CookieContainer.Add(new Cookie("JSESSIONID", sessionId, "/WebUntis", targetUri.Host));
                     }
-                    catch { }
+                    string tId = !string.IsNullOrEmpty(req.Headers["tenant-id"]) ? req.Headers["tenant-id"] : "5238400";
+                    outReq.CookieContainer.Add(new Cookie("Tenant-Id", tId, "/", targetUri.Host));
+                    outReq.CookieContainer.Add(new Cookie("schoolname", "_bHdsLWJrLXNvZXN0", "/", targetUri.Host));
                 }
+                catch { }
+
+                string tenantHeader = req.Headers["tenant-id"];
+                if (!string.IsNullOrEmpty(tenantHeader)) outReq.Headers["tenant-id"] = tenantHeader;
+                else outReq.Headers["tenant-id"] = "5238400";
+
+                string syIdHeader = req.Headers["x-webuntis-api-school-year-id"];
+                if (!string.IsNullOrEmpty(syIdHeader)) outReq.Headers["x-webuntis-api-school-year-id"] = syIdHeader;
+                else outReq.Headers["x-webuntis-api-school-year-id"] = "18";
 
                 string authHeader = req.Headers["Authorization"];
                 if (!string.IsNullOrEmpty(authHeader))

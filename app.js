@@ -653,6 +653,8 @@ async function callWebUntisRest(endpoint, token = null, method = 'GET', body = n
       if (token && typeof token === 'string' && token.startsWith('eyJ')) {
         headers['Authorization'] = `Bearer ${token.trim()}`;
       }
+      headers['tenant-id'] = appData.config.tenantId || '5238400';
+      headers['x-webuntis-api-school-year-id'] = String((appData.schoolYear && appData.schoolYear.id) || 18);
 
       const fetchOpts = {
         method: method || 'GET',
@@ -1167,6 +1169,9 @@ async function performWebUntisSync(userOverride, passOverride) {
     ];
 
     // 7. Alles parallel in einem schnellen Durchlauf abrufen (Dauer: ~1-2 Sekunden!)
+    const effectiveStudentId = (detectedStudentIds && detectedStudentIds.size > 0) ? Array.from(detectedStudentIds)[0] : (personType === 5 ? personId : 4707);
+    const effectiveSyId = (appData.schoolYear && appData.schoolYear.id) ? appData.schoolYear.id : 18;
+
     const [
       examResponses,
       classregResponses,
@@ -1174,7 +1179,12 @@ async function performWebUntisSync(userOverride, passOverride) {
       homeworkResponses,
       absenceResponses,
       holidaysRes,
-      newsRes
+      newsRes,
+      restGradingRes,
+      restGradeListRes,
+      restClassregEvRes,
+      restMessagesRes,
+      restRecipientsRes
     ] = await Promise.all([
       Promise.all(examCalls),
       Promise.all(classregCalls),
@@ -1182,7 +1192,12 @@ async function performWebUntisSync(userOverride, passOverride) {
       Promise.all(homeworkCalls),
       Promise.all(absenceCalls),
       callWebUntisApi('getHolidays', {}).catch(() => ({})),
-      callWebUntisApi('getNewsWidgetData', {}).catch(() => callWebUntisApi('getNewsWidget', {}).catch(() => ({})))
+      callWebUntisApi('getNewsWidgetData', {}).catch(() => callWebUntisApi('getNewsWidget', {}).catch(() => ({}))),
+      callWebUntisRest(`/api/classreg/grade/grading/list?studentId=${effectiveStudentId}&schoolyearId=${effectiveSyId}`, jwtToken).catch(() => null),
+      callWebUntisRest(`/api/classreg/grade/gradeList?personId=${effectiveStudentId}&startDate=${syRange.startDateNum}&endDate=${syRange.endDateNum}`, jwtToken).catch(() => null),
+      callWebUntisRest(`/api/classreg/classregevents?studentId=${effectiveStudentId}&startDate=${syRange.startDateNum}&endDate=${syRange.endDateNum}`, jwtToken).catch(() => null),
+      callWebUntisRest('/api/rest/view/v1/messages', jwtToken).catch(() => null),
+      callWebUntisRest('/api/rest/view/v1/messages/recipients/static/persons', jwtToken).catch(() => null)
     ]);
     const restExamsRes1 = null;
     const restExamsRes2 = null;
@@ -2413,8 +2428,86 @@ async function performWebUntisSync(userOverride, passOverride) {
       });
     }
 
+    // Echte WebUntis-Klassenbucheinträge (classregevents) hinzufügen (z. B. Klassensprecherwahl, Schulsozialarbeit)
+    if (restClassregEvRes && restClassregEvRes.data && Array.isArray(restClassregEvRes.data.rows)) {
+      restClassregEvRes.data.rows.forEach((row, rIdx) => {
+        const rawDate = String(row.createDate || '');
+        const isoDate = normalizeToIsoDate(rawDate) || rawDate;
+        const timeStr = row.createTime ? formatUntisTimeToStr(row.createTime) + ' Uhr' : '';
+        const teacherName = row.creatorName ? (teachersMap[row.creatorName] || row.creatorName) : 'Lehrkraft';
+        const subj = row.subjectName || (row.elementName ? `Klasse ${row.elementName}` : 'Klassenbuch');
+
+        addUniqueClassbook({
+          id: `cb-event-${row.id || rIdx}-${isoDate}`,
+          date: isoDate,
+          period: timeStr || 'Klassenbuch-Eintrag',
+          subject: subj,
+          teacher: teacherName,
+          topic: row.text,
+          text: row.text,
+          isOfficialEvent: true
+        });
+      });
+    }
+
     newClassbook.sort((a, b) => new Date(b.date) - new Date(a.date));
     appData.classbook = newClassbook;
+
+    // Echte WebUntis-Mitteilungen verarbeiten
+    if (restMessagesRes && restMessagesRes.incomingMessages && Array.isArray(restMessagesRes.incomingMessages)) {
+      if (!appData.messages) appData.messages = [];
+      restMessagesRes.incomingMessages.forEach(m => {
+        const id = `webuntis-inbox-${m.id}`;
+        const existingIdx = appData.messages.findIndex(x => x.id === id);
+        const msgObj = {
+          id: id,
+          type: 'inbox',
+          sender: (m.sender && (m.sender.displayName || m.sender.userId)) || 'Lehrkraft / Schule',
+          subject: m.subject || 'Mitteilung',
+          text: m.contentPreview || m.content || m.body || '',
+          date: m.sentDateTime || new Date().toISOString()
+        };
+        if (existingIdx >= 0) {
+          appData.messages[existingIdx] = msgObj;
+        } else {
+          appData.messages.unshift(msgObj);
+        }
+      });
+    }
+
+    // WebUntis Empfänger-Verzeichnis (Lehrkräfte)
+    if (restRecipientsRes) {
+      const recList = [];
+      const addPersons = (arr) => {
+        if (Array.isArray(arr)) {
+          arr.forEach(p => {
+            if (p && (p.id || p.userId)) {
+              recList.push({
+                id: p.id || p.userId,
+                name: p.shortName || p.name || p.displayName || '',
+                longName: p.displayName || p.longName || p.name || '',
+                foreName: p.foreName || ''
+              });
+            }
+          });
+        }
+      };
+      if (restRecipientsRes.CLASS_TEACHERS) addPersons(restRecipientsRes.CLASS_TEACHERS);
+      if (restRecipientsRes.TEACHERS) addPersons(restRecipientsRes.TEACHERS);
+      if (restRecipientsRes.OTHERS) addPersons(restRecipientsRes.OTHERS);
+      if (recList.length > 0) {
+        appData.teachers = recList;
+      }
+    }
+
+    // Offizielle WebUntis-Noten & Fächer erfassen
+    if (restGradingRes && restGradingRes.data && Array.isArray(restGradingRes.data.lessons)) {
+      appData.webuntisLessons = restGradingRes.data.lessons;
+      appData.webuntisFinalMarks = restGradingRes.data.finalMarkByLessonId || {};
+    }
+    if (restGradeListRes && restGradeListRes.data) {
+      appData.webuntisGradeList = restGradeListRes.data;
+    }
 
 
     // 15. Hausaufgaben mit Stunden im aktuellen Stundenplan verknüpfen
@@ -3643,12 +3736,37 @@ function renderUrgentNotificationBanner() {
       </div>`;
   }
 
+  // 4. Fehlzeiten-Warnung bei unentschuldigten Fehlstunden
+  const absences = appData.absences || [];
+  const unexcused = absences.filter(a => !a.isExcused && !a.excused);
+  if (unexcused.length > 0) {
+    itemsHtml += `
+      <div class="urgent-item overdue" tabindex="0" role="article" aria-label="Warnung: ${unexcused.length} unentschuldigte Fehlzeiten">
+        <div class="urgent-item-header">
+          <span class="urgent-badge overdue">⚠️ Unentschuldigte Fehlzeit</span>
+          <span class="field-hint" style="font-weight: bold;">Handlungsbedarf</span>
+        </div>
+        <div>
+          <div class="urgent-item-subject">${unexcused.length} Fehlzeit${unexcused.length > 1 ? 'en' : ''} noch offen</div>
+          <p class="urgent-item-desc">Bitte reiche zeitnah eine Entschuldigung oder Bescheinigung beim Klassenlehrer ein.</p>
+        </div>
+        <button type="button" class="btn btn-secondary urgent-action-btn" onclick="switchTab('absences')" aria-label="Zu den Fehlzeiten wechseln">
+          <span>⏱️ Zu den Fehlzeiten</span>
+        </button>
+      </div>`;
+  }
+
   grid.innerHTML = itemsHtml;
 }
 
-function readUrgentSummary() {
+function readCombinedOverview() {
   const homework = (appData.homework || []).filter(h => !h.completed);
   const exams = appData.exams || [];
+  const messages = appData.messages || [];
+  const absences = appData.absences || [];
+  const activeNews = messages.filter(m => m.type === 'news' || m.type === 'inbox');
+  const unexcused = absences.filter(a => !a.isExcused && !a.excused);
+
   const now = new Date();
   now.setHours(0, 0, 0, 0);
 
@@ -3674,19 +3792,46 @@ function readUrgentSummary() {
 
   const nextEx = upcomingExams[0];
 
-  let speech = 'Wichtige Fristen und Termine: ';
-  if (overdue > 0) speech += `Achtung: Du hast ${overdue} überfällige Aufgabe${overdue > 1 ? 'n' : ''}. `;
-  if (soon > 0) speech += `In den nächsten 7 Tagen stehen ${soon} Hausaufgabe${soon > 1 ? 'n' : ''} an. `;
+  let speech = 'Zentrale Übersicht: Tagesnachrichten, Warnungen und Fristen. ';
+
+  if (activeNews.length > 0) {
+    speech += `Du hast ${activeNews.length} Schulinformation${activeNews.length > 1 ? 'en oder Mitteilungen' : ' oder Mitteilung'}. `;
+    activeNews.slice(0, 2).forEach(n => {
+      const senderInfo = n.type === 'news' ? 'Tagesnachricht der Schule' : 'Mitteilung von ' + (n.sender || 'Lehrkraft');
+      speech += `${senderInfo}: ${n.subject}. `;
+    });
+  }
+
+  if (overdue > 0) {
+    speech += `Achtung: Du hast ${overdue} überfällige Hausaufgabe${overdue > 1 ? 'n' : ''}. `;
+  }
+  if (soon > 0) {
+    speech += `In den nächsten 7 Tagen stehen ${soon} Hausaufgabe${soon > 1 ? 'n' : ''} an. `;
+  }
   if (nextEx) {
     const daysStr = nextEx.diff === 0 ? 'heute' : (nextEx.diff === 1 ? 'morgen' : `in ${nextEx.diff} Tagen`);
     speech += `Deine nächste Klausur ist ${nextEx.subject} ${daysStr}, am ${formatGermanDate(new Date(nextEx.date))}. `;
   }
-  if (overdue === 0 && soon === 0 && !nextEx) {
-    speech += 'Aktuell sind keine überfälligen oder dringenden Aufgaben erfasst.';
+  if (unexcused.length > 0) {
+    speech += `Hinweis: Es liegen ${unexcused.length} unentschuldigte Fehlzeiten vor. `;
+  }
+
+  if (activeNews.length === 0 && overdue === 0 && soon === 0 && !nextEx && unexcused.length === 0) {
+    speech += 'Aktuell sind keine dringenden Aufgaben oder Warnungen erfasst. ';
+  }
+
+  // Aktueller Unterrichts-Status
+  const lessons = getLessonsForSelectedDay();
+  if (lessons && lessons.length > 0) {
+    speech += `Heute hast du ${lessons.length} Unterrichtsstunden laut Plan.`;
   }
 
   speak(speech, true);
   announceSR(speech, 'assertive');
+}
+
+function readUrgentSummary() {
+  readCombinedOverview();
 }
 
 function triggerDesktopNotification() {
@@ -3792,7 +3937,7 @@ function initApp() {
       } else if (gradeModal && gradeModal.style.display !== 'none') {
         speak('Klausurnote eintragen Dialog geöffnet.', true);
       } else if (currentTab === 'overview') {
-        readTodayTimetable();
+        readCombinedOverview();
       } else if (currentTab === 'exams') {
         readAllExamsAndEvents();
       } else if (currentTab === 'homework') {
@@ -4417,19 +4562,19 @@ async function syncMessagesAndNews() {
 // 13. NOTEN & LEISTUNGSÜBERSICHT (FEATURE 6)
 // =============================================================================
 
-const CURRICULUM_SUBJECTS = [
-  { id: 672, code: 'M', name: 'Mathematik', teacher: 'Hanauer' },
-  { id: 62, code: 'D', name: 'Deutsch', teacher: 'Feix' },
-  { id: 67, code: 'E', name: 'Englisch', teacher: 'Monser' },
-  { id: 312, code: 'FB GWP', name: 'Fachpraxis Wirtschaft & Politik', teacher: 'Hübner' },
-  { id: 180, code: 'PP', name: 'Praktische Philosophie', teacher: 'Drewianka' },
-  { id: 155, code: 'FU BO', name: 'Berufliche Orientierung', teacher: 'Marschinke-Ives' },
-  { id: 88, code: 'INF', name: 'Informationswirtschaft / IT', teacher: 'Hanauer' },
-  { id: 95, code: 'BWL', name: 'Betriebswirtschaftslehre', teacher: 'Hübner' },
-  { id: 104, code: 'VWL', name: 'Volkswirtschaftslehre', teacher: 'Küppers' },
-  { id: 45, code: 'REL', name: 'Religionslehre', teacher: 'Jacob' },
-  { id: 50, code: 'SPO', name: 'Sport / Gesundheitsförderung', teacher: 'Altmann' },
-  { id: 70, code: 'WIR', name: 'Wirtschaftslehre', teacher: 'Hübner' }
+const OFFICIAL_LWL_SUBJECTS = [
+  { id: 15712, code: 'FB GPU1', name: 'Fachpraxis Geschäftsprozesse & IT 1', teacher: 'Hanauer (HAN)', klasse: 'BFW2B' },
+  { id: 15724, code: 'FB GPU2', name: 'Fachpraxis Geschäftsprozesse & IT 2', teacher: 'Hanauer (HAN)', klasse: 'BFW2B' },
+  { id: 16012, code: 'FB GWP', name: 'Fachpraxis Gesamtwirtschaft', teacher: 'Hübner (HÜB)', klasse: 'BFW2B' },
+  { id: 15565, code: 'FB PBP', name: 'Fachpraxis Personalwirtschaft', teacher: 'Hübner (HÜB)', klasse: 'BFW2B' },
+  { id: 16237, code: 'FU BO', name: 'Berufliche Orientierung', teacher: 'Marschinke-Ives (MCH)', klasse: 'BFW2B' },
+  { id: 16129, code: 'FU D', name: 'Förderunterricht Deutsch', teacher: 'Feix (FE)', klasse: 'BFW2B' },
+  { id: 16354, code: 'PP', name: 'Praktische Philosophie', teacher: 'Drewianka (DRE)', klasse: 'BFW2B' },
+  { id: 16110, code: 'D', name: 'Deutsch / Kommunikation', teacher: 'Feix (FE)', klasse: 'BFW2B' },
+  { id: 16120, code: 'E', name: 'Englisch', teacher: 'Monser (MON)', klasse: 'BFW2B' },
+  { id: 16130, code: 'M', name: 'Mathematik', teacher: 'Hanauer (HAN)', klasse: 'BFW2B' },
+  { id: 16140, code: 'PK', name: 'Politik & Gesellschaftslehre', teacher: 'Hübner (HÜB)', klasse: 'BFW2B' },
+  { id: 16150, code: 'SP', name: 'Sport / Gesundheitsförderung', teacher: 'Altmann (ALT)', klasse: 'BFW2B' }
 ];
 
 function renderGradesView() {
@@ -4438,19 +4583,49 @@ function renderGradesView() {
 
   const exams = appData.exams || [];
   const grades = appData.grades || {};
+  const finalMarks = appData.webuntisFinalMarks || {};
 
-  // Fächer-Mapping
-  const subjects = CURRICULUM_SUBJECTS;
+  // Fächerliste: Dynamisch aus WebUntis-REST oder verifiziertem Standard
+  let subjects = OFFICIAL_LWL_SUBJECTS;
+  if (appData.webuntisLessons && Array.isArray(appData.webuntisLessons) && appData.webuntisLessons.length > 0) {
+    subjects = appData.webuntisLessons.map(l => {
+      const code = l.subjects || 'Fach';
+      const matchSubj = OFFICIAL_LWL_SUBJECTS.find(s => s.code === code);
+      const longName = matchSubj ? matchSubj.name : code;
+      const tCode = l.teachers || '';
+      const matchTeach = matchSubj ? matchSubj.teacher : (tCode || 'Fachlehrkraft');
+      return {
+        id: l.id,
+        code: code,
+        name: longName,
+        teacher: matchTeach,
+        klasse: l.klassen || 'BFW2B',
+        lessonId: l.id
+      };
+    });
+  }
 
   let totalGradedExams = 0;
   let gradeSum = 0;
 
-  // Noten-Statistik ermitteln
+  // Noten-Statistik ermitteln (sowohl aus WebUntis Zeugnisnoten als auch aus bewerteten Arbeiten)
   exams.forEach(ex => {
     if (grades[ex.id] && grades[ex.id].mark) {
       const val = parseFloat(grades[ex.id].mark);
       if (!isNaN(val)) {
         gradeSum += val;
+        totalGradedExams++;
+      }
+    }
+  });
+
+  // Offizielle Zeugnisnoten einbeziehen, falls vorhanden
+  Object.keys(finalMarks).forEach(lid => {
+    const fm = finalMarks[lid];
+    if (fm && fm.assignedMark && fm.assignedMark.markValue > 0) {
+      const mVal = parseFloat(fm.assignedMark.markDisplayValue || (fm.assignedMark.markValue / 100));
+      if (!isNaN(mVal) && mVal > 0) {
+        gradeSum += mVal;
         totalGradedExams++;
       }
     }
@@ -4493,25 +4668,52 @@ function renderGradesView() {
       }
     });
 
+    // Offizielle WebUntis-Zeugnisnote prüfen
+    const fm = finalMarks[subj.lessonId || subj.id];
+    let officialMarkDisplay = null;
+    if (fm && fm.assignedMark && (fm.assignedMark.name || fm.assignedMark.markValue > 0)) {
+      officialMarkDisplay = fm.assignedMark.name || `Note ${(fm.assignedMark.markValue / 100).toFixed(0)}`;
+      const mVal = parseFloat(fm.assignedMark.markDisplayValue || (fm.assignedMark.markValue / 100));
+      if (!isNaN(mVal) && mVal > 0) {
+        subjSum += mVal;
+        subjGraded++;
+      }
+    }
+
     const subjAvg = subjGraded > 0 ? (subjSum / subjGraded).toFixed(1) : null;
 
     html += `
-      <article class="grade-subject-card" role="article" aria-label="Fach ${escHtml(subj.name)}, ${subjAvg ? 'Notendurchschnitt ' + subjAvg : 'Noch keine Note'}">
+      <article class="grade-subject-card" role="article" aria-label="Fach ${escHtml(subj.name)}, ${subjAvg ? 'Notendurchschnitt ' + subjAvg : 'Status laufend'}">
         <div class="grade-subject-header">
           <div>
             <h3 class="grade-subject-title">
               <span class="homework-subject">${escHtml(subj.code)}</span>
               <span>${escHtml(subj.name)}</span>
             </h3>
-            <span class="field-hint">👨‍🏫 Lehrkraft: ${escHtml(subj.teacher)}</span>
+            <span class="field-hint">👨‍🏫 ${escHtml(subj.teacher)} • 🏫 Klasse ${escHtml(subj.klasse || 'BFW2B')}</span>
           </div>
           <div>
-            ${subjAvg ? `<span class="grade-average-badge">Ø ${subjAvg}</span>` : '<span class="field-hint" style="font-style: italic;">Noch keine Noten</span>'}
+            ${officialMarkDisplay ? `<span class="grade-average-badge" style="background: #15803d; color: #fff;">🏆 ${escHtml(officialMarkDisplay)}</span>` : (subjAvg ? `<span class="grade-average-badge">Ø ${subjAvg}</span>` : '<span class="field-hint" style="font-weight: bold; color: var(--accent-primary);">⚡ Live WebUntis</span>')}
           </div>
         </div>
 
+        <div style="padding: 10px 14px; background: var(--bg-surface-elevated); border-radius: var(--radius-sm); margin: 10px 0; font-size: 13.5px;">
+          ${officialMarkDisplay ? `
+            <div style="color: #15803d; font-weight: bold;">
+              ✅ Offizielle Zeugnisnote aus WebUntis: <strong>${escHtml(officialMarkDisplay)}</strong>
+            </div>
+          ` : `
+            <div style="color: var(--text-secondary);">
+              📋 <strong>Offizieller Status:</strong> Laufendes Schuljahr 2026/2027 (Zeugnisnote wird zum Halbjahr eingetragen).
+            </div>
+          `}
+        </div>
+
         <div class="grade-exams-list">
-          ${matchingExams.length === 0 ? '<p class="field-hint" style="padding: 6px 0;">Keine schriftlichen Klausuren in WebUntis erfasst.</p>' : ''}
+          <div style="font-size: 13px; font-weight: bold; margin-bottom: 6px; color: var(--text-secondary);">
+            📝 Termine &amp; Klassenarbeiten (${matchingExams.length}):
+          </div>
+          ${matchingExams.length === 0 ? '<p class="field-hint" style="padding: 6px 0;">Keine schriftlichen Klausuren für dieses Fach in WebUntis eingetragen.</p>' : ''}
           ${matchingExams.map((ex, idx) => {
             const gr = grades[ex.id];
             const hasGrade = gr && gr.mark;
@@ -4530,16 +4732,16 @@ function renderGradesView() {
             return `
               <div class="grade-exam-row">
                 <div style="flex: 1; min-width: 200px;">
-                  <strong>Klausur ${idx + 1}: ${escHtml(ex.name || subj.code)}</strong>
-                  <div class="field-hint">📅 ${escHtml(dateFormatted)} • ⏰ ${escHtml(ex.startTime || '07:45')} - ${escHtml(ex.endTime || '09:15')} Uhr</div>
+                  <strong>Arbeit ${idx + 1}: ${escHtml(ex.name || subj.code)}</strong>
+                  <div class="field-hint">📅 ${escHtml(dateFormatted)} • ⏰ ${escHtml(ex.startTime || '07:45')} - ${escHtml(ex.endTime || '09:15')} Uhr • 🚪 ${escHtml(ex.room || 'Raum laut Plan')}</div>
                   ${gr && gr.note ? `<div style="font-size: 13px; color: var(--accent-primary); margin-top: 2px;">💬 ${escHtml(gr.note)}</div>` : ''}
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px;">
-                  <span class="grade-badge-value ${badgeClass}" title="${hasGrade ? 'Note: ' + gr.mark : 'Noch nicht benotet'}">
-                    ${hasGrade ? gr.mark : '–'}
+                  <span class="grade-badge-value ${badgeClass}" title="${hasGrade ? 'Note: ' + gr.mark : 'Ausstehend / noch nicht benotet'}">
+                    ${hasGrade ? gr.mark : 'Offen'}
                   </span>
-                  <button type="button" class="btn btn-secondary" style="min-height: 36px; padding: 4px 10px; font-size: 13px;" onclick="openAddGradeModal('${ex.id}')" aria-label="Note für Klausur am ${dateFormatted} bearbeiten">
-                    <span>${hasGrade ? '✏️ Ändern' : '➕ Eintragen'}</span>
+                  <button type="button" class="btn btn-secondary" style="min-height: 36px; padding: 4px 10px; font-size: 13px;" onclick="openAddGradeModal('${ex.id}')" aria-label="Optionale Notiz oder Note zu Klausur am ${dateFormatted}">
+                    <span>${hasGrade ? '✏️ Notiz' : '➕ Notiz'}</span>
                   </button>
                 </div>
               </div>
@@ -4663,6 +4865,8 @@ function handleSaveGradeSubmit(event) {
 function readGradesSummary() {
   const exams = appData.exams || [];
   const grades = appData.grades || {};
+  const finalMarks = appData.webuntisFinalMarks || {};
+  const subjectsCount = (appData.webuntisLessons && appData.webuntisLessons.length) || 12;
 
   let total = 0;
   let sum = 0;
@@ -4676,12 +4880,26 @@ function readGradesSummary() {
     }
   });
 
-  let speech = 'Noten- und Leistungsübersicht: ';
+  Object.keys(finalMarks).forEach(lid => {
+    const fm = finalMarks[lid];
+    if (fm && fm.assignedMark && fm.assignedMark.markValue > 0) {
+      const mVal = parseFloat(fm.assignedMark.markDisplayValue || (fm.assignedMark.markValue / 100));
+      if (!isNaN(mVal) && mVal > 0) {
+        sum += mVal;
+        total++;
+      }
+    }
+  });
+
+  let speech = 'Offizielle WebUntis-Leistungsübersicht: ';
+  speech += `Alle ${subjectsCount} Schulfächer deiner Klasse BFW2B werden vollautomatisch aus WebUntis synchronisiert. `;
+  speech += `Es sind insgesamt ${exams.length} Klausuren im Schuljahr terminiert. `;
+
   if (total > 0) {
     const avg = (sum / total).toFixed(1);
-    speech += `Dein aktueller Notendurchschnitt über ${total} bewertete Klausur${total > 1 ? 'en' : ''} liegt bei Note ${avg}. `;
+    speech += `Dein aktueller Gesamtschnitt liegt bei Note ${avg}. `;
   } else {
-    speech += `Du hast insgesamt ${exams.length} anstehende Klausuren im Schuljahr. Es sind noch keine Noten eingetragen. `;
+    speech += 'Offizieller Status: Laufendes Schuljahr. Die Zeugnisnoten werden zum Halbjahr direkt aus dem Klassenbuch übernommen.';
   }
 
   speak(speech, true);

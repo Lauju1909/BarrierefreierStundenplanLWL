@@ -1,16 +1,14 @@
 {
-  "version": "1.6.0",
+  "version": "1.7.0",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-12",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
-    "Tagesnachrichten & Mitteilungssystem: Neuer Bereich für Schulinformationen, Tagesnachrichten und das Verfassen & Versenden von Mitteilungen an Lehrkräfte",
-    "Noten- & Leistungsübersicht: Notenspiegel aller Schulfächer, Erfassung der Klausurnoten für die 13 Klassenarbeiten und automatische Notenschnitt-Berechnung",
-    "Erweitertes Klassenbuch: Lückenlose Darstellung aller Unterrichtsstunden und Lehrstoffe über das gesamte Schuljahr ohne Beschränkung",
-    "Dringlichkeits-Banner mit Nachrichten: Sofortige Einbindung von Schulinformationen und ungelesenen Mitteilungen im Dashboard",
-    "7 barrierefreie Hauptmenü-Bereiche (Tasten 1 bis 7) mit optimierter Screenreader-Unterstützung (NVDA/JAWS) und Audio-Vorlesen (Taste V)",
-    "Live-Klausuren-Countdown & native Windows-Benachrichtigungen bei Abgaben und Prüfungen",
-    "Automatische mobile Fehlzeiten-Synchronisation (getStudentAbsences2017) via WebUntis Mobile API mit TOTP-Sicherheit",
+    "Vollautomatischer WebUntis-Leistungsstand: Alle 12 Schulfächer der Klasse BFW2B und Notenstände direkt aus dem WebUntis-Klassenbuch (keine manuelle Noteneingabe erforderlich)",
+    "Zentrale barrierefreie Übersichtsseite: Tagesnachrichten, Warnungen, Fristen und Klausuren-Countdown vereint auf Tab 1 (Taste V liest die gesamte Übersicht vor)",
+    "Offizielle Klassenbucheinträge: Automatische Integration aller Ereignisse (z. B. Klassensprecherwahl Hanauer, Schulsozialarbeit Hübner) aus WebUntis",
+    "Echte WebUntis-Mitteilungen & Lehrkräfteverzeichnis: Live-Posteingang (z. B. Schülermitteilungen) und Mitteilungsversand an alle Lehrkräfte",
+    "7 barrierefreie Hauptmenü-Bereiche (Tasten 1 bis 7) mit optimierter Screenreader-Unterstützung (NVDA/JAWS)",
     "100% werbefrei und barrierefrei nach WCAG 2.2 AAA"
   ]
 }

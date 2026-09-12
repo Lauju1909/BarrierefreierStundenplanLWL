@@ -120,7 +120,7 @@
     <div class="tab-list" role="tablist">
       <button id="tab-overview" class="tab-btn active" role="tab" aria-selected="true" aria-controls="view-overview" onclick="switchTab('overview')" tabindex="0">
         <span class="tab-key-hint" aria-hidden="true">1</span>
-        <span><span class="emoji-icon" aria-hidden="true">📅 </span><strong>Stundenplan &amp; Vertretung</strong></span>
+        <span><span class="emoji-icon" aria-hidden="true">📋 </span><strong>Übersicht &amp; Stundenplan</strong></span>
       </button>
       <button id="tab-exams" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-exams" onclick="switchTab('exams')" tabindex="-1">
         <span class="tab-key-hint" aria-hidden="true">2</span>
@@ -155,20 +155,22 @@
   <main class="main-container" id="view-content-area" role="main">
 
     <!-- =======================================================================
-         DRINGLICHKEITS- & COUNTDOWN-BANNER (HAUSAUFGABEN & KLAUSUREN)
+         ZENTRALE ÜBERSICHTSSEITE: TAGESNACHRICHTEN, WARNUNGEN & FRISTEN
          ======================================================================= -->
-    <section id="urgent-notifications-card" class="urgent-card" aria-live="polite" aria-label="Wichtige Termine und anstehende Aufgaben" style="display: none;">
+    <section id="urgent-notifications-card" class="urgent-card" aria-live="polite" aria-label="Zentrale Übersicht: Tagesnachrichten, Warnungen und Fristen">
       <div class="urgent-card-header">
         <div class="urgent-title-group">
-          <span class="urgent-icon" aria-hidden="true">🔔</span>
+          <span class="urgent-icon" aria-hidden="true">📢</span>
           <div>
-            <h2 class="urgent-title" id="urgent-card-heading">Wichtige anstehende Aufgaben &amp; Klausuren</h2>
-            <p class="urgent-subtitle" id="urgent-card-summary">Lade anstehende Fristen...</p>
+            <h2 class="urgent-title" id="urgent-card-heading">Tagesnachrichten, Warnungen &amp; Fristen</h2>
+            <p class="urgent-subtitle" id="urgent-card-summary">Tagesaktuelle Schulinformationen, Klausuren-Countdown und Fristen auf einen Blick.</p>
           </div>
         </div>
-        <button type="button" class="btn btn-secondary urgent-tts-btn" onclick="readUrgentSummary()" aria-label="Anstehende Fristen vorlesen">
-          <span class="emoji-icon" aria-hidden="true">🔊 </span>Fristen vorlesen
-        </button>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button type="button" class="btn btn-secondary urgent-tts-btn" onclick="readCombinedOverview()" aria-label="Tagesnachrichten und Warnungen vorlesen">
+            <span class="emoji-icon" aria-hidden="true">🔊 </span>Übersicht vorlesen
+          </button>
+        </div>
       </div>
 
       <div class="urgent-grid" id="urgent-items-grid">
@@ -466,14 +468,14 @@
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div>
             <h2 class="banner-title" id="grades-view-title">Noten &amp; Leistungsübersicht</h2>
-            <p class="banner-subtitle">Notenspiegel deiner Fächer, Ergebnisse der 13 Klassenarbeiten und Berechnung des Notendurchschnitts.</p>
+            <p class="banner-subtitle">Offizieller WebUntis-Leistungsstand aller 12 Schulfächer direkt aus dem Klassenbuch (vollautomatisch synchronisiert).</p>
           </div>
           <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <button type="button" class="btn btn-primary" onclick="openAddGradeModal()" id="btn-add-grade">
-              <span class="emoji-icon" aria-hidden="true">➕ </span><strong>Klausurnote eintragen</strong>
+            <button type="button" class="btn btn-primary" onclick="performWebUntisSync()" id="btn-sync-grades" aria-label="Noten jetzt aus WebUntis synchronisieren">
+              <span class="emoji-icon" aria-hidden="true">🔄 </span><strong>Aus WebUntis abrufen (A)</strong>
             </button>
             <button type="button" class="btn btn-secondary" onclick="readGradesSummary()" aria-label="Notenübersicht vorlesen">
-              <span class="emoji-icon" aria-hidden="true">🔊 </span>Noten vorlesen
+              <span class="emoji-icon" aria-hidden="true">🔊 </span>Noten vorlesen (V)
             </button>
           </div>
         </div>
