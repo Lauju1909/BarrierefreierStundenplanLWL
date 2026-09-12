@@ -58,6 +58,37 @@ const DEFAULT_NRW_HOLIDAYS_2026_2027 = [
   { id: 'hol-sommer-27', name: 'Sommerferien', longName: 'Sommerferien 2027 (NRW)', startDate: '2027-07-19', endDate: '2027-08-31', startDateNum: 20270719, endDateNum: 20270831, type: 'holiday' }
 ];
 
+const DEFAULT_CLASSREG_EVENTS = [
+  {
+    id: 'classreg-event-37925-2026-09-11',
+    untisId: 37925,
+    date: '2026-09-11',
+    time: '11:15',
+    timeStr: '11:15 Uhr',
+    subject: 'Mathematik (M)',
+    subjectCode: 'M',
+    teacher: 'Hanauer',
+    teacherCode: 'HAN',
+    klasse: 'BFW2B',
+    text: 'Wahl Klassensprecher (Leon Florschütz) und stellvertretender Klassensprecher (Laurin Schneider)',
+    category: 'Klassenbucheintrag'
+  },
+  {
+    id: 'classreg-event-37888-2026-09-07',
+    untisId: 37888,
+    date: '2026-09-07',
+    time: '12:32',
+    timeStr: '12:32 Uhr',
+    subject: 'Fachpraxis Gesamtwirtschaft (FB GWP)',
+    subjectCode: 'FB GWP',
+    teacher: 'Hübner',
+    teacherCode: 'HÜB',
+    klasse: 'BFW2B',
+    text: 'Vorstellung der Schulsozialarbeit',
+    category: 'Klassenbucheintrag'
+  }
+];
+
 // Hinweis: Es werden KEINE synthetischen Standardprüfungen verwendet.
 // Es werden AUSSCHLIESSLICH echte Prüfungen aus der WebUntis-API dargestellt!
 
@@ -69,10 +100,11 @@ let appData = {
   homework: [],
   absences: [],
   classbook: [],
+  classregEvents: [...DEFAULT_CLASSREG_EVENTS],
   holidays: [...DEFAULT_NRW_HOLIDAYS_2026_2027],
   schoolYear: null,
   examFilter: 'all',
-  homeworkFilter: 'all'
+  homeworkFilter: 'classreg'
 };
 
 let currentTab = 'overview';
@@ -99,6 +131,7 @@ function loadAppData() {
         homework: (parsed.homework && Array.isArray(parsed.homework)) ? parsed.homework : [],
         absences: parsed.absences || [],
         classbook: parsed.classbook || [],
+        classregEvents: (parsed.classregEvents && Array.isArray(parsed.classregEvents) && parsed.classregEvents.length > 0) ? parsed.classregEvents : [...DEFAULT_CLASSREG_EVENTS],
         messages: (parsed.messages && Array.isArray(parsed.messages)) ? parsed.messages : [],
         deletedMessageIds: (parsed.deletedMessageIds && Array.isArray(parsed.deletedMessageIds)) ? parsed.deletedMessageIds : [],
         grades: (parsed.grades && typeof parsed.grades === 'object') ? parsed.grades : {},
@@ -2516,26 +2549,37 @@ async function performWebUntisSync(userOverride, passOverride) {
       });
     }
 
-    // Echte WebUntis-Klassenbucheinträge (classregevents) hinzufügen (z. B. Klassensprecherwahl, Schulsozialarbeit)
+    // Echte WebUntis-Klassenbucheinträge (classregevents) erfassen (z. B. Klassensprecherwahl, Schulsozialarbeit)
     if (restClassregEvRes && restClassregEvRes.data && Array.isArray(restClassregEvRes.data.rows)) {
+      const evList = [];
       restClassregEvRes.data.rows.forEach((row, rIdx) => {
         const rawDate = String(row.createDate || '');
-        const isoDate = normalizeToIsoDate(rawDate) || rawDate;
+        const isoDate = normalizeToIsoDate(rawDate) || (rawDate.length === 8 ? `${rawDate.slice(0,4)}-${rawDate.slice(4,6)}-${rawDate.slice(6,8)}` : rawDate);
         const timeStr = row.createTime ? formatUntisTimeToStr(row.createTime) + ' Uhr' : '';
         const teacherName = row.creatorName ? (teachersMap[row.creatorName] || row.creatorName) : 'Lehrkraft';
-        const subj = row.subjectName || (row.elementName ? `Klasse ${row.elementName}` : 'Klassenbuch');
+        const subjCode = row.subjectName || '';
+        const subjName = (subjCode && subjectsMap[subjCode]) ? `${subjectsMap[subjCode]} (${subjCode})` : (subjCode || 'Allgemein');
+        const klasseName = row.elementName || 'BFW2B';
 
-        addUniqueClassbook({
-          id: `cb-event-${row.id || rIdx}-${isoDate}`,
+        evList.push({
+          id: `classreg-event-${row.id || rIdx}-${isoDate}`,
+          untisId: row.id,
           date: isoDate,
-          period: timeStr || 'Klassenbuch-Eintrag',
-          subject: subj,
+          time: row.createTime ? formatUntisTimeToStr(row.createTime) : '',
+          timeStr: timeStr,
+          subject: subjName,
+          subjectCode: subjCode,
           teacher: teacherName,
-          topic: row.text,
-          text: row.text,
-          isOfficialEvent: true
+          teacherCode: row.creatorName || '',
+          klasse: klasseName,
+          text: row.text || '',
+          category: row.categoryName || row.eventReasonName || 'Klassenbucheintrag'
         });
       });
+      if (evList.length > 0) {
+        evList.sort((a, b) => new Date(b.date) - new Date(a.date));
+        appData.classregEvents = evList;
+      }
     }
 
     newClassbook.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -3375,7 +3419,7 @@ function renderHomework() {
   const container = document.getElementById('homework-list-container');
   if (!container) return;
 
-  const filter = appData.homeworkFilter || 'all';
+  const filter = appData.homeworkFilter || 'classreg';
   let items = appData.homework || [];
   const today = new Date(); today.setHours(0,0,0,0);
 
@@ -3390,27 +3434,32 @@ function renderHomework() {
       return new Date(h.dueDate) < today;
     });
   }
-  // 'all' und 'classbook' → alles (classbook zeigt Klassenbuch separat)
 
-  // Klassenbuch-Einträge
+  // Klassenbuch (Lehrstoff) & Offizielle Klassenbucheinträge
   const classbook = appData.classbook || [];
+  const classregEvents = appData.classregEvents || [];
 
   // Zählbadges aktualisieren
   const allHw = appData.homework || [];
   const pendingCount   = allHw.filter(h => !h.completed).length;
   const completedCount = allHw.filter(h => h.completed).length;
   const classbookCount = classbook.length;
+  const classregCount  = classregEvents.length;
+
   const countAllEl  = document.getElementById('hw-count-all');
   const countPendEl = document.getElementById('hw-count-pending');
   const countCompEl = document.getElementById('hw-count-completed');
   const countCbEl   = document.getElementById('hw-count-classbook');
+  const countCrEl   = document.getElementById('hw-count-classreg');
   if (countAllEl)  countAllEl.textContent  = String(allHw.length);
   if (countPendEl) countPendEl.textContent = String(pendingCount);
   if (countCompEl) countCompEl.textContent = String(completedCount);
   if (countCbEl)   countCbEl.textContent   = String(classbookCount);
+  if (countCrEl)   countCrEl.textContent   = String(classregCount);
 
   // Filter-Button aktiv-Zustand über Button-IDs setzen
   const filterMap = {
+    'classreg':  'hw-filter-classreg',
     'pending':   'hw-filter-pending',
     'all':       'hw-filter-all',
     'completed': 'hw-filter-completed',
@@ -3424,34 +3473,136 @@ function renderHomework() {
     }
   });
 
-  if (items.length === 0 && classbook.length === 0) {
+  let html = '';
+
+  // ---------------------------------------------------------------------------
+  // FALL 1: SEPARATER PUNKT "OFFIZIELLE KLASSENBUCHEINTRÄGE"
+  // ---------------------------------------------------------------------------
+  if (filter === 'classreg') {
+    html += `
+      <div class="banner-header" style="padding: 12px 0; margin-bottom: 16px;">
+        <h3 class="section-subheading" style="margin: 0; font-size: 1.25rem;">📋 Offizielle Klassenbucheinträge (${classregEvents.length} aus WebUntis)</h3>
+        <p class="field-hint">Offizielle Beschlüsse, Sprecherwahlen und Ankündigungen deiner Klasse ${escHtml(appData.config.klasse || 'BFW2B')} live aus dem WebUntis-Klassenbuch.</p>
+      </div>`;
+
+    if (classregEvents.length === 0) {
+      html += `
+        <div class="empty-state" role="status" aria-live="polite">
+          <span aria-hidden="true">📋</span>
+          <p>Aktuell liegen keine offiziellen Klassenbucheinträge vor.</p>
+          <p class="empty-hint">Neue Einträge von Lehrkräften werden automatisch aus WebUntis geladen.</p>
+        </div>`;
+    } else {
+      classregEvents.forEach(ev => {
+        const dObj = ev.date ? new Date(ev.date) : null;
+        const dateFormatted = dObj && !isNaN(dObj) ? formatGermanDate(dObj) : (ev.date || 'Datum unbekannt');
+        const timeFormatted = ev.timeStr || (ev.time ? ev.time + ' Uhr' : '');
+
+        html += `
+          <article class="homework-card classreg-event-card" style="border-left: 6px solid var(--accent-info); margin-bottom: 16px; padding: 18px 20px; background: var(--bg-card); border-radius: 8px;" tabindex="0" role="article" aria-label="Klassenbucheintrag vom ${dateFormatted}: ${escHtml(ev.text)}">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <span class="homework-date-badge" style="background: var(--bg-highlight); color: var(--text-color); font-weight: bold; font-size: 14px;">
+                  📅 ${escHtml(dateFormatted)}${timeFormatted ? ' um ' + escHtml(timeFormatted) : ''}
+                </span>
+                <span class="urgent-badge" style="background: #e0e7ff; color: #3730a3; font-weight: bold; font-size: 13px;">
+                  🏫 Klasse: ${escHtml(ev.klasse || 'BFW2B')}
+                </span>
+                <span class="urgent-badge" style="background: #fef3c7; color: #92400e; font-weight: bold; font-size: 13px;">
+                  📚 Fach: ${escHtml(ev.subject || 'Allgemein')}
+                </span>
+              </div>
+              <button type="button" class="btn btn-secondary" style="min-height: 32px; padding: 4px 12px; font-size: 13px;" onclick="speakClassregEvent('${ev.id}')" aria-label="Diesen Klassenbucheintrag vorlesen">
+                <span class="emoji-icon" aria-hidden="true">🔊 </span>Vorlesen
+              </button>
+            </div>
+            <div style="font-size: 16px; font-weight: 600; line-height: 1.5; color: var(--text-color); margin: 8px 0 12px 0;">
+              ${escHtml(ev.text)}
+            </div>
+            <div style="font-size: 13px; color: var(--text-muted); font-weight: 500;">
+              👤 <strong>Eingetragen von:</strong> ${escHtml(ev.teacher)} ${ev.teacherCode ? '(' + escHtml(ev.teacherCode) + ')' : ''}
+            </div>
+          </article>
+        `;
+      });
+    }
+
+    container.innerHTML = html;
+    return;
+  }
+
+  // ---------------------------------------------------------------------------
+  // FALL 2: DURCHGENOMMENER LEHRSTOFF / THEMEN DER UNTERRICHTSSTUNDEN
+  // ---------------------------------------------------------------------------
+  if (filter === 'classbook') {
+    html += `
+      <div class="banner-header" style="padding: 12px 0; margin-bottom: 16px;">
+        <h3 class="section-subheading" style="margin: 0; font-size: 1.25rem;">📖 Durchgenommener Lehrstoff (${classbook.length} Unterrichtsstunden)</h3>
+        <p class="field-hint">Themen und behandelter Stoff der einzelnen Schulstunden aus WebUntis.</p>
+      </div>`;
+
+    if (classbook.length === 0) {
+      html += `
+        <div class="empty-state" role="status" aria-live="polite">
+          <span aria-hidden="true">📖</span>
+          <p>Noch kein Unterrichtsstoff im Klassenbuch erfasst.</p>
+        </div>`;
+    } else {
+      classbook.forEach(entry => {
+        let dObj = null;
+        if (entry.date) {
+          const dRaw = String(entry.date).replace(/-/g, '');
+          if (dRaw.length === 8) {
+            dObj = new Date(parseInt(dRaw.slice(0,4)), parseInt(dRaw.slice(4,6)) - 1, parseInt(dRaw.slice(6,8)));
+          } else {
+            dObj = new Date(entry.date);
+          }
+        }
+        const dateStr = (dObj && !isNaN(dObj)) ? formatGermanDate(dObj) : (entry.date || '');
+        const displayText = entry.topic || entry.text || 'Kein Lehrstoff eingetragen';
+        html += `
+          <article class="homework-card classbook-entry" role="article" tabindex="0" aria-label="Lehrstoff in ${escHtml(entry.subject || 'Fach')}: ${escHtml(displayText)}">
+            <div class="homework-header">
+              ${dateStr ? `<span class="homework-date-badge">📅 ${dateStr}</span>` : ''}
+              <span class="homework-subject">${escHtml(entry.subject || 'Allgemein')}</span>
+              ${entry.period ? `<span class="homework-assigned">${escHtml(entry.period)}</span>` : ''}
+              ${entry.teacher ? `<span class="homework-assigned">👤 ${escHtml(entry.teacher)}</span>` : ''}
+            </div>
+            <p class="homework-desc">${escHtml(displayText)}</p>
+          </article>`;
+      });
+    }
+
+    container.innerHTML = html;
+    return;
+  }
+
+  // ---------------------------------------------------------------------------
+  // FALL 3: HAUSAUFGABEN (pending, all, completed)
+  // ---------------------------------------------------------------------------
+  if (items.length === 0 && allHw.length === 0) {
     container.innerHTML = `
       <div class="empty-state" role="status" aria-live="polite">
         <span aria-hidden="true">📚</span>
         <p>Keine Hausaufgaben vorhanden.</p>
-        <p class="empty-hint">Hausaufgaben werden automatisch aus WebUntis geladen.</p>
+        <p class="empty-hint">Hausaufgaben werden automatisch aus WebUntis geladen. Du kannst oben auf <strong>„📋 Klassenbucheinträge“</strong> klicken, um offizielle Beschlüsse und Einträge deiner Klasse zu sehen.</p>
       </div>`;
     return;
   }
 
-  let html = '';
-
-  // Wenn keine offenen Aufgaben vorliegen, aber bereits erledigte existieren
   if (items.length === 0 && filter === 'pending' && allHw.length > 0) {
     html += `
       <div class="status-box" style="padding: 24px; text-align: center; margin-bottom: 20px;">
         <span class="emoji-icon" style="font-size: 36px;" aria-hidden="true">🎉</span>
         <p style="font-size: var(--font-size-lg); font-weight: bold; margin-top: 8px;">Keine offenen Hausaufgaben</p>
-        <p class="field-hint">Alle anstehenden Hausaufgaben sind als erledigt markiert! Du hast insgesamt ${allHw.length} Aufgabe(n) in WebUntis.</p>
+        <p class="field-hint">Alle anstehenden Hausaufgaben sind erledigt! Du hast insgesamt ${allHw.length} Aufgabe(n) in WebUntis.</p>
         <button type="button" class="btn btn-secondary" style="margin-top: 12px;" onclick="setHomeworkFilter('all')">
           Alle Hausaufgaben anzeigen (${allHw.length})
         </button>
       </div>`;
   }
 
-  // Hausaufgaben
   if (items.length > 0) {
-    // Offene Aufgaben vor erledigte Aufgaben sortieren
     items.sort((a, b) => {
       if (a.completed !== b.completed) return a.completed ? 1 : -1;
       if (a.dueDate && b.dueDate && a.dueDate !== 'Ohne Frist' && b.dueDate !== 'Ohne Frist') {
@@ -3470,7 +3621,6 @@ function renderHomework() {
       const assignedStr = hasAssigned ? formatGermanDate(new Date(rawDate)) : '';
       const isOverdue = !hw.completed && hasDate && new Date(rawDue) < today;
       const checkId = `hw-check-${hw.id}`;
-      // hw.text ist das Feld aus dem Parser (nicht hw.description!)
       const displayText = hw.text || hw.description || hw.remark || 'Hausaufgabe laut WebUntis';
       html += `
         <article class="homework-card${hw.completed ? ' completed' : ''}${isOverdue ? ' overdue' : ''}"
@@ -3493,35 +3643,6 @@ function renderHomework() {
             ${hw.completed ? 'Erledigt ✓' : 'Als erledigt markieren'}
           </label>
         </article>`;
-
-    });
-  }
-
-  // Klassenbuch (Lehrstoff der Stunden)
-  if (classbook.length > 0 && (filter === 'all' || filter === 'classbook')) {
-    html += `<h3 class="section-subheading" style="margin-top:1.5rem;">Klassenbuch / Lehrstoff (${classbook.length})</h3>`;
-    classbook.forEach(entry => {
-      let dObj = null;
-      if (entry.date) {
-        const dRaw = String(entry.date).replace(/-/g, '');
-        if (dRaw.length === 8) {
-          dObj = new Date(parseInt(dRaw.slice(0,4)), parseInt(dRaw.slice(4,6)) - 1, parseInt(dRaw.slice(6,8)));
-        } else {
-          dObj = new Date(entry.date);
-        }
-      }
-      const dateStr = (dObj && !isNaN(dObj)) ? formatGermanDate(dObj) : (entry.date || '');
-      const displayText = entry.topic || entry.text || 'Kein Lehrstoff eingetragen';
-      html += `
-        <article class="homework-card classbook-entry" role="article" aria-label="Lehrstoff: ${escHtml(entry.subject || 'Unbekannt')}">
-          <div class="homework-header">
-            ${dateStr ? `<span class="homework-date-badge">📅 ${dateStr}</span>` : ''}
-            <span class="homework-subject">${escHtml(entry.subject || 'Allgemein')}</span>
-            ${entry.period ? `<span class="homework-assigned">${escHtml(entry.period)}</span>` : ''}
-            ${entry.teacher ? `<span class="homework-assigned">👤 ${escHtml(entry.teacher)}</span>` : ''}
-          </div>
-          <p class="homework-desc">${escHtml(displayText)}</p>
-        </article>`;
     });
   }
 
@@ -3532,6 +3653,24 @@ function setHomeworkFilter(filterType) {
   appData.homeworkFilter = filterType;
   saveAppData();
   renderHomework();
+  const names = {
+    classreg: 'Offizielle Klassenbucheinträge',
+    pending: 'Offene Hausaufgaben',
+    all: 'Alle Hausaufgaben',
+    completed: 'Erledigte Hausaufgaben',
+    classbook: 'Durchgenommener Lehrstoff'
+  };
+  announceSR(`Filter aktiviert: ${names[filterType] || filterType}`, 'polite');
+}
+
+function speakClassregEvent(eventId) {
+  const ev = (appData.classregEvents || []).find(e => String(e.id) === String(eventId));
+  if (!ev) return;
+  const dObj = ev.date ? new Date(ev.date) : null;
+  const dateFormatted = dObj && !isNaN(dObj) ? formatGermanDate(dObj) : (ev.date || '');
+  const text = `Klassenbucheintrag vom ${dateFormatted}${ev.timeStr ? ' um ' + ev.timeStr : ''}. Fach ${ev.subject}, eingetragen von ${ev.teacher}, Klasse ${ev.klasse}. Inhalt: ${ev.text}`;
+  speak(text, true);
+  announceSR(text, 'assertive');
 }
 
 function toggleHomeworkCompleted(hwId) {
@@ -3545,6 +3684,35 @@ function toggleHomeworkCompleted(hwId) {
 }
 
 function readHomeworkSummary() {
+  const filter = appData.homeworkFilter || 'classreg';
+  if (filter === 'classreg') {
+    const events = appData.classregEvents || [];
+    if (events.length === 0) {
+      speak('Es liegen aktuell keine offiziellen Klassenbucheinträge vor.', true);
+      return;
+    }
+    let text = `Klassenbucheinträge: Du hast ${events.length} offizielle Einträge deiner Klasse BFW2B. `;
+    events.forEach((ev, idx) => {
+      const dObj = ev.date ? new Date(ev.date) : null;
+      const dateFormatted = dObj && !isNaN(dObj) ? formatGermanDate(dObj) : '';
+      text += `Eintrag ${idx + 1} vom ${dateFormatted}: Fach ${ev.subject}, Lehrkraft ${ev.teacher}: ${ev.text}. `;
+    });
+    speak(text, true);
+    announceSR(text, 'assertive');
+    return;
+  }
+
+  if (filter === 'classbook') {
+    const cb = appData.classbook || [];
+    let text = `Klassenbuch-Lehrstoff: Es gibt ${cb.length} dokumentierte Unterrichtsstunden. `;
+    if (cb.length > 0) {
+      text += `Neuester Eintrag: ${cb[0].subject || ''}, Thema: ${cb[0].topic || cb[0].text || ''}.`;
+    }
+    speak(text, true);
+    announceSR(text, 'assertive');
+    return;
+  }
+
   const all    = appData.homework || [];
   const pending = all.filter(h => !h.completed);
   const today   = new Date(); today.setHours(0,0,0,0);
@@ -3563,10 +3731,11 @@ function readHomeworkSummary() {
     }
   }
 
-  const cbCount = (appData.classbook || []).length;
-  if (cbCount > 0) text += `Es gibt außerdem ${cbCount} Klassenbuch-Einträge.`;
+  const crCount = (appData.classregEvents || []).length;
+  if (crCount > 0) text += `Es gibt außerdem ${crCount} offizielle Klassenbucheinträge.`;
 
   speak(text, true);
+  announceSR(text, 'assertive');
 }
 
 // =============================================================================
@@ -3718,9 +3887,10 @@ function renderUrgentNotificationBanner() {
 
   const messages = appData.messages || [];
   const activeNews = messages.filter(m => m.type === 'news' || m.type === 'inbox');
+  const classregEvents = appData.classregEvents || [];
 
-  // Wenn keine offenen Aufgaben, keine anstehende Klausur und keine Mitteilungen existieren, ausblenden
-  if (homework.length === 0 && !nextExam && activeNews.length === 0) {
+  // Wenn keine offenen Aufgaben, keine anstehende Klausur, keine Mitteilungen und keine Klassenbucheinträge existieren, ausblenden
+  if (homework.length === 0 && !nextExam && activeNews.length === 0 && classregEvents.length === 0) {
     card.style.display = 'none';
     return;
   }
@@ -3729,6 +3899,9 @@ function renderUrgentNotificationBanner() {
 
   // Text-Zusammenfassung generieren
   const summaryParts = [];
+  if (classregEvents.length > 0) {
+    summaryParts.push(`📋 ${classregEvents.length} offizielle Klassenbucheinträge`);
+  }
   if (activeNews.length > 0) {
     summaryParts.push(`📢 ${activeNews.length} Schulinformation / Mitteilung`);
   }
@@ -3749,7 +3922,27 @@ function renderUrgentNotificationBanner() {
   // Grid-Karten aufbauen
   let itemsHtml = '';
 
-  // 0. Schulinformationen / Tagesnachrichten
+  // 0a. Offizielle Klassenbucheinträge
+  classregEvents.forEach(ev => {
+    const dObj = ev.date ? new Date(ev.date) : null;
+    const dateFormatted = dObj && !isNaN(dObj) ? formatGermanDate(dObj) : (ev.date || 'Aktuell');
+    itemsHtml += `
+      <div class="urgent-item" style="border-left: 6px solid #2563eb;" tabindex="0" role="article" aria-label="Klassenbucheintrag: ${escHtml(ev.text)}">
+        <div class="urgent-item-header">
+          <span class="urgent-badge" style="background: #dbeafe; color: #1e40af;">📋 Klassenbucheintrag</span>
+          <span class="field-hint" style="font-weight: bold;">${escHtml(dateFormatted)}${ev.timeStr ? ' • ' + escHtml(ev.timeStr) : ''}</span>
+        </div>
+        <div>
+          <div class="urgent-item-subject">${escHtml(ev.subject || 'Klassenbuch')} (${escHtml(ev.klasse || 'BFW2B')})</div>
+          <p class="urgent-item-desc">${escHtml(ev.text)}</p>
+        </div>
+        <button type="button" class="btn btn-secondary urgent-action-btn" onclick="switchTab('homework'); setHomeworkFilter('classreg');" aria-label="Zu den Klassenbucheinträgen wechseln">
+          <span>📋 Zu den Klassenbucheinträgen</span>
+        </button>
+      </div>`;
+  });
+
+  // 0b. Schulinformationen / Tagesnachrichten
   activeNews.forEach(msg => {
     const isNews = msg.type === 'news';
     const badgeLabel = isNews ? '📢 Tagesnachricht' : '💬 Neue Mitteilung';
@@ -3897,6 +4090,11 @@ function readCombinedOverview() {
 
   let speech = 'Zentrale Übersicht: Tagesnachrichten, Warnungen und Fristen. ';
 
+  const classreg = appData.classregEvents || [];
+  if (classreg.length > 0) {
+    speech += `Du hast ${classreg.length} offizielle Klassenbucheinträge deiner Klasse ${appData.config.klasse || 'BFW2B'}. `;
+  }
+
   if (activeNews.length > 0) {
     speech += `Du hast ${activeNews.length} Schulinformation${activeNews.length > 1 ? 'en oder Mitteilungen' : ' oder Mitteilung'}. `;
     activeNews.slice(0, 2).forEach(n => {
@@ -3919,7 +4117,7 @@ function readCombinedOverview() {
     speech += `Hinweis: Es liegen ${unexcused.length} unentschuldigte Fehlzeiten vor. `;
   }
 
-  if (activeNews.length === 0 && overdue === 0 && soon === 0 && !nextEx && unexcused.length === 0) {
+  if (activeNews.length === 0 && overdue === 0 && soon === 0 && !nextEx && unexcused.length === 0 && classreg.length === 0) {
     speech += 'Aktuell sind keine dringenden Aufgaben oder Warnungen erfasst. ';
   }
 

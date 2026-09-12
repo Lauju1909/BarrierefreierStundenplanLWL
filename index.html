@@ -293,12 +293,12 @@
       <div class="banner-header">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div>
-            <h2 class="banner-title">Hausaufgaben &amp; Klassenbuch</h2>
-            <p class="banner-subtitle">Hausaufgaben zum Abhaken und durchgenommener Lehrstoff deiner Fächer aus WebUntis.</p>
+            <h2 class="banner-title">Hausaufgaben, Klassenbucheinträge &amp; Lehrstoff</h2>
+            <p class="banner-subtitle">Offizielle Klassenbucheinträge deiner Klasse BFW2B, Hausaufgaben und durchgenommener Unterrichtsstoff aus WebUntis.</p>
           </div>
-          <div>
-            <button type="button" class="btn btn-secondary" onclick="readHomeworkSummary()">
-              <span class="emoji-icon" aria-hidden="true">🔊 </span>Hausaufgaben vorlesen (V)
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-secondary" onclick="readHomeworkSummary()" title="Aktuelle Auswahl laut vorlesen (Taste V)">
+              <span class="emoji-icon" aria-hidden="true">🔊 </span><span>Vorlesen (V)</span>
             </button>
           </div>
         </div>
@@ -307,7 +307,10 @@
       <!-- FILTERLEISTE FÜR HAUSAUFGABEN -->
       <section class="filter-card" aria-label="Hausaufgaben Filter und Ansichten">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-          <div class="exam-filter-group" role="group" aria-label="Hausaufgaben-Filter">
+          <div class="exam-filter-group" role="group" aria-label="Hausaufgaben- und Klassenbuch-Filter">
+            <button type="button" class="btn btn-secondary filter-btn" id="hw-filter-classreg" onclick="setHomeworkFilter('classreg')">
+              <span>📋 <strong>Klassenbucheinträge</strong> (<span id="hw-count-classreg">2</span>)</span>
+            </button>
             <button type="button" class="btn btn-secondary filter-btn active" id="hw-filter-pending" onclick="setHomeworkFilter('pending')">
               <span>⏳ <strong>Offene Aufgaben</strong> (<span id="hw-count-pending">0</span>)</span>
             </button>
@@ -318,7 +321,7 @@
               <span>✅ <strong>Erledigt</strong> (<span id="hw-count-completed">0</span>)</span>
             </button>
             <button type="button" class="btn btn-secondary filter-btn" id="hw-filter-classbook" onclick="setHomeworkFilter('classbook')">
-              <span>📖 <strong>Klassenbuch (Lehrstoff)</strong> (<span id="hw-count-classbook">0</span>)</span>
+              <span>📖 <strong>Durchgenommener Lehrstoff</strong> (<span id="hw-count-classbook">0</span>)</span>
             </button>
           </div>
         </div>
