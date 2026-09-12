@@ -1,14 +1,16 @@
 {
-  "version": "1.8.0",
+  "version": "1.8.1",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-12",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
+    "WebUntis Login-Optimierung: Schutz gegen doppelte Benutzernameneingabe (Auto-Deduplizierung & Textfokus-Auswahl)",
+    "Dauerhafte WebUntis-Sitzung ohne vorzeitiges Logout für reibungslose Navigation und Synchronisation",
+    "Präzise und barrierefreie Fehlermeldungen bei falschen Zugangsdaten (NVDA/JAWS-kompatibel)",
     "Separater Menüpunkt für Übersicht (Taste 1) und Stundenplan (Taste 2): Saubere Aufteilung in 8 Menüpunkte",
     "Wochennavigation im Stundenplan: Eine Woche vor oder zurück blättern (Buttons und Alt + Pfeiltasten)",
     "Schnellrückkehr zur aktuellen Schulwoche: Taste W oder Button 'Diese Woche'",
     "Anzeige der Kalenderwoche (KW) und der genauen Datumsspanne von Montag bis Freitag",
-    "Intelligenter Wochen-Cache für schnelles und offline-fähiges Hin- und Herblättern im Stundenplan",
     "Separater Bereich für offizielle Klassenbucheinträge getrennt vom Lehrstoff",
     "100% NVDA- und JAWS-optimiert, barrierefreie Sprachausgabe (Taste V)"
   ]

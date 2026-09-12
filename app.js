@@ -113,6 +113,7 @@ let selectedDay = 'today'; // 'today', 'tomorrow', 1..5, 'all'
 let selectedWeekOffset = 0; // 0 = aktuelle Schulwoche, -1 = vorherige Woche, +1 = nächste Woche
 let speechSynth = window.speechSynthesis || null;
 let webuntisSessionId = null;
+let lastLoginAuthError = null;
 let lastSyncTimestamp = null;
 let autoSyncIntervalTimer = null;
 let isSyncInProgress = false;
@@ -400,8 +401,22 @@ function showLoginView() {
 
   const userInp = document.getElementById('login-username');
   if (userInp) {
-    userInp.value = appData.config.username || '';
-    userInp.focus();
+    let currentVal = (appData.config.username || '').trim();
+    // Automatische Deduplizierung falls der Benutzername im Profil versehentlich doppelt abgelegt wurde
+    if (currentVal.length >= 6 && currentVal.length % 2 === 0) {
+      const half = currentVal.length / 2;
+      if (currentVal.slice(0, half).toLowerCase() === currentVal.slice(half).toLowerCase()) {
+        currentVal = currentVal.slice(0, half);
+        appData.config.username = currentVal;
+      }
+    }
+    userInp.value = currentVal;
+    setTimeout(() => {
+      try {
+        userInp.focus();
+        userInp.select();
+      } catch (e) {}
+    }, 50);
   }
 
   const passInp = document.getElementById('login-password');
@@ -430,7 +445,7 @@ function hideLoginView() {
 async function handleLoginSubmit(e) {
   if (e && e.preventDefault) e.preventDefault();
 
-  const userVal = document.getElementById('login-username').value.trim();
+  let userVal = document.getElementById('login-username').value.trim();
   const passVal = document.getElementById('login-password').value;
   const remVal = document.getElementById('login-remember').checked;
   const statusBox = document.getElementById('login-status-box');
@@ -439,6 +454,15 @@ async function handleLoginSubmit(e) {
   if (!userVal || !passVal) {
     announceSR('Bitte gib sowohl deinen Benutzernamen als auch dein Passwort ein.', 'assertive');
     return;
+  }
+
+  // Schutz vor doppelter Eingabe des Benutzernamens (z. B. SchneiLauSchneiLau)
+  if (userVal.length >= 6 && userVal.length % 2 === 0) {
+    const half = userVal.length / 2;
+    if (userVal.slice(0, half).toLowerCase() === userVal.slice(half).toLowerCase()) {
+      userVal = userVal.slice(0, half);
+      document.getElementById('login-username').value = userVal;
+    }
   }
 
   if (submitBtn) {
@@ -457,6 +481,7 @@ async function handleLoginSubmit(e) {
   announceSR('Melde an WebUntis an...', 'polite');
 
   try {
+    lastLoginAuthError = null;
     const success = await performWebUntisSync(userVal, passVal);
     if (success) {
       appData.config.username = userVal;
@@ -473,17 +498,31 @@ async function handleLoginSubmit(e) {
       switchTab('overview');
       speak('Erfolgreich angemeldet. Dein Stundenplan wurde geladen.', true);
     } else {
+      let errDetail = 'Benutzername oder Passwort ist nicht korrekt. Bitte überprüfe deine Eingabe.';
+      if (lastLoginAuthError) {
+        if (lastLoginAuthError.code === -8504 || (lastLoginAuthError.message && lastLoginAuthError.message.toLowerCase().includes('bad credentials'))) {
+          errDetail = 'Benutzername oder Passwort ist nicht korrekt. Bitte achte darauf, dass der Benutzername (z. B. SchneiLau) ohne Tippfehler eingegeben wird.';
+        } else if (lastLoginAuthError.code === -8520) {
+          errDetail = 'Dein WebUntis-Konto ist vorübergehend gesperrt. Bitte wende dich an das Schulsekretariat.';
+        } else if (lastLoginAuthError.message) {
+          errDetail = `WebUntis meldet: ${lastLoginAuthError.message}`;
+        }
+      }
       if (statusBox) {
         statusBox.style.display = 'block';
         statusBox.innerHTML = `
           <div style="background: rgba(185, 28, 28, 0.1); border: 2px solid var(--accent-danger); padding: 14px; border-radius: 8px;">
             <strong style="color: var(--accent-danger);">❌ Anmeldung fehlgeschlagen</strong>
-            <p style="margin-top: 4px; font-size: 14px;">Benutzername oder Passwort ist ungültig. Bitte überprüfe deine Eingabe.</p>
+            <p style="margin-top: 4px; font-size: 14px;">${escapeHtml(errDetail)}</p>
           </div>
         `;
       }
-      announceSR('Anmeldung fehlgeschlagen: Der Benutzername oder das Passwort ist ungültig.', 'assertive');
-      document.getElementById('login-password').focus();
+      announceSR(`Anmeldung fehlgeschlagen: ${errDetail}`, 'assertive');
+      const passField = document.getElementById('login-password');
+      if (passField) {
+        passField.focus();
+        passField.select();
+      }
     }
   } catch (err) {
     if (statusBox) {
@@ -837,6 +876,7 @@ async function performWebUntisSync(userOverride, passOverride) {
     });
 
     if (!authRes || authRes.error) {
+      lastLoginAuthError = authRes ? authRes.error : null;
       console.warn('WebUntis Login Error:', authRes ? authRes.error : 'Unbekannt');
       isSyncInProgress = false;
       if (syncStatusText) syncStatusText.textContent = 'Fehler beim Login';
@@ -1312,9 +1352,7 @@ async function performWebUntisSync(userOverride, passOverride) {
     const restTtResults = [];
 
 
-    // 8. Logout
-    try { await callWebUntisApi('logout', {}); } catch (e) { }
-    webuntisSessionId = null;
+    // 8. Sitzung bleibt für Folgebefehle und Navigation aktiv (kein vorzeitiges Logout)
 
     // -------------------------------------------------------------
     // Hilfsfunktionen für Raum- und Prüfungsvalidierung
