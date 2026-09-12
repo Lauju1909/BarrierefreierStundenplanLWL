@@ -96,6 +96,7 @@ let appData = {
   config: { ...DEFAULT_CONFIG },
   periods: [...DEFAULT_PERIODS],
   timetable: [],
+  timetableCache: {},
   exams: [],
   homework: [],
   absences: [],
@@ -109,6 +110,7 @@ let appData = {
 
 let currentTab = 'overview';
 let selectedDay = 'today'; // 'today', 'tomorrow', 1..5, 'all'
+let selectedWeekOffset = 0; // 0 = aktuelle Schulwoche, -1 = vorherige Woche, +1 = nächste Woche
 let speechSynth = window.speechSynthesis || null;
 let webuntisSessionId = null;
 let lastSyncTimestamp = null;
@@ -127,6 +129,7 @@ function loadAppData() {
         config: { ...DEFAULT_CONFIG, ...(parsed.config || {}) },
         periods: (parsed.periods && parsed.periods.length >= 9 && parsed.periods.some(p => p.period === 9)) ? parsed.periods : [...DEFAULT_PERIODS],
         timetable: parsed.timetable || [],
+        timetableCache: (parsed.timetableCache && typeof parsed.timetableCache === 'object') ? parsed.timetableCache : {},
         exams: (parsed.exams && Array.isArray(parsed.exams)) ? parsed.exams : [],
         homework: (parsed.homework && Array.isArray(parsed.homework)) ? parsed.homework : [],
         absences: parsed.absences || [],
@@ -319,13 +322,14 @@ function escHtml(str) {
 
 
 // =============================================================================
-// 4. NAVIGATION & REITER-WECHSEL (TASTEN 1 BIS 5)
+// 4. NAVIGATION & REITER-WECHSEL (TASTEN 1 BIS 8)
 // =============================================================================
 function switchTab(tabId) {
   currentTab = tabId;
 
   const tabs = [
     { id: 'overview', btn: 'tab-overview', view: 'view-overview' },
+    { id: 'timetable', btn: 'tab-timetable', view: 'view-timetable' },
     { id: 'exams', btn: 'tab-exams', view: 'view-exams' },
     { id: 'homework', btn: 'tab-homework', view: 'view-homework' },
     { id: 'absences', btn: 'tab-absences', view: 'view-absences' },
@@ -352,27 +356,31 @@ function switchTab(tabId) {
   });
 
   if (tabId === 'overview') {
-    renderTimetable();
     renderUrgentNotificationBanner();
-    announceSR('Reiter 1: Übersicht und Stundenplan ausgewählt.', 'polite');
+    updateCurrentAndNextLesson();
+    announceSR('Reiter 1: Zentrale Übersicht ausgewählt.', 'polite');
+  } else if (tabId === 'timetable') {
+    updateWeekAndDayLabels();
+    renderTimetable();
+    announceSR('Reiter 2: Stundenplan und Vertretungsplan ausgewählt.', 'polite');
   } else if (tabId === 'exams') {
     renderExams();
-    announceSR('Reiter 2: Prüfungen und Termine für das gesamte Schuljahr ausgewählt.', 'polite');
+    announceSR('Reiter 3: Prüfungen und Termine für das gesamte Schuljahr ausgewählt.', 'polite');
   } else if (tabId === 'homework') {
     renderHomework();
-    announceSR('Reiter 3: Hausaufgaben und Klassenbuch ausgewählt.', 'polite');
+    announceSR('Reiter 4: Hausaufgaben und Klassenbuch ausgewählt.', 'polite');
   } else if (tabId === 'absences') {
     renderAbsences();
-    announceSR('Reiter 4: Fehlzeiten und Entschuldigungen ausgewählt.', 'polite');
+    announceSR('Reiter 5: Fehlzeiten und Entschuldigungen ausgewählt.', 'polite');
   } else if (tabId === 'messages') {
     renderMessagesView();
-    announceSR('Reiter 5: Tagesnachrichten und Mitteilungen ausgewählt.', 'polite');
+    announceSR('Reiter 6: Tagesnachrichten und Mitteilungen ausgewählt.', 'polite');
   } else if (tabId === 'grades') {
     renderGradesView();
-    announceSR('Reiter 6: Noten und Leistungsübersicht ausgewählt.', 'polite');
+    announceSR('Reiter 7: Noten und Leistungsübersicht ausgewählt.', 'polite');
   } else if (tabId === 'settings') {
     loadFeedbackArchive();
-    announceSR('Reiter 7: Konto und Einstellungen ausgewählt.', 'polite');
+    announceSR('Reiter 8: Konto und Einstellungen ausgewählt.', 'polite');
   }
 }
 
@@ -1016,6 +1024,10 @@ async function performWebUntisSync(userOverride, passOverride) {
       });
     }
 
+    appData.metadata = { subjectsMap, teachersMap, roomsMap, klassenMap };
+    if (personId) appData.config.personId = personId;
+    if (personType) appData.config.personType = personType;
+
     // 3. Datumsbereich: Aktuelle Schulwoche Mo-Fr (am Wochenende Folgewoche)
     const now = new Date();
     const curDay = now.getDay();
@@ -1549,121 +1561,42 @@ async function performWebUntisSync(userOverride, passOverride) {
 
 
     // Stundenplan der aktuellen Schulwoche in appData.timetable überführen
-    if (ttRes && ttRes.result && Array.isArray(ttRes.result)) {
-      const newTimetable = [];
-      ttRes.result.forEach((item, idx) => {
-        const dStr = String(item.date);
-        const itemDate = new Date(parseInt(dStr.slice(0, 4)), parseInt(dStr.slice(4, 6)) - 1, parseInt(dStr.slice(6, 8)));
-        const dayOfWeek = itemDate.getDay();
-        if (dayOfWeek < 1 || dayOfWeek > 5) return;
+    if (!appData.timetableCache) appData.timetableCache = {};
 
-        const startStr = formatUntisTimeToStr(item.startTime);
-        const endStr = formatUntisTimeToStr(item.endTime);
-
-        let periodNum = 1;
-        const matchedPeriod = (appData.periods || DEFAULT_PERIODS).find(p => p.start === startStr);
-        if (matchedPeriod) {
-          periodNum = matchedPeriod.period;
-        } else if (startStr === '11:15') {
-          periodNum = 5; // Freitag 5. Stunde
-        } else if (startStr === '13:20') {
-          periodNum = 7;
-        } else if (startStr === '14:10') {
-          periodNum = 8; // Sport 8. Stunde
-        } else if (startStr === '14:55') {
-          periodNum = 9; // Sport 9. Stunde
-        } else {
-          // Logische Zeitzuordnung nach Minuten am Tag
-          const parts = startStr.split(':').map(Number);
-          const totalMin = (parts[0] || 0) * 60 + (parts[1] || 0);
-          if (totalMin < 510) periodNum = 1;
-          else if (totalMin < 560) periodNum = 2;
-          else if (totalMin < 615) periodNum = 3;
-          else if (totalMin < 670) periodNum = 4;
-          else if (totalMin < 730) periodNum = 5;
-          else if (totalMin < 790) periodNum = 6;
-          else if (totalMin < 845) periodNum = 7;
-          else if (totalMin < 890) periodNum = 8;
-          else if (totalMin < 940) periodNum = 9;
-          else periodNum = 10;
+    // 1. Alle aus dem erweiterten Zeitraum (-14 bis +28 Tage) gesammelten Stunden in den Cache überführen
+    if (allTtSource && allTtSource.length > 0) {
+      const allParsedLessons = parseUntisTimetableItems(allTtSource);
+      allParsedLessons.forEach(l => {
+        if (!l.dateNum) return;
+        const dStr = String(l.dateNum);
+        const itemD = new Date(parseInt(dStr.slice(0, 4)), parseInt(dStr.slice(4, 6)) - 1, parseInt(dStr.slice(6, 8)));
+        const dDay = itemD.getDay();
+        const diffToMo = (dDay === 0) ? -6 : (1 - dDay);
+        const moD = new Date(itemD);
+        moD.setDate(itemD.getDate() + diffToMo);
+        const moKey = formatDateToUntis(moD);
+        if (!appData.timetableCache[moKey]) appData.timetableCache[moKey] = [];
+        if (!appData.timetableCache[moKey].some(existing => existing.id === l.id || (existing.dateStr === l.dateStr && existing.period === l.period && existing.subject === l.subject))) {
+          appData.timetableCache[moKey].push(l);
         }
-
-        const subj = (item.su && item.su[0]) ? (subjectsMap[item.su[0].id] || item.su[0].name || item.su[0].longname || 'Unterricht') : 'Unterricht';
-        let teach = 'Lehrkraft';
-        if (item.te && Array.isArray(item.te) && item.te.length > 0) {
-          const tNames = item.te.map(t => teachersMap[t.id] || t.name || t.longname || '').filter(Boolean);
-          if (tNames.length > 0) teach = tNames.join(', ');
-        }
-        let klasse = '';
-        if (item.kl && Array.isArray(item.kl) && item.kl.length > 0) {
-          const myKlasse = item.kl.find(k => k.name === 'BFW2B' || k.id === 2032 || (k.name && k.name.includes('BFW2B')));
-          if (myKlasse) {
-            klasse = myKlasse.name || klassenMap[myKlasse.id] || 'BFW2B';
-            if (item.kl.length > 1) klasse += ' (Kurs)';
-          } else {
-            klasse = item.kl.map(k => k.name || klassenMap[k.id] || k.longname || '').filter(Boolean).join(', ');
-          }
-        }
-
-        let rm = '';
-        if (item.ro && Array.isArray(item.ro) && item.ro.length > 0) {
-          const roomParts = item.ro.map(extractRoomFromObj).filter(Boolean);
-          if (roomParts.length > 0) rm = roomParts.join(', ');
-        }
-        if (!rm && item.orgro && Array.isArray(item.orgro) && item.orgro.length > 0) {
-          const orgParts = item.orgro.map(extractRoomFromObj).filter(Boolean);
-          if (orgParts.length > 0) rm = orgParts.join(', ');
-        }
-        if (!rm && item.room) {
-          rm = extractRoomFromObj(item.room);
-        }
-        if (!rm) {
-          const combinedText = [item.substText, item.lstext, item.info, item.bkText].filter(Boolean).join(' ');
-          const matchRoom = combinedText.match(/\b(?:in\s+Raum|nach\s+Raum|Raum|Rm\.)\s+([A-Z0-9][A-Z0-9\.\-_/]*)/i);
-          if (matchRoom && isValidRoomCandidate(matchRoom[1])) {
-            rm = matchRoom[1];
-          }
-        }
-
-        if (!isValidRoomCandidate(rm)) {
-          rm = 'Raum wird bekanntgegeben';
-        } else {
-          let cleanRm = rm.trim();
-          if (!/^raum\b/i.test(cleanRm)) {
-            cleanRm = 'Raum ' + cleanRm;
-          }
-          rm = cleanRm;
-        }
-
-        let st = 'normal';
-        if (item.code === 'cancelled') st = 'cancelled';
-        else if (item.code === 'irregular') st = 'substitute';
-
-        const dateIso = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
-        const lessonTopic = (item.lstext || item.lessonText || '').trim();
-
-        newTimetable.push({
-          id: `untis-${item.id || idx}`,
-          untisId: item.id,
-          day: dayOfWeek,
-          dateStr: dateIso,
-          period: periodNum,
-          startTime: startStr,
-          endTime: endStr,
-          subject: subj,
-          teacher: teach,
-          klasse: klasse,
-          room: rm,
-          status: st,
-          notes: item.substText || item.info || '',
-          lstext: lessonTopic,
-          homework: item.homework || ''
-        });
       });
+    }
 
-      if (newTimetable.length > 0) {
-        appData.timetable = newTimetable;
+    // 2. Primäre Schulwoche in Cache sichern
+    if (ttRes && ttRes.result && Array.isArray(ttRes.result)) {
+      const currentWeekLessons = parseUntisTimetableItems(ttRes.result);
+      if (currentWeekLessons.length > 0) {
+        appData.timetableCache[startNum] = currentWeekLessons;
       }
+    }
+
+    // 3. Stundenplan für die aktuell ausgewählte Woche setzen
+    const targetMonday = getMondayForWeekOffset(selectedWeekOffset);
+    const targetMondayKey = formatDateToUntis(targetMonday);
+    if (appData.timetableCache[targetMondayKey] && appData.timetableCache[targetMondayKey].length > 0) {
+      appData.timetable = appData.timetableCache[targetMondayKey];
+    } else if (appData.timetableCache[startNum] && appData.timetableCache[startNum].length > 0) {
+      appData.timetable = appData.timetableCache[startNum];
     }
 
 
@@ -2770,9 +2703,298 @@ function formatRoomDisplay(roomStr, teacherStr) {
 }
 
 // =============================================================================
-// 8. REITER 1: STUNDENPLAN & VERTRETUNGSPLAN
+// 7b. UNTIS STUNDENPLAN PARSING & METADATEN-MAPPING
+// =============================================================================
+function parseUntisTimetableItems(items) {
+  if (!items || !Array.isArray(items)) return [];
+  const meta = appData.metadata || {};
+  const subjectsMap = meta.subjectsMap || {};
+  const teachersMap = meta.teachersMap || {};
+  const klassenMap = meta.klassenMap || {};
+  const roomsMap = meta.roomsMap || {};
+
+  const result = [];
+  items.forEach((item, idx) => {
+    const dStr = String(item.date);
+    const itemDate = new Date(parseInt(dStr.slice(0, 4)), parseInt(dStr.slice(4, 6)) - 1, parseInt(dStr.slice(6, 8)));
+    const dayOfWeek = itemDate.getDay();
+    if (dayOfWeek < 1 || dayOfWeek > 5) return;
+
+    const startStr = formatUntisTimeToStr(item.startTime);
+    const endStr = formatUntisTimeToStr(item.endTime);
+
+    let periodNum = 1;
+    const matchedPeriod = (appData.periods || DEFAULT_PERIODS).find(p => p.start === startStr);
+    if (matchedPeriod) {
+      periodNum = matchedPeriod.period;
+    } else if (startStr === '11:15') {
+      periodNum = 5; // Freitag 5. Stunde
+    } else if (startStr === '13:20') {
+      periodNum = 7;
+    } else if (startStr === '14:10') {
+      periodNum = 8; // Sport 8. Stunde
+    } else if (startStr === '14:55') {
+      periodNum = 9; // Sport 9. Stunde
+    } else {
+      const parts = startStr.split(':').map(Number);
+      const totalMin = (parts[0] || 0) * 60 + (parts[1] || 0);
+      if (totalMin < 510) periodNum = 1;
+      else if (totalMin < 560) periodNum = 2;
+      else if (totalMin < 615) periodNum = 3;
+      else if (totalMin < 670) periodNum = 4;
+      else if (totalMin < 730) periodNum = 5;
+      else if (totalMin < 790) periodNum = 6;
+      else if (totalMin < 845) periodNum = 7;
+      else if (totalMin < 890) periodNum = 8;
+      else if (totalMin < 940) periodNum = 9;
+      else periodNum = 10;
+    }
+
+    const subj = (item.su && item.su[0]) ? (subjectsMap[item.su[0].id] || item.su[0].name || item.su[0].longname || 'Unterricht') : 'Unterricht';
+    let teach = 'Lehrkraft';
+    if (item.te && Array.isArray(item.te) && item.te.length > 0) {
+      const tNames = item.te.map(t => teachersMap[t.id] || t.name || t.longname || '').filter(Boolean);
+      if (tNames.length > 0) teach = tNames.join(', ');
+    }
+    let klasse = '';
+    if (item.kl && Array.isArray(item.kl) && item.kl.length > 0) {
+      const myKlasse = item.kl.find(k => k.name === 'BFW2B' || k.id === 2032 || (k.name && k.name.includes('BFW2B')));
+      if (myKlasse) {
+        klasse = myKlasse.name || klassenMap[myKlasse.id] || 'BFW2B';
+        if (item.kl.length > 1) klasse += ' (Kurs)';
+      } else {
+        klasse = item.kl.map(k => k.name || klassenMap[k.id] || k.longname || '').filter(Boolean).join(', ');
+      }
+    }
+
+    let rm = '';
+    if (item.ro && Array.isArray(item.ro) && item.ro.length > 0) {
+      const roomParts = item.ro.map(extractRoomFromObj).filter(Boolean);
+      if (roomParts.length > 0) rm = roomParts.join(', ');
+    }
+    if (!rm && item.orgro && Array.isArray(item.orgro) && item.orgro.length > 0) {
+      const orgParts = item.orgro.map(extractRoomFromObj).filter(Boolean);
+      if (orgParts.length > 0) rm = orgParts.join(', ');
+    }
+    if (!rm && item.room) {
+      rm = extractRoomFromObj(item.room);
+    }
+    if (!rm) {
+      const combinedText = [item.substText, item.lstext, item.info, item.bkText].filter(Boolean).join(' ');
+      const matchRoom = combinedText.match(/\b(?:in\s+Raum|nach\s+Raum|Raum|Rm\.)\s+([A-Z0-9][A-Z0-9\.\-_/]*)/i);
+      if (matchRoom && isValidRoomCandidate(matchRoom[1])) {
+        rm = matchRoom[1];
+      }
+    }
+
+    if (!isValidRoomCandidate(rm)) {
+      rm = 'Raum wird bekanntgegeben';
+    } else {
+      let cleanRm = rm.trim();
+      if (!/^raum\b/i.test(cleanRm)) {
+        cleanRm = 'Raum ' + cleanRm;
+      }
+      rm = cleanRm;
+    }
+
+    let st = 'normal';
+    if (item.code === 'cancelled') st = 'cancelled';
+    else if (item.code === 'irregular') st = 'substitute';
+
+    const dateIso = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
+    const lessonTopic = (item.lstext || item.lessonText || '').trim();
+
+    result.push({
+      id: `untis-${item.id || idx}-${dStr}`,
+      untisId: item.id,
+      day: dayOfWeek,
+      dateStr: dateIso,
+      dateNum: parseInt(dStr),
+      period: periodNum,
+      startTime: startStr,
+      endTime: endStr,
+      subject: subj,
+      teacher: teach,
+      klasse: klasse,
+      room: rm,
+      status: st,
+      notes: item.substText || item.info || '',
+      lstext: lessonTopic,
+      homework: item.homework || ''
+    });
+  });
+
+  return result;
+}
+
+// =============================================================================
+// 7c. WOCHEN-NAVIGATION & KALENDERWOCHEN
+// =============================================================================
+function getBaseMonday() {
+  const now = new Date();
+  const curDay = now.getDay();
+  let diffToMonday = 1 - curDay;
+  if (curDay === 0) diffToMonday = 1; // Sonntag -> Folgewoche
+  else if (curDay === 6) diffToMonday = 2; // Samstag -> Folgewoche
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  monday.setDate(monday.getDate() + diffToMonday);
+  return monday;
+}
+
+function getMondayForWeekOffset(offset = selectedWeekOffset) {
+  const m = getBaseMonday();
+  m.setDate(m.getDate() + (offset * 7));
+  return m;
+}
+
+function getISOWeekNumber(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+}
+
+function updateWeekAndDayLabels() {
+  const monday = getMondayForWeekOffset(selectedWeekOffset);
+  const friday = new Date(monday);
+  friday.setDate(monday.getDate() + 4);
+
+  const kw = getISOWeekNumber(monday);
+  const mDay = String(monday.getDate()).padStart(2, '0');
+  const mMon = String(monday.getMonth() + 1).padStart(2, '0');
+  const fDay = String(friday.getDate()).padStart(2, '0');
+  const fMon = String(friday.getMonth() + 1).padStart(2, '0');
+  const fYear = friday.getFullYear();
+
+  let badgeText = `KW ${kw} • ${mDay}.${mMon}. – ${fDay}.${fMon}.${fYear}`;
+  if (selectedWeekOffset === 0) {
+    badgeText += ' (Aktuelle Woche)';
+  } else if (selectedWeekOffset === -1) {
+    badgeText += ' (Letzte Woche)';
+  } else if (selectedWeekOffset === 1) {
+    badgeText += ' (Nächste Woche)';
+  } else if (selectedWeekOffset < -1) {
+    badgeText += ` (${Math.abs(selectedWeekOffset)} Wochen zurück)`;
+  } else {
+    badgeText += ` (${selectedWeekOffset} Wochen voraus)`;
+  }
+
+  const badgeEl = document.getElementById('week-display-badge');
+  if (badgeEl) badgeEl.textContent = badgeText;
+
+  // Wochentags-Buttons beschriften
+  const dayNames = ['', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
+  for (let i = 1; i <= 5; i++) {
+    const curD = new Date(monday);
+    curD.setDate(monday.getDate() + (i - 1));
+    const cDay = String(curD.getDate()).padStart(2, '0');
+    const cMon = String(curD.getMonth() + 1).padStart(2, '0');
+    const lbl = document.getElementById(`day-label-${i}`);
+    if (lbl) lbl.textContent = `${dayNames[i]} (${cDay}.${cMon}.)`;
+  }
+}
+
+async function changeWeekOffset(delta) {
+  selectedWeekOffset += delta;
+  updateWeekAndDayLabels();
+  const monday = getMondayForWeekOffset(selectedWeekOffset);
+  const kw = getISOWeekNumber(monday);
+  announceSR(`Woche gewechselt auf Kalenderwoche ${kw}. Lade Stundenplan...`, 'polite');
+  await loadTimetableForSelectedWeek();
+}
+
+async function resetWeekOffset() {
+  if (selectedWeekOffset === 0) {
+    announceSR('Bereits in der aktuellen Schulwoche.', 'polite');
+    return;
+  }
+  selectedWeekOffset = 0;
+  updateWeekAndDayLabels();
+  announceSR('Zur aktuellen Schulwoche zurückgekehrt. Lade Stundenplan...', 'polite');
+  await loadTimetableForSelectedWeek();
+}
+
+async function loadTimetableForSelectedWeek() {
+  const monday = getMondayForWeekOffset(selectedWeekOffset);
+  const friday = new Date(monday);
+  friday.setDate(monday.getDate() + 4);
+  const startNum = formatDateToUntis(monday);
+  const endNum = formatDateToUntis(friday);
+
+  // 1. Wenn bereits im Cache vorhanden, sofort anzeigen
+  if (appData.timetableCache && appData.timetableCache[startNum] && appData.timetableCache[startNum].length > 0) {
+    appData.timetable = appData.timetableCache[startNum];
+    renderTimetable();
+    return;
+  }
+
+  // 2. Ansonsten über WebUntis nachladen
+  await fetchWeekTimetable(startNum, endNum);
+}
+
+async function fetchWeekTimetable(startNum, endNum) {
+  const container = document.getElementById('timetable-container');
+  if (container) {
+    container.innerHTML = `
+      <div class="status-box" style="padding: 28px; text-align: center;">
+        <span class="emoji-icon" style="font-size: 36px;" aria-hidden="true">⏳</span>
+        <p style="font-size: var(--font-size-lg); font-weight: bold; margin-top: 10px;">Lade Stundenplan für die gewählte Schulwoche...</p>
+        <p class="field-hint">WebUntis wird abgefragt.</p>
+      </div>
+    `;
+  }
+
+  try {
+    const pId = (appData.config && appData.config.personId) || 4707;
+    const pType = (appData.config && appData.config.personType) || 5;
+
+    const ttRes = await callWebUntisApi('getTimetable', {
+      options: {
+        element: { id: pId, type: pType },
+        startDate: startNum,
+        endDate: endNum,
+        showLsText: true,
+        showStudentgroup: true,
+        showInfo: true,
+        showSubstText: true,
+        showLsNumber: true,
+        showBooking: true,
+        klasseFields: ['id', 'name', 'longname'],
+        roomFields: ['id', 'name', 'longname'],
+        subjectFields: ['id', 'name', 'longname'],
+        teacherFields: ['id', 'name', 'longname']
+      }
+    });
+
+    if (ttRes && ttRes.result && Array.isArray(ttRes.result)) {
+      const parsedLessons = parseUntisTimetableItems(ttRes.result);
+      if (!appData.timetableCache) appData.timetableCache = {};
+      appData.timetableCache[startNum] = parsedLessons;
+      appData.timetable = parsedLessons;
+      saveAppData();
+      renderTimetable();
+      const kw = getISOWeekNumber(getMondayForWeekOffset(selectedWeekOffset));
+      announceSR(`Stundenplan für Kalenderwoche ${kw} mit ${parsedLessons.length} Unterrichtsstunden geladen.`, 'polite');
+      return;
+    }
+  } catch (e) {
+    console.warn('Fehler beim Abruf des Wochenstundenplans:', e);
+  }
+
+  if (!appData.timetableCache) appData.timetableCache = {};
+  appData.timetable = appData.timetableCache[startNum] || [];
+  renderTimetable();
+}
+
+// =============================================================================
+// 8. REITER 2: STUNDENPLAN & VERTRETUNGSPLAN
 // =============================================================================
 function setDayFilter(dayChoice) {
+  if ((dayChoice === 'today' || dayChoice === 'tomorrow') && selectedWeekOffset !== 0) {
+    selectedWeekOffset = 0;
+    updateWeekAndDayLabels();
+    loadTimetableForSelectedWeek();
+  }
   selectedDay = dayChoice;
   document.querySelectorAll('.day-btn').forEach(btn => {
     const isTarget = btn.getAttribute('data-day') === String(dayChoice);
@@ -2801,10 +3023,12 @@ function renderTimetable() {
 
   const titleEl = document.getElementById('timetable-view-title');
   if (titleEl) {
+    const monday = getMondayForWeekOffset(selectedWeekOffset);
+    const kw = getISOWeekNumber(monday);
     if (isWeekView) {
-      titleEl.textContent = 'Stundenplan für die gesamte Schulwoche (Montag bis Freitag)';
+      titleEl.textContent = `Stundenplan für KW ${kw} (Ganze Schulwoche Montag bis Freitag)`;
     } else {
-      titleEl.textContent = `Stundenplan für ${getDayName(dayIndex)} (${selectedDay === 'today' ? 'Heute' : selectedDay === 'tomorrow' ? 'Morgen' : 'Wochentag'})`;
+      titleEl.textContent = `Stundenplan für ${getDayName(dayIndex)} (KW ${kw})`;
     }
   }
 
@@ -2890,13 +3114,19 @@ function updateCurrentAndNextLesson() {
   const currentJsDay = now.getDay();
   const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
+  const currentWeekMo = getBaseMonday();
+  const currentWeekMoKey = formatDateToUntis(currentWeekMo);
+  const currentWeekLessons = (appData.timetableCache && appData.timetableCache[currentWeekMoKey] && appData.timetableCache[currentWeekMoKey].length > 0)
+    ? appData.timetableCache[currentWeekMoKey]
+    : appData.timetable;
+
   if (currentJsDay < 1 || currentJsDay > 5) {
     boxNow.innerHTML = `
       <div class="status-label">Aktuell (Wochenende)</div>
       <div class="status-content-title">Schönes Wochenende!</div>
       <div class="status-meta">Am Montag geht die Schule wieder um 07:45 Uhr los.</div>
     `;
-    const mondayFirst = appData.timetable.find(t => t.day === 1 && t.period === 1);
+    const mondayFirst = currentWeekLessons.find(t => t.day === 1 && t.period === 1);
     boxNext.innerHTML = `
       <div class="status-label">Nächste Stunde (Montag 1. Std.)</div>
       <div class="status-content-title">${mondayFirst ? mondayFirst.subject : 'Unterrichtsbeginn'}</div>
@@ -2905,7 +3135,7 @@ function updateCurrentAndNextLesson() {
     return;
   }
 
-  const todayLessons = appData.timetable.filter(l => l.day === currentJsDay).sort((a, b) => a.period - b.period);
+  const todayLessons = currentWeekLessons.filter(l => l.day === currentJsDay).sort((a, b) => a.period - b.period);
   let currentLesson = null;
   let nextLesson = null;
 
@@ -4055,6 +4285,18 @@ function renderUrgentNotificationBanner() {
   grid.innerHTML = itemsHtml;
 }
 
+function getLessonsForSelectedDay() {
+  const currentWeekMo = getBaseMonday();
+  const currentWeekMoKey = formatDateToUntis(currentWeekMo);
+  const currentWeekLessons = (appData.timetableCache && appData.timetableCache[currentWeekMoKey] && appData.timetableCache[currentWeekMoKey].length > 0)
+    ? appData.timetableCache[currentWeekMoKey]
+    : (appData.timetable || []);
+
+  const jsDay = new Date().getDay();
+  const dayIndex = (jsDay >= 1 && jsDay <= 5) ? jsDay : 1;
+  return currentWeekLessons.filter(l => l.day === dayIndex).sort((a, b) => a.period - b.period);
+}
+
 function readCombinedOverview() {
   const homework = (appData.homework || []).filter(h => !h.completed);
   const exams = appData.exams || [];
@@ -4124,7 +4366,7 @@ function readCombinedOverview() {
   // Aktueller Unterrichts-Status
   const lessons = getLessonsForSelectedDay();
   if (lessons && lessons.length > 0) {
-    speech += `Heute hast du ${lessons.length} Unterrichtsstunden laut Plan.`;
+    speech += `Heute hast du ${lessons.length} Unterrichtsstunden laut Plan. Drücke Taste 2, um zum Stundenplan zu wechseln.`;
   }
 
   speak(speech, true);
@@ -4209,25 +4451,37 @@ function initApp() {
       switchTab('overview');
     } else if (e.key === '2') {
       e.preventDefault();
-      switchTab('exams');
+      switchTab('timetable');
     } else if (e.key === '3') {
       e.preventDefault();
-      switchTab('homework');
+      switchTab('exams');
     } else if (e.key === '4') {
       e.preventDefault();
-      switchTab('absences');
+      switchTab('homework');
     } else if (e.key === '5') {
       e.preventDefault();
-      switchTab('messages');
+      switchTab('absences');
     } else if (e.key === '6') {
       e.preventDefault();
-      switchTab('grades');
+      switchTab('messages');
     } else if (e.key === '7') {
+      e.preventDefault();
+      switchTab('grades');
+    } else if (e.key === '8') {
       e.preventDefault();
       switchTab('settings');
     } else if (e.key === 'h' || e.key === 'H') {
       e.preventDefault();
       setDayFilter('today');
+    } else if (e.key === 'w' || e.key === 'W') {
+      e.preventDefault();
+      resetWeekOffset();
+    } else if (e.altKey && e.key === 'ArrowLeft') {
+      e.preventDefault();
+      changeWeekOffset(-1);
+    } else if (e.altKey && e.key === 'ArrowRight') {
+      e.preventDefault();
+      changeWeekOffset(1);
     } else if (e.key === 'v' || e.key === 'V') {
       e.preventDefault();
       // Vorlesen kontextabhängig je nach aktivem Tab und Modal
@@ -4239,6 +4493,8 @@ function initApp() {
         speak('Klausurnote eintragen Dialog geöffnet.', true);
       } else if (currentTab === 'overview') {
         readCombinedOverview();
+      } else if (currentTab === 'timetable') {
+        readTodayTimetable();
       } else if (currentTab === 'exams') {
         readAllExamsAndEvents();
       } else if (currentTab === 'homework') {
@@ -4264,6 +4520,7 @@ function initApp() {
   // Automatische Anmeldung & Synchronisation beim Start
   if (appData.config.username && appData.config.password) {
     hideLoginView();
+    updateWeekAndDayLabels();
     renderTimetable();
     renderExams();
     renderHomework();
@@ -4271,6 +4528,7 @@ function initApp() {
     renderMessagesView();
     renderGradesView();
     renderUrgentNotificationBanner();
+    updateCurrentAndNextLesson();
     performWebUntisSync();
   } else {
     showLoginView();

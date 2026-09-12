@@ -14,7 +14,7 @@
 
   <!-- Schnellsprunglinks für Tastaturbedienung -->
   <nav class="skip-links" aria-label="Schnellnavigation">
-    <a href="#main-nav-tabs" class="skip-link">Zur Menüauswahl springen (Tasten 1-7)</a>
+    <a href="#main-nav-tabs" class="skip-link">Zur Menüauswahl springen (Tasten 1-8)</a>
     <a href="#day-picker-bar" class="skip-link">Zur Tagesauswahl springen</a>
     <a href="#view-content-area" class="skip-link">Direkt zum Hauptinhalt springen</a>
   </nav>
@@ -114,36 +114,40 @@
   </div>
 
   <!-- =========================================================================
-       HAUPTNAVIGATION (7 TABS - TASTEN 1 BIS 7)
+       HAUPTNAVIGATION (8 TABS - TASTEN 1 BIS 8)
        ========================================================================= -->
   <nav class="nav-tabs-wrapper" aria-label="Hauptmenü" id="main-nav-tabs">
     <div class="tab-list" role="tablist">
       <button id="tab-overview" class="tab-btn active" role="tab" aria-selected="true" aria-controls="view-overview" onclick="switchTab('overview')" tabindex="0">
         <span class="tab-key-hint" aria-hidden="true">1</span>
-        <span><span class="emoji-icon" aria-hidden="true">📋 </span><strong>Übersicht &amp; Stundenplan</strong></span>
+        <span><span class="emoji-icon" aria-hidden="true">📋 </span><strong>Übersicht</strong></span>
+      </button>
+      <button id="tab-timetable" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-timetable" onclick="switchTab('timetable')" tabindex="-1">
+        <span class="tab-key-hint" aria-hidden="true">2</span>
+        <span><span class="emoji-icon" aria-hidden="true">📅 </span><strong>Stundenplan</strong></span>
       </button>
       <button id="tab-exams" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-exams" onclick="switchTab('exams')" tabindex="-1">
-        <span class="tab-key-hint" aria-hidden="true">2</span>
+        <span class="tab-key-hint" aria-hidden="true">3</span>
         <span><span class="emoji-icon" aria-hidden="true">📝 </span><strong>Prüfungen &amp; Termine</strong></span>
       </button>
       <button id="tab-homework" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-homework" onclick="switchTab('homework')" tabindex="-1">
-        <span class="tab-key-hint" aria-hidden="true">3</span>
+        <span class="tab-key-hint" aria-hidden="true">4</span>
         <span><span class="emoji-icon" aria-hidden="true">📚 </span><strong>Hausaufgaben &amp; Klassenbuch</strong></span>
       </button>
       <button id="tab-absences" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-absences" onclick="switchTab('absences')" tabindex="-1">
-        <span class="tab-key-hint" aria-hidden="true">4</span>
+        <span class="tab-key-hint" aria-hidden="true">5</span>
         <span><span class="emoji-icon" aria-hidden="true">⏱️ </span><strong>Fehlzeiten</strong></span>
       </button>
       <button id="tab-messages" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-messages" onclick="switchTab('messages')" tabindex="-1">
-        <span class="tab-key-hint" aria-hidden="true">5</span>
+        <span class="tab-key-hint" aria-hidden="true">6</span>
         <span><span class="emoji-icon" aria-hidden="true">💬 </span><strong>Tagesnachrichten &amp; Mitteilungen</strong></span>
       </button>
       <button id="tab-grades" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-grades" onclick="switchTab('grades')" tabindex="-1">
-        <span class="tab-key-hint" aria-hidden="true">6</span>
+        <span class="tab-key-hint" aria-hidden="true">7</span>
         <span><span class="emoji-icon" aria-hidden="true">📊 </span><strong>Noten &amp; Leistungen</strong></span>
       </button>
       <button id="tab-settings" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-settings" onclick="switchTab('settings')" tabindex="-1">
-        <span class="tab-key-hint" aria-hidden="true">7</span>
+        <span class="tab-key-hint" aria-hidden="true">8</span>
         <span><span class="emoji-icon" aria-hidden="true">⚙️ </span><strong>Konto &amp; Einstellungen</strong></span>
       </button>
     </div>
@@ -155,7 +159,7 @@
   <main class="main-container" id="view-content-area" role="main">
 
     <!-- =======================================================================
-         REITER 1: STUNDENPLAN & VERTRETUNGSPLAN (LIVE WEBUNTIS)
+         REITER 1: ZENTRALE ÜBERSICHT
          ======================================================================= -->
     <div id="view-overview" class="view-panel active" role="tabpanel" aria-labelledby="tab-overview">
 
@@ -173,8 +177,11 @@
             </div>
           </div>
           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <button type="button" class="btn btn-secondary urgent-tts-btn" onclick="readCombinedOverview()" aria-label="Tagesnachrichten und Warnungen vorlesen">
-              <span class="emoji-icon" aria-hidden="true">🔊 </span>Übersicht vorlesen
+            <button type="button" class="btn btn-secondary urgent-tts-btn" onclick="readCombinedOverview()" aria-label="Tagesnachrichten und Warnungen vorlesen (Taste V)">
+              <span class="emoji-icon" aria-hidden="true">🔊 </span>Übersicht vorlesen (V)
+            </button>
+            <button type="button" class="btn btn-primary" onclick="switchTab('timetable')" aria-label="Direkt zum Stundenplan wechseln (Taste 2)">
+              <span class="emoji-icon" aria-hidden="true">📅 </span>Zum Stundenplan (2)
             </button>
           </div>
         </div>
@@ -183,6 +190,23 @@
           <!-- Dynamisch befüllt via app.js -->
         </div>
       </section>
+
+      <!-- HIGHLIGHT-KARTE: AKTUELL & NÄCHSTE STUNDE AUF DER ÜBERSICHT -->
+      <section class="now-next-card" aria-label="Aktueller Unterrichtsstatus">
+        <div class="status-box" id="box-now-lesson">
+          <div class="status-label">Lade aktuellen Status...</div>
+        </div>
+        <div class="status-box" id="box-next-lesson">
+          <div class="status-label">Lade nächste Stunde...</div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- =======================================================================
+         REITER 2: STUNDENPLAN & VERTRETUNGSPLAN (LIVE WEBUNTIS)
+         ======================================================================= -->
+    <div id="view-timetable" class="view-panel" role="tabpanel" aria-labelledby="tab-timetable">
 
       <div class="banner-header">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
@@ -196,31 +220,41 @@
         </div>
       </div>
 
-      <!-- HIGHLIGHT-KARTE: AKTUELL & NÄCHSTE STUNDE -->
-      <section class="now-next-card" aria-label="Aktueller Unterrichtsstatus">
-        <div class="status-box" id="box-now-lesson">
-          <div class="status-label">Lade aktuellen Status...</div>
+      <!-- WOCHENAUSWAHL (EINE WOCHE ZURÜCK / VOR / AKTUELL) -->
+      <section class="week-nav-bar" id="week-picker-bar" aria-label="Schulwoche auswählen" style="margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; background: var(--bg-card); border: 2px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 10px 14px;">
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+          <button type="button" class="btn btn-secondary" id="btn-week-prev" onclick="changeWeekOffset(-1)" title="Vorherige Woche (Alt + links)" aria-label="Vorherige Schulwoche aufrufen">
+            <span class="emoji-icon" aria-hidden="true">⬅️ </span>Vorherige Woche
+          </button>
+          <button type="button" class="btn btn-secondary" id="btn-week-current" onclick="resetWeekOffset()" title="Zur aktuellen Schulwoche zurückkehren (Taste W)" aria-label="Zur aktuellen Schulwoche zurückkehren">
+            <span class="emoji-icon" aria-hidden="true">📍 </span>Diese Woche (W)
+          </button>
+          <button type="button" class="btn btn-secondary" id="btn-week-next" onclick="changeWeekOffset(1)" title="Nächste Woche (Alt + rechts)" aria-label="Nächste Schulwoche aufrufen">
+            <span>Nächste Woche </span><span class="emoji-icon" aria-hidden="true">➡️</span>
+          </button>
         </div>
-        <div class="status-box" id="box-next-lesson">
-          <div class="status-label">Lade nächste Stunde...</div>
+        <div>
+          <span id="week-display-badge" class="badge-substitute" style="font-size: var(--font-size-base); font-weight: bold; padding: 6px 14px; display: inline-block; border-radius: var(--border-radius-sm);" aria-live="polite">
+            Kalenderwoche...
+          </span>
         </div>
       </section>
 
-      <!-- TAGES- & WOCHENAUSWAHL -->
+      <!-- TAGESAUSWAHL -->
       <section class="day-nav-bar" id="day-picker-bar" aria-label="Wochentag auswählen">
         <div class="day-btn-group" role="group" aria-label="Tag filtern">
-          <button type="button" class="day-btn active" data-day="today" onclick="setDayFilter('today')">
-            <span class="emoji-icon" aria-hidden="true">📍 </span>Heute (H)
+          <button type="button" class="day-btn active" id="day-btn-today" data-day="today" onclick="setDayFilter('today')">
+            <span class="emoji-icon" aria-hidden="true">📍 </span><span id="day-label-today">Heute (H)</span>
           </button>
-          <button type="button" class="day-btn" data-day="tomorrow" onclick="setDayFilter('tomorrow')">
-            <span class="emoji-icon" aria-hidden="true">➡️ </span>Morgen
+          <button type="button" class="day-btn" id="day-btn-tomorrow" data-day="tomorrow" onclick="setDayFilter('tomorrow')">
+            <span class="emoji-icon" aria-hidden="true">➡️ </span><span id="day-label-tomorrow">Morgen</span>
           </button>
-          <button type="button" class="day-btn" data-day="1" onclick="setDayFilter(1)">Montag</button>
-          <button type="button" class="day-btn" data-day="2" onclick="setDayFilter(2)">Dienstag</button>
-          <button type="button" class="day-btn" data-day="3" onclick="setDayFilter(3)">Mittwoch</button>
-          <button type="button" class="day-btn" data-day="4" onclick="setDayFilter(4)">Donnerstag</button>
-          <button type="button" class="day-btn" data-day="5" onclick="setDayFilter(5)">Freitag</button>
-          <button type="button" class="day-btn" data-day="all" onclick="setDayFilter('all')">
+          <button type="button" class="day-btn" id="day-btn-1" data-day="1" onclick="setDayFilter(1)"><span id="day-label-1">Montag</span></button>
+          <button type="button" class="day-btn" id="day-btn-2" data-day="2" onclick="setDayFilter(2)"><span id="day-label-2">Dienstag</span></button>
+          <button type="button" class="day-btn" id="day-btn-3" data-day="3" onclick="setDayFilter(3)"><span id="day-label-3">Mittwoch</span></button>
+          <button type="button" class="day-btn" id="day-btn-4" data-day="4" onclick="setDayFilter(4)"><span id="day-label-4">Donnerstag</span></button>
+          <button type="button" class="day-btn" id="day-btn-5" data-day="5" onclick="setDayFilter(5)"><span id="day-label-5">Freitag</span></button>
+          <button type="button" class="day-btn" id="day-btn-all" data-day="all" onclick="setDayFilter('all')">
             <span class="emoji-icon" aria-hidden="true">🗓️ </span>Ganze Woche
           </button>
         </div>
@@ -239,7 +273,7 @@
     </div>
 
     <!-- =======================================================================
-         REITER 2: PRÜFUNGEN, KLAUSUREN & TERMINE (GANZES SCHULJAHR)
+         REITER 3: PRÜFUNGEN, KLAUSUREN & TERMINE (GANZES SCHULJAHR)
          ======================================================================= -->
     <div id="view-exams" class="view-panel" role="tabpanel" aria-labelledby="tab-exams">
 
@@ -286,7 +320,7 @@
     </div>
 
     <!-- =======================================================================
-         REITER 3: HAUSAUFGABEN & KLASSENBUCH (LEHRSTOFF)
+         REITER 4: HAUSAUFGABEN & KLASSENBUCH (LEHRSTOFF)
          ======================================================================= -->
     <div id="view-homework" class="view-panel" role="tabpanel" aria-labelledby="tab-homework">
 
@@ -335,7 +369,7 @@
     </div>
 
     <!-- =======================================================================
-         REITER 4: FEHLZEITEN & ENTSCHULDIGUNGEN
+         REITER 5: FEHLZEITEN & ENTSCHULDIGUNGEN
          ======================================================================= -->
     <div id="view-absences" class="view-panel" role="tabpanel" aria-labelledby="tab-absences">
 
@@ -464,7 +498,7 @@
     </div>
 
     <!-- =======================================================================
-         REITER 6: NOTEN & LEISTUNGSÜBERSICHT
+         REITER 7: NOTEN & LEISTUNGSÜBERSICHT
          ======================================================================= -->
     <div id="view-grades" class="view-panel" role="tabpanel" aria-labelledby="tab-grades">
 

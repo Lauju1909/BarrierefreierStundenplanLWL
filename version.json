@@ -1,14 +1,15 @@
 {
-  "version": "1.7.3",
+  "version": "1.8.0",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-12",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
-    "Separater Bereich für offizielle Klassenbucheinträge: Eigener Menüpunkt '📋 Klassenbucheinträge' für die offiziellen Einträge deiner Klasse BFW2B (Klassensprecherwahl & Schulsozialarbeit) – sauber getrennt vom durchgenommenen Lehrstoff",
-    "Klassenbucheinträge mit Vorlesefunktion (V): Jeder Eintrag besitzt einen Vorlesen-Button und wird im Screenreader vollständig mit Fach, Lehrkraft und Uhrzeit vorgelesen",
-    "Direktzugriff von der Übersicht (Tab 1): Offizielle Klassenbucheinträge erscheinen nun auch direkt in der Fristen- und Warnungskarte",
-    "Korrektur der Sport- und Nachmittagsstunden: 8. & 9. Std. mit exakten offiziellen LWL-Zeiten (14:10–15:40 Uhr)",
-    "Mitteilungen dauerhaft löschen (🗑️) mit WebUntis-Synchronisation",
-    "100% werbefrei und barrierefrei nach WCAG 2.2 AAA"
+    "Separater Menüpunkt für Übersicht (Taste 1) und Stundenplan (Taste 2): Saubere Aufteilung in 8 Menüpunkte",
+    "Wochennavigation im Stundenplan: Eine Woche vor oder zurück blättern (Buttons und Alt + Pfeiltasten)",
+    "Schnellrückkehr zur aktuellen Schulwoche: Taste W oder Button 'Diese Woche'",
+    "Anzeige der Kalenderwoche (KW) und der genauen Datumsspanne von Montag bis Freitag",
+    "Intelligenter Wochen-Cache für schnelles und offline-fähiges Hin- und Herblättern im Stundenplan",
+    "Separater Bereich für offizielle Klassenbucheinträge getrennt vom Lehrstoff",
+    "100% NVDA- und JAWS-optimiert, barrierefreie Sprachausgabe (Taste V)"
   ]
 }
