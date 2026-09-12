@@ -1,15 +1,14 @@
 {
-  "version": "1.7.1",
+  "version": "1.7.2",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-12",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
-    "Fokussierte Menüführung: Tagesnachrichten, Warnungen, Fristen und Klausuren-Countdown werden ausschließlich in Reiter 1 (Übersicht) angezeigt und belasten nicht mehr die übrigen Menüs",
-    "Vollautomatischer WebUntis-Leistungsstand: Alle 12 Schulfächer der Klasse BFW2B und Notenstände direkt aus dem WebUntis-Klassenbuch (keine manuelle Noteneingabe erforderlich)",
-    "Zentrale barrierefreie Übersichtsseite: Tagesnachrichten, Warnungen, Fristen und Klausuren-Countdown vereint auf Tab 1 (Taste V liest die gesamte Übersicht vor)",
-    "Offizielle Klassenbucheinträge: Automatische Integration aller Ereignisse (z. B. Klassensprecherwahl Hanauer, Schulsozialarbeit Hübner) aus WebUntis",
-    "Echte WebUntis-Mitteilungen & Lehrkräfteverzeichnis: Live-Posteingang und Mitteilungsversand an alle Lehrkräfte",
-    "7 barrierefreie Hauptmenü-Bereiche (Tasten 1 bis 7) mit optimierter Screenreader-Unterstützung (NVDA/JAWS)",
+    "Korrektur der Sport- und Nachmittagsstunden: Exaktes offizielles LWL-Zeitraster integriert (Sport Mittwoch nun korrekt als 8. Std. 14:10–14:55 Uhr & 9. Std. 14:55–15:40 Uhr statt 32./33. Std. mit Strichen)",
+    "Mitteilungen löschen: Barrierefreier Löschen-Button (🗑️) für Mitteilungen und Tagesnachrichten (inkl. WebUntis-Server-Synchronisation und dauerhaftem Blacklist-Schutz)",
+    "Fokussierte Menüführung: Tagesnachrichten, Warnungen, Fristen und Klausuren-Countdown ausschließlich in Reiter 1 (Übersicht)",
+    "Vollautomatischer WebUntis-Leistungsstand: Alle 12 Schulfächer der Klasse BFW2B direkt aus WebUntis",
+    "Zentrale barrierefreie Übersichtsseite mit Vorlesefunktion (Taste V)",
     "100% werbefrei und barrierefrei nach WCAG 2.2 AAA"
   ]
 }

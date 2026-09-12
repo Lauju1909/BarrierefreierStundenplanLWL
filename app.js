@@ -32,8 +32,10 @@ const DEFAULT_PERIODS = [
   { period: 4, start: '10:20', end: '11:05' },
   { period: 5, start: '11:25', end: '12:10' },
   { period: 6, start: '12:10', end: '12:55' },
-  { period: 7, start: '13:40', end: '14:25' },
-  { period: 8, start: '14:25', end: '15:10' }
+  { period: 7, start: '13:20', end: '14:05' },
+  { period: 8, start: '14:10', end: '14:55' },
+  { period: 9, start: '14:55', end: '15:40' },
+  { period: 10, start: '15:40', end: '16:25' }
 ];
 
 const DEFAULT_NRW_HOLIDAYS_2026_2027 = [
@@ -91,13 +93,14 @@ function loadAppData() {
       const parsed = JSON.parse(saved);
       appData = {
         config: { ...DEFAULT_CONFIG, ...(parsed.config || {}) },
-        periods: parsed.periods || [...DEFAULT_PERIODS],
+        periods: (parsed.periods && parsed.periods.length >= 9 && parsed.periods.some(p => p.period === 9)) ? parsed.periods : [...DEFAULT_PERIODS],
         timetable: parsed.timetable || [],
         exams: (parsed.exams && Array.isArray(parsed.exams)) ? parsed.exams : [],
         homework: (parsed.homework && Array.isArray(parsed.homework)) ? parsed.homework : [],
         absences: parsed.absences || [],
         classbook: parsed.classbook || [],
         messages: (parsed.messages && Array.isArray(parsed.messages)) ? parsed.messages : [],
+        deletedMessageIds: (parsed.deletedMessageIds && Array.isArray(parsed.deletedMessageIds)) ? parsed.deletedMessageIds : [],
         grades: (parsed.grades && typeof parsed.grades === 'object') ? parsed.grades : {},
         holidays: (parsed.holidays && parsed.holidays.length > 0) ? parsed.holidays : [...DEFAULT_NRW_HOLIDAYS_2026_2027],
         schoolYear: parsed.schoolYear || null,
@@ -105,6 +108,14 @@ function loadAppData() {
         homeworkFilter: parsed.homeworkFilter || 'all',
         messagesFilter: 'all'
       };
+
+      // Gelöschte Nachrichten aus dem Speicher filtern
+      if (appData.deletedMessageIds && appData.deletedMessageIds.length > 0) {
+        appData.messages = (appData.messages || []).filter(m => {
+          const sId = String(m.id || '');
+          return !appData.deletedMessageIds.includes(sId) && !appData.deletedMessageIds.some(d => sId.includes(d));
+        });
+      }
 
       // Gecachte synthetische Fake-Prüfungen def-exam- aus früheren Versionen entfernen, aber ALLE echten Prüfungen beibehalten
       if (parsed.exams && Array.isArray(parsed.exams)) {
@@ -128,7 +139,7 @@ function loadAppData() {
         }
       }
 
-      // Falsch gecachte Räume bereinigen
+      // Falsch gecachte Räume und Perioden bereinigen
       if (appData.timetable && Array.isArray(appData.timetable)) {
         appData.timetable.forEach(l => {
           if (l.room) {
@@ -137,6 +148,24 @@ function loadAppData() {
             if (rNorm === 'hanauer' || (tNorm && (rNorm === tNorm || tNorm.includes(rNorm)))) {
               l.room = 'Raum wird bekanntgegeben';
             }
+          }
+
+          // Sport und Nachmittagsstunden: Perioden-Reparatur (z.B. 32. Std., 33. Std.)
+          if (l.startTime === '14:10' || (l.period === 32 && l.subject === 'SP')) {
+            l.period = 8;
+            if (!l.startTime) l.startTime = '14:10';
+            if (!l.endTime) l.endTime = '14:55';
+          } else if (l.startTime === '14:55' || (l.period === 33 && l.subject === 'SP')) {
+            l.period = 9;
+            if (!l.startTime) l.startTime = '14:55';
+            if (!l.endTime) l.endTime = '15:40';
+          } else if (l.startTime === '13:20' || (l.period === 7 && (!l.startTime || l.startTime === '13:40'))) {
+            l.period = 7;
+            l.startTime = '13:20';
+            l.endTime = '14:05';
+          } else if (l.period > 10 && l.startTime) {
+            const matched = DEFAULT_PERIODS.find(p => p.start === l.startTime);
+            if (matched) l.period = matched.period;
           }
         });
       }
@@ -1048,6 +1077,31 @@ async function performWebUntisSync(userOverride, passOverride) {
     } catch (e) { }
     appData.schoolYear = syRange;
 
+    // 5b. Offizielles Zeitraster der Schule abrufen (getTimegridUnits)
+    try {
+      const tgRes = await callWebUntisApi('getTimegridUnits', {});
+      if (tgRes && tgRes.result && Array.isArray(tgRes.result)) {
+        const unitsMap = new Map();
+        tgRes.result.forEach(dayGrid => {
+          if (dayGrid.timeUnits && Array.isArray(dayGrid.timeUnits)) {
+            dayGrid.timeUnits.forEach(u => {
+              const pNum = parseInt(u.name, 10);
+              if (!isNaN(pNum)) {
+                const sStr = formatUntisTimeToStr(u.startTime);
+                const eStr = formatUntisTimeToStr(u.endTime);
+                if (!unitsMap.has(pNum)) {
+                  unitsMap.set(pNum, { period: pNum, start: sStr, end: eStr });
+                }
+              }
+            });
+          }
+        });
+        if (unitsMap.size > 0) {
+          appData.periods = Array.from(unitsMap.values()).sort((a, b) => a.period - b.period);
+        }
+      }
+    } catch (e) { }
+
     // ISO-Datumsstrings für WebUntis REST- & Mobile-Abfragen (YYYY-MM-DD)
     const sIsoStr = `${String(syRange.startDateNum).slice(0, 4)}-${String(syRange.startDateNum).slice(4, 6)}-${String(syRange.startDateNum).slice(6, 8)}`;
     const eIsoStr = `${String(syRange.endDateNum).slice(0, 4)}-${String(syRange.endDateNum).slice(4, 6)}-${String(syRange.endDateNum).slice(6, 8)}`;
@@ -1474,16 +1528,49 @@ async function performWebUntisSync(userOverride, passOverride) {
         const endStr = formatUntisTimeToStr(item.endTime);
 
         let periodNum = 1;
-        const matchedPeriod = appData.periods.find(p => p.start === startStr);
+        const matchedPeriod = (appData.periods || DEFAULT_PERIODS).find(p => p.start === startStr);
         if (matchedPeriod) {
           periodNum = matchedPeriod.period;
+        } else if (startStr === '11:15') {
+          periodNum = 5; // Freitag 5. Stunde
+        } else if (startStr === '13:20') {
+          periodNum = 7;
+        } else if (startStr === '14:10') {
+          periodNum = 8; // Sport 8. Stunde
+        } else if (startStr === '14:55') {
+          periodNum = 9; // Sport 9. Stunde
         } else {
-          periodNum = idx + 1;
+          // Logische Zeitzuordnung nach Minuten am Tag
+          const parts = startStr.split(':').map(Number);
+          const totalMin = (parts[0] || 0) * 60 + (parts[1] || 0);
+          if (totalMin < 510) periodNum = 1;
+          else if (totalMin < 560) periodNum = 2;
+          else if (totalMin < 615) periodNum = 3;
+          else if (totalMin < 670) periodNum = 4;
+          else if (totalMin < 730) periodNum = 5;
+          else if (totalMin < 790) periodNum = 6;
+          else if (totalMin < 845) periodNum = 7;
+          else if (totalMin < 890) periodNum = 8;
+          else if (totalMin < 940) periodNum = 9;
+          else periodNum = 10;
         }
 
         const subj = (item.su && item.su[0]) ? (subjectsMap[item.su[0].id] || item.su[0].name || item.su[0].longname || 'Unterricht') : 'Unterricht';
-        const teach = (item.te && item.te[0]) ? (teachersMap[item.te[0].id] || item.te[0].name || item.te[0].longname || 'Lehrkraft') : 'Lehrkraft';
-        const klasse = (item.kl && item.kl[0]) ? (klassenMap[item.kl[0].id] || item.kl[0].name || item.kl[0].longname || '') : '';
+        let teach = 'Lehrkraft';
+        if (item.te && Array.isArray(item.te) && item.te.length > 0) {
+          const tNames = item.te.map(t => teachersMap[t.id] || t.name || t.longname || '').filter(Boolean);
+          if (tNames.length > 0) teach = tNames.join(', ');
+        }
+        let klasse = '';
+        if (item.kl && Array.isArray(item.kl) && item.kl.length > 0) {
+          const myKlasse = item.kl.find(k => k.name === 'BFW2B' || k.id === 2032 || (k.name && k.name.includes('BFW2B')));
+          if (myKlasse) {
+            klasse = myKlasse.name || klassenMap[myKlasse.id] || 'BFW2B';
+            if (item.kl.length > 1) klasse += ' (Kurs)';
+          } else {
+            klasse = item.kl.map(k => k.name || klassenMap[k.id] || k.longname || '').filter(Boolean).join(', ');
+          }
+        }
 
         let rm = '';
         if (item.ro && Array.isArray(item.ro) && item.ro.length > 0) {
@@ -2457,8 +2544,13 @@ async function performWebUntisSync(userOverride, passOverride) {
     // Echte WebUntis-Mitteilungen verarbeiten
     if (restMessagesRes && restMessagesRes.incomingMessages && Array.isArray(restMessagesRes.incomingMessages)) {
       if (!appData.messages) appData.messages = [];
+      const deletedIds = appData.deletedMessageIds || [];
       restMessagesRes.incomingMessages.forEach(m => {
         const id = `webuntis-inbox-${m.id}`;
+        // Gelöschte Nachrichten nicht wieder einfügen
+        if (deletedIds.includes(String(m.id)) || deletedIds.includes(id)) {
+          return;
+        }
         const existingIdx = appData.messages.findIndex(x => x.id === id);
         const msgObj = {
           id: id,
@@ -2685,7 +2777,11 @@ function renderTimetable() {
 
   let html = '<div class="timetable-list" role="list">';
   lessons.forEach(l => {
-    const periodData = appData.periods.find(p => p.period === l.period) || { start: '--:--', end: '--:--' };
+    const matchedPeriod = (appData.periods || []).find(p => p.period === l.period);
+    const periodData = {
+      start: (matchedPeriod && matchedPeriod.start) || l.startTime || '--:--',
+      end: (matchedPeriod && matchedPeriod.end) || l.endTime || '--:--'
+    };
     let statusClass = 'status-normal';
     let badgeText = 'Regulär';
     let badgeClass = 'badge-normal';
@@ -2771,12 +2867,13 @@ function updateCurrentAndNextLesson() {
 
   for (let i = 0; i < todayLessons.length; i++) {
     const l = todayLessons[i];
-    const p = appData.periods.find(per => per.period === l.period);
-    if (!p) continue;
+    const p = (appData.periods || []).find(per => per.period === l.period) || { period: l.period, start: l.startTime || '', end: l.endTime || '' };
+    if (!p.start || !p.end) continue;
 
     if (currentTime >= p.start && currentTime <= p.end) {
       currentLesson = { ...l, periodData: p };
-      nextLesson = todayLessons[i + 1] ? { ...todayLessons[i + 1], periodData: appData.periods.find(per => per.period === todayLessons[i + 1].period) } : null;
+      const nextL = todayLessons[i + 1];
+      nextLesson = nextL ? { ...nextL, periodData: (appData.periods || []).find(per => per.period === nextL.period) || { period: nextL.period, start: nextL.startTime || '', end: nextL.endTime || '' } } : null;
       break;
     } else if (currentTime < p.start && !nextLesson) {
       nextLesson = { ...l, periodData: p };
@@ -2827,8 +2924,8 @@ function readTodayTimetable() {
 
   let text = `Stundenplan für ${dayName}. Du hast ${lessons.length} Stunden. `;
   lessons.forEach(l => {
-    const p = appData.periods.find(per => per.period === l.period);
-    const timeStr = p ? `von ${p.start} bis ${p.end} Uhr` : '';
+    const p = (appData.periods || []).find(per => per.period === l.period) || { start: l.startTime || '', end: l.endTime || '' };
+    const timeStr = (p.start && p.end) ? `von ${p.start} bis ${p.end} Uhr` : '';
     let statusText = '';
     if (l.status === 'cancelled') statusText = 'Diese Stunde entfällt!';
     else if (l.status === 'substitute') statusText = `Vertretungsunterricht: ${l.notes || ''}`;
@@ -3667,9 +3764,14 @@ function renderUrgentNotificationBanner() {
           <div class="urgent-item-subject">${escHtml(msg.subject || 'Schulinformation')}</div>
           <p class="urgent-item-desc">${escHtml(msg.text || msg.body || '')}</p>
         </div>
-        <button type="button" class="btn btn-secondary urgent-action-btn" onclick="switchTab('messages')" aria-label="Zu den Mitteilungen wechseln">
-          <span>💬 Zur Mitteilung</span>
-        </button>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
+          <button type="button" class="btn btn-secondary urgent-action-btn" onclick="switchTab('messages')" aria-label="Zu den Mitteilungen wechseln">
+            <span>💬 Zur Mitteilung</span>
+          </button>
+          <button type="button" class="btn btn-danger urgent-action-btn" onclick="deleteMessage('${msg.id}')" aria-label="Mitteilung ${escHtml(msg.subject || '')} löschen">
+            <span>🗑️ Löschen</span>
+          </button>
+        </div>
       </div>`;
   });
 
@@ -4406,9 +4508,12 @@ function renderMessagesView() {
             <span class="msg-badge ${badgeClass}">${badgeLabel}</span>
             <span class="msg-date">📅 ${escHtml(dateFormatted)}${timeFormatted ? ' um ' + escHtml(timeFormatted) + ' Uhr' : ''}</span>
           </div>
-          <div>
+          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <button type="button" class="btn btn-secondary" style="min-height: 34px; padding: 4px 10px; font-size: 13px;" onclick="speakMsg('${msg.id}')" aria-label="Diese Mitteilung vorlesen">
               <span class="emoji-icon" aria-hidden="true">🔊 </span>Vorlesen
+            </button>
+            <button type="button" class="btn btn-danger" style="min-height: 34px; padding: 4px 10px; font-size: 13px;" onclick="deleteMessage('${msg.id}')" aria-label="Mitteilung ${escHtml(msg.subject || '')} löschen">
+              <span class="emoji-icon" aria-hidden="true">🗑️ </span>Löschen
             </button>
           </div>
         </div>
@@ -4433,6 +4538,61 @@ function speakMsg(msgId) {
   const text = `Mitteilung ${person}: Betreff ${msg.subject || 'Kein Betreff'}. Inhalt: ${msg.text || msg.body || ''}`;
   speak(text, true);
   announceSR(text, 'assertive');
+}
+
+async function deleteMessage(msgId) {
+  if (!msgId) return;
+  const msg = (appData.messages || []).find(m => String(m.id) === String(msgId));
+  const title = msg ? (msg.subject || 'diese Mitteilung') : 'diese Mitteilung';
+
+  if (!confirm(`Möchtest du die Mitteilung „${title}“ wirklich löschen?`)) {
+    return;
+  }
+
+  // 1. Wenn es eine WebUntis-Nachricht ist, versuche DELETE an die WebUntis API zu senden
+  let untisId = null;
+  const sId = String(msgId);
+  if (sId.startsWith('webuntis-inbox-')) {
+    untisId = sId.replace('webuntis-inbox-', '');
+  } else if (sId.startsWith('webuntis-news-')) {
+    untisId = sId.replace('webuntis-news-', '');
+  } else if (/^\d+$/.test(sId)) {
+    untisId = sId;
+  }
+
+  if (untisId) {
+    try {
+      // Versuch, die Mitteilung auf dem WebUntis Server zu löschen (über REST DELETE)
+      await callWebUntisRest(`/api/rest/view/v1/messages/${untisId}`, null, 'DELETE');
+    } catch (e) {
+      console.warn('WebUntis Server DELETE fehlgeschlagen oder keine Schüler-Berechtigung:', e);
+    }
+  }
+
+  // 2. In Blacklist eintragen, damit sie bei zukünftigen WebUntis-Synchronisationen nie wieder erscheint
+  if (!appData.deletedMessageIds) appData.deletedMessageIds = [];
+  if (!appData.deletedMessageIds.includes(sId)) {
+    appData.deletedMessageIds.push(sId);
+  }
+  if (untisId && !appData.deletedMessageIds.includes(untisId)) {
+    appData.deletedMessageIds.push(untisId);
+  }
+
+  // 3. Aus lokalem Speicher entfernen
+  appData.messages = (appData.messages || []).filter(m => {
+    const curId = String(m.id || '');
+    return curId !== sId && (!untisId || !curId.includes(untisId));
+  });
+  saveAppData();
+
+  // 4. Anzeige in beiden Ansichten (Mitteilungen & Übersicht) sofort aktualisieren
+  renderMessagesView();
+  renderUrgentNotificationBanner();
+
+  // 5. Screenreader- und Sprachausgabe-Bestätigung
+  const feedback = `Mitteilung ${title} wurde gelöscht.`;
+  speak(feedback, true);
+  announceSR(feedback, 'assertive');
 }
 
 function toggleMessageComposer(forceState) {
@@ -4537,8 +4697,12 @@ async function syncMessagesAndNews() {
     const res = await callWebUntisApi('getMessagesOfDay2017', [{ date: todayNum }]);
     if (res && res.result && res.result.messages && Array.isArray(res.result.messages)) {
       if (!appData.messages) appData.messages = [];
+      const deletedIds = appData.deletedMessageIds || [];
       res.result.messages.forEach(m => {
         const id = `webuntis-news-${m.id || Date.now()}`;
+        if (deletedIds.includes(String(m.id)) || deletedIds.includes(id)) {
+          return;
+        }
         if (!appData.messages.some(x => x.id === id)) {
           appData.messages.unshift({
             id: id,
