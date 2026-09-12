@@ -1,9 +1,11 @@
 {
-  "version": "1.8.1",
+  "version": "1.8.2",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-12",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
+    "Dauerhafter Server-Dienst: Kein automatisches Beenden mehr nach 60s Inaktivität oder beim Tab-Wechsel",
+    "Robuste WebUntis-Brücke: Automatisches Bereinigen von blockierten Hintergrund-Instanzen",
     "WebUntis Login-Optimierung: Schutz gegen doppelte Benutzernameneingabe (Auto-Deduplizierung & Textfokus-Auswahl)",
     "Dauerhafte WebUntis-Sitzung ohne vorzeitiges Logout für reibungslose Navigation und Synchronisation",
     "Präzise und barrierefreie Fehlermeldungen bei falschen Zugangsdaten (NVDA/JAWS-kompatibel)",

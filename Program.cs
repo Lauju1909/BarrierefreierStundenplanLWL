@@ -111,9 +111,42 @@ namespace BarrierefreierStundenplan
             LogUntis("Checking if port " + DEFAULT_PORT + " is in use");
             if (IsPortInUse(DEFAULT_PORT))
             {
-                LogUntis("Port " + DEFAULT_PORT + " is already in use, opening browser and exiting secondary instance");
-                LaunchBestBrowser("http://127.0.0.1:" + DEFAULT_PORT + "/index.html");
-                return;
+                bool isHealthy = false;
+                try
+                {
+                    HttpWebRequest pingReq = (HttpWebRequest)WebRequest.Create("http://127.0.0.1:" + DEFAULT_PORT + "/api/ping");
+                    pingReq.Timeout = 800;
+                    pingReq.ReadWriteTimeout = 800;
+                    using (HttpWebResponse pingResp = (HttpWebResponse)pingReq.GetResponse())
+                    {
+                        if (pingResp.StatusCode == HttpStatusCode.OK) isHealthy = true;
+                    }
+                }
+                catch { }
+
+                if (isHealthy)
+                {
+                    LogUntis("Port " + DEFAULT_PORT + " is already in use and active, opening browser and exiting secondary instance");
+                    LaunchBestBrowser("http://127.0.0.1:" + DEFAULT_PORT + "/index.html");
+                    return;
+                }
+                else
+                {
+                    LogUntis("Port " + DEFAULT_PORT + " is blocked by an unresponsive process! Cleaning up stale processes...");
+                    try
+                    {
+                        int currentPid = Process.GetCurrentProcess().Id;
+                        foreach (Process p in Process.GetProcessesByName("Stundenplan_LWL"))
+                        {
+                            if (p.Id != currentPid)
+                            {
+                                try { p.Kill(); p.WaitForExit(1000); } catch { }
+                            }
+                        }
+                    }
+                    catch { }
+                    Thread.Sleep(500);
+                }
             }
 
             try
@@ -176,28 +209,7 @@ namespace BarrierefreierStundenplan
                 updateTimerThread.IsBackground = true;
                 updateTimerThread.Start();
 
-                // 7. Watchdog für automatisches Beenden bei Fensterschließen / Alt+F4
-                Thread watchdogThread = new Thread(() =>
-                {
-                    while (_isRunning)
-                    {
-                        Thread.Sleep(2000);
-                        if (!_isRunning) break;
-                        lock (_shutdownLock)
-                        {
-                            // Sobald die Seite mindestens einmal geladen wurde und im sichtbaren Fenster
-                            // seit über 60 Sekunden kein Signal mehr empfangen wurde: Beenden
-                            if (_pageHasLoaded && !_isWindowHidden && (DateTime.UtcNow - _lastActivity).TotalSeconds > 60)
-                            {
-                                LogUntis("Watchdog triggered exit after 60s inactivity");
-                                Environment.Exit(0);
-                                break;
-                            }
-                        }
-                    }
-                });
-                watchdogThread.IsBackground = true;
-                watchdogThread.Start();
+                // 7. Server läuft stabil und dauerhaft im Hintergrund (kein vorzeitiges Beenden durch Inaktivität)
 
                 string launchUrl = "http://127.0.0.1:" + _activePort + "/index.html";
 
@@ -507,35 +519,15 @@ namespace BarrierefreierStundenplan
                 return;
             }
 
-            // 2. Fenster wird geschlossen / Entladen (Alt+F4, Kreuz oder Tab schließen)
+            // 2. Fensterstatus (kein automatisches Beenden bei bloßem Tabwechsel)
             if (rawUrl == "/api/window_closing")
             {
-                LogUntis("API /api/window_closing received, scheduling shutdown in 5000ms");
+                LogUntis("API /api/window_closing received (standby mode, server keeps running)");
                 resp.StatusCode = 200;
                 resp.ContentType = "application/json";
-                byte[] bye = Encoding.UTF8.GetBytes("{\"status\":\"closing_scheduled\"}");
+                byte[] bye = Encoding.UTF8.GetBytes("{\"status\":\"ok\"}");
                 resp.OutputStream.Write(bye, 0, bye.Length);
                 resp.Close();
-
-                lock (_shutdownLock)
-                {
-                    _closingPending = true;
-                    if (_closingTimer != null)
-                    {
-                        try { _closingTimer.Dispose(); } catch { }
-                    }
-                    _closingTimer = new System.Threading.Timer((_) =>
-                    {
-                        lock (_shutdownLock)
-                        {
-                            if (_closingPending)
-                            {
-                                LogUntis("Executing delayed shutdown from window_closing");
-                                Environment.Exit(0);
-                            }
-                        }
-                    }, null, 5000, Timeout.Infinite);
-                }
                 return;
             }
 
@@ -1371,23 +1363,7 @@ namespace BarrierefreierStundenplan
 
         private static void LaunchBestBrowser(string url)
         {
-            // 1. Suche nach Microsoft Edge
-            string edge = FindPath(new string[] {
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), @"Microsoft\Edge\Application\msedge.exe"),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"Microsoft\Edge\Application\msedge.exe")
-            });
-
-            if (!string.IsNullOrEmpty(edge))
-            {
-                try
-                {
-                    Process.Start(edge, string.Format("--app=\"{0}\"", url));
-                    return;
-                }
-                catch { }
-            }
-
-            // 2. Suche nach Google Chrome
+            // 1. Suche nach Google Chrome
             string chrome = FindPath(new string[] {
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"Google\Chrome\Application\chrome.exe"),
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), @"Google\Chrome\Application\chrome.exe"),
@@ -1399,6 +1375,22 @@ namespace BarrierefreierStundenplan
                 try
                 {
                     Process.Start(chrome, string.Format("--app=\"{0}\"", url));
+                    return;
+                }
+                catch { }
+            }
+
+            // 2. Suche nach Microsoft Edge
+            string edge = FindPath(new string[] {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"Microsoft\Edge\Application\msedge.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), @"Microsoft\Edge\Application\msedge.exe")
+            });
+
+            if (!string.IsNullOrEmpty(edge))
+            {
+                try
+                {
+                    Process.Start(edge, string.Format("--app=\"{0}\"", url));
                     return;
                 }
                 catch { }

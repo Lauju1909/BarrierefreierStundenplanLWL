@@ -4458,18 +4458,8 @@ function initApp() {
     }
   }, true);
 
-  // 2. Fenster schließen Signal (Alt+F4, Schließen-Kreuz, Tab-Schließen)
-  function sendWindowClosingSignal() {
-    try {
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon('/api/window_closing');
-      } else {
-        fetch('/api/window_closing', { method: 'POST', keepalive: true }).catch(() => {});
-      }
-    } catch (_) {}
-  }
-  window.addEventListener('pagehide', sendWindowClosingSignal);
-  window.addEventListener('beforeunload', sendWindowClosingSignal);
+  // 2. Kein versehentliches Beenden bei Tabwechsel oder Neuladen
+  // (Server bleibt stabil und dauerhaft aktiv)
 
   // 3. Kontinuierlicher Heartbeat alle 2.5 Sekunden mit Sichtbarkeitsstatus
   function sendHeartbeat() {
