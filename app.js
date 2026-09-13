@@ -5904,21 +5904,53 @@ function getSubjectInfo(code) {
 }
 
 function setGradeSchoolYear(sy, fromSelect = false) {
-  if (appData.selectedGradeSchoolYear === sy) return;
   appData.selectedGradeSchoolYear = sy;
   saveAppData();
   renderGradesView(fromSelect);
-  if (!fromSelect) {
-    const label = sy === 'all' ? 'Alle Schuljahre' : `Schuljahr ${sy}`;
-    announceSR(`${label} ausgewählt.`, 'polite');
+  announceGradeSchoolYearChange(sy);
+}
+
+function announceGradeSchoolYearChange(sy) {
+  const allGrades = (appData.webuntisGradeList && appData.webuntisGradeList.length > 0)
+    ? appData.webuntisGradeList
+    : [...DEFAULT_WEBUNTIS_GRADES];
+  const activeGrades = (sy === 'all')
+    ? allGrades
+    : allGrades.filter(g => getGradeSchoolYear(g) === sy);
+
+  const validGrades = activeGrades.filter(g => {
+    const mk = g.grade && g.grade.mark;
+    return mk && mk.markDisplayValue > 0 && mk.name !== 'leer';
+  });
+  const gradeSum = validGrades.reduce((sum, g) => sum + g.grade.mark.markDisplayValue, 0);
+  const overallGpa = validGrades.length > 0 ? (gradeSum / validGrades.length).toFixed(1).replace('.', ',') : null;
+
+  const label = (sy === '2026/2027')
+    ? 'Schuljahr 2026/2027 (Aktuell)'
+    : (sy === 'all' ? 'Alle Schuljahre' : `Schuljahr ${sy}`);
+  const countText = activeGrades.length === 1 ? '1 Note erfasst' : `${activeGrades.length} Noten erfasst`;
+  const schnittText = overallGpa ? `Gesamtschnitt ${overallGpa}` : 'noch keine Noten bewertet';
+
+  const speechText = `${label} ausgewählt. ${countText}. ${schnittText}.`;
+
+  // 1. Lokales aria-live Feedback-Element
+  const feedbackEl = document.getElementById('grade-schoolyear-feedback');
+  if (feedbackEl) {
+    feedbackEl.textContent = '';
+    setTimeout(() => { feedbackEl.textContent = speechText; }, 30);
   }
+
+  // 2. Globales Screenreader-Live-Region (assertive)
+  announceSR(speechText, 'assertive');
+
+  // 3. Sprachausgabe (TTS) laut sprechen
+  speak(speechText, true);
 }
 
 function renderGradesView(fromSelect = false) {
   const container = document.getElementById('grades-list-container');
   if (!container) return;
 
-  const syBar = document.getElementById('grades-schoolyear-bar');
   const allGrades = (appData.webuntisGradeList && appData.webuntisGradeList.length > 0)
     ? appData.webuntisGradeList
     : [...DEFAULT_WEBUNTIS_GRADES];
@@ -5961,30 +5993,13 @@ function renderGradesView(fromSelect = false) {
     if (currentOptCount !== syOptions.length) {
       gradeSySelect.innerHTML = syOptions.map(opt => `
         <option value="${escHtml(opt.id)}" ${opt.id === selectedSy ? 'selected' : ''}>
-          ${escHtml(opt.label)} (${opt.count} ${opt.count === 1 ? 'Note' : 'Noten'})
+          ${escHtml(opt.label)} – ${opt.count} ${opt.count === 1 ? 'Note erfasst' : 'Noten erfasst'}
         </option>
       `).join('');
     }
     if (gradeSySelect.value !== selectedSy) {
       gradeSySelect.value = selectedSy;
     }
-  }
-
-  // Schuljahr-Filter-Leiste (Schnellfilter-Buttons) rendern
-  if (syBar) {
-    syBar.innerHTML = syOptions.map(opt => {
-      const isActive = (selectedSy === opt.id);
-      return `
-        <button type="button" 
-                class="grade-sy-btn ${isActive ? 'active' : ''}" 
-                role="tab" 
-                aria-selected="${isActive}" 
-                onclick="setGradeSchoolYear('${opt.id}', false)"
-                aria-label="${opt.label}, ${opt.count} Noten erfasst">
-          ${escHtml(opt.label)} <span style="opacity: 0.85; font-size: 12px; margin-left: 4px;">(${opt.count})</span>
-        </button>
-      `;
-    }).join('');
   }
 
   // Noten für gewähltes Schuljahr filtern
@@ -6001,6 +6016,13 @@ function renderGradesView(fromSelect = false) {
   const overallGpa = validGrades.length > 0 ? (gradeSum / validGrades.length).toFixed(1) : '--';
   const writtenCount = activeGrades.filter(isWrittenExam).length;
   const oralCount = activeGrades.filter(g => !isWrittenExam(g)).length;
+
+  // Info-Badge neben dem Dropdown aktualisieren
+  const infoBadge = document.getElementById('grade-schoolyear-info-badge');
+  if (infoBadge) {
+    const gpaDisplay = overallGpa !== '--' ? `Ø ${overallGpa.replace('.', ',')}` : 'Kein Schnitt';
+    infoBadge.textContent = `${activeGrades.length} Noten • Schnitt ${gpaDisplay}`;
+  }
 
   // Stat-Karten aktualisieren
   const gpaEl = document.getElementById('stat-grade-gpa');
@@ -6142,7 +6164,7 @@ function renderGradesView(fromSelect = false) {
                       <span class="grade-badge-value ${badgeClass}" title="Note: ${escHtml(markName)} (${markVal ? markVal.toFixed(1) : '-'})">
                         ${markVal ? markVal.toFixed(1) : 'Offen'}
                       </span>
-                      <span class="grade-mark-text">${escHtml(markName)}</span>
+                      <span class="grade-mark-text">${escHtml(markName)}.</span>
                     </div>
                   </div>
                 `;
@@ -6184,7 +6206,7 @@ function renderGradesView(fromSelect = false) {
                       <span class="grade-badge-value ${badgeClass}" title="Note: ${escHtml(markName)} (${markVal ? markVal.toFixed(1) : '-'})">
                         ${markVal ? markVal.toFixed(1) : 'Offen'}
                       </span>
-                      <span class="grade-mark-text">${escHtml(markName)}</span>
+                      <span class="grade-mark-text">${escHtml(markName)}.</span>
                     </div>
                   </div>
                 `;

@@ -1,10 +1,14 @@
 {
-  "version": "1.9.8",
+  "version": "1.9.9",
   "name": "Barrierefreies WebUntis",
   "buildDate": "2026-09-13",
   "repository": "https://github.com/Lauju1909/BarrierefreiesWebUntis",
   "executable": "Barrierefreies_WebUntis.exe",
   "features": [
+    "Notenspiegel-Schuljahr ausschließlich oben im Dropdown auswählbar: Die redundanten Buttons unter dem Menü wurden komplett entfernt.",
+    "Sofortiges barrierefreies Hören bei Schuljahr-Auswahl: Beim Wechseln oder Navigieren mit Pfeiltasten wird das ausgewählte Schuljahr, die Notenzahl und der Gesamtschnitt sofort laut vorgelesen und an den Screenreader übertragen.",
+    "Fehlerfreies Screenreader-Vorlesen von Noten: Saubere Satzzeichen-Trennung zwischen Note und Folgetext verhindert das Zusammenziehen von Wörtern (z.B. 'Gut. Klassenarbeit 2' statt 'GutKlassenarbeit 2').",
+    "Aktualisierter Footer mit dem offiziellen Namen 'Barrierefreies WebUntis'.",
     "Barrierefreies WebUntis: Offizielle Umbenennung der gesamten Anwendung für alle Schulen.",
     "Schulauswahl an 1. Stelle bei der Anmeldung: Direkte Schnellauswahl der LWL-Schulen sowie integrierte Live-Schulsuche (über mobile.webuntis.com) für jede Schule in Deutschland, Österreich und der Schweiz.",
     "Bedingte Mensa-Anzeige: Mensa & Speisepläne (Reiter 8, Taste 8) wird nur für den LWL-Campus Soest (Berufskolleg, von-Vincke-Schule, BBW) angezeigt und bei allen externen Schulen komplett ausgeblendet (automatisch 8 Reiter).",
