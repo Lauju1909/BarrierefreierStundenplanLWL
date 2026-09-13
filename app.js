@@ -3282,7 +3282,7 @@ function renderTimetable() {
     container.innerHTML = `
       <div class="status-box" style="padding: 28px; text-align: center;">
         <span class="emoji-icon" style="font-size: 36px;" aria-hidden="true">🎉</span>
-        <p style="font-size: var(--font-size-lg); font-weight: bold; margin-top: 10px;">Kein Unterricht eingetragen!</p>
+        <h3 style="font-size: var(--font-size-lg); font-weight: bold; margin-top: 10px;">Kein Unterricht eingetragen!</h3>
         <p class="field-hint">Für diesen Tag liegen in WebUntis aktuell keine Stunden vor.</p>
       </div>
     `;
@@ -3290,7 +3290,14 @@ function renderTimetable() {
   }
 
   let html = '<div class="timetable-list" role="list">';
+  let lastRenderedDay = null;
   lessons.forEach(l => {
+    if (isWeekView && l.day !== lastRenderedDay) {
+      lastRenderedDay = l.day;
+      html += `<h3 class="timetable-day-header"><span class="emoji-icon" aria-hidden="true">📅 </span>${getDayName(l.day)}</h3>`;
+    }
+    const headingTag = isWeekView ? 'h4' : 'h3';
+
     const matchedPeriod = (appData.periods || []).find(p => p.period === l.period);
     const periodData = {
       start: (matchedPeriod && matchedPeriod.start) || l.startTime || '--:--',
@@ -3330,7 +3337,7 @@ function renderTimetable() {
           ${isWeekView ? `<div style="font-size: 13px; font-weight: bold; color: var(--accent-info); margin-top: 2px;">${getDayName(l.day)}</div>` : ''}
         </div>
         <div class="lesson-main">
-          <h3 class="lesson-subject-title"><span class="sr-only">${isWeekView ? getDayName(l.day) + ', ' : ''}${l.period}. Stunde: </span>${l.subject}</h3>
+          <${headingTag} class="lesson-subject-title"><span class="sr-only">${isWeekView ? getDayName(l.day) + ', ' : ''}${l.period}. Stunde: </span>${l.subject}</${headingTag}>
           <div style="margin-top: 6px; font-size: var(--font-size-base); color: var(--text-secondary);">
             <div style="display: block; line-height: 1.8;"><span class="emoji-icon" aria-hidden="true">🚪 </span><strong>Raum:</strong> ${cleanRoom}</div>
             <div style="display: block; line-height: 1.8;"><span class="emoji-icon" aria-hidden="true">👨‍🏫 </span><strong>Lehrer:</strong> ${cleanTeacher}</div>
@@ -3375,7 +3382,7 @@ function updateCurrentAndNextLesson() {
   if (currentJsDay < 1 || currentJsDay > 5) {
     boxNow.innerHTML = `
       <div class="status-label">Aktuell (Wochenende)</div>
-      <h3 class="status-content-title">Schönes Wochenende!</h3>
+      <h4 class="status-content-title">Schönes Wochenende!</h4>
       <div class="status-meta">Am Montag geht die Schule wieder um 07:45 Uhr los.</div>
     `;
     const mondayFirst = currentWeekLessons.find(t => t.day === 1 && t.period === 1);
@@ -3383,7 +3390,7 @@ function updateCurrentAndNextLesson() {
     const monTeach = mondayFirst ? cleanTeacherName(mondayFirst.teacher) : '';
     boxNext.innerHTML = `
       <div class="status-label">Nächste Stunde (Montag 1. Std.)</div>
-      <h3 class="status-content-title">${mondayFirst ? mondayFirst.subject : 'Unterrichtsbeginn'}</h3>
+      <h4 class="status-content-title">${mondayFirst ? mondayFirst.subject : 'Unterrichtsbeginn'}</h4>
       <div class="status-meta" style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
         ${mondayFirst ? `<div><span class="emoji-icon" aria-hidden="true">🚪 </span><strong>Raum:</strong> ${monRoom}</div><div><span class="emoji-icon" aria-hidden="true">👨‍🏫 </span><strong>Lehrer:</strong> ${monTeach}</div>` : '<div>07:45 Uhr</div>'}
       </div>
@@ -3417,7 +3424,7 @@ function updateCurrentAndNextLesson() {
     boxNow.classList.add('active-now');
     boxNow.innerHTML = `
       <div class="status-label"><span class="emoji-icon" aria-hidden="true">🔴 </span>Aktuell läuft (${currentLesson.periodData.start} - ${currentLesson.periodData.end})</div>
-      <h3 class="status-content-title">${currentLesson.subject}</h3>
+      <h4 class="status-content-title">${currentLesson.subject}</h4>
       <div class="status-meta" style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
         <div><span class="emoji-icon" aria-hidden="true">🚪 </span><strong>Raum:</strong> ${curRoom}</div>
         <div><span class="emoji-icon" aria-hidden="true">👨‍🏫 </span><strong>Lehrer:</strong> ${curTeach}</div>
@@ -3429,7 +3436,7 @@ function updateCurrentAndNextLesson() {
     boxNow.classList.remove('active-now');
     boxNow.innerHTML = `
       <div class="status-label">Aktuell</div>
-      <h3 class="status-content-title">Kein laufender Unterricht</h3>
+      <h4 class="status-content-title">Kein laufender Unterricht</h4>
       <div class="status-meta">Aktuell ist Pause oder unterrichtsfreie Zeit.</div>
     `;
   }
@@ -3439,7 +3446,7 @@ function updateCurrentAndNextLesson() {
     const nxtTeach = cleanTeacherName(nextLesson.teacher);
     boxNext.innerHTML = `
       <div class="status-label"><span class="emoji-icon" aria-hidden="true">🔜 </span>Nächste Stunde (${nextLesson.period}. Std. ab ${nextLesson.periodData.start} Uhr)</div>
-      <h3 class="status-content-title">${nextLesson.subject}</h3>
+      <h4 class="status-content-title">${nextLesson.subject}</h4>
       <div class="status-meta" style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
         <div><span class="emoji-icon" aria-hidden="true">🚪 </span><strong>Raum:</strong> ${nxtRoom}</div>
         <div><span class="emoji-icon" aria-hidden="true">👨‍🏫 </span><strong>Lehrer:</strong> ${nxtTeach}</div>
@@ -3449,7 +3456,7 @@ function updateCurrentAndNextLesson() {
   } else {
     boxNext.innerHTML = `
       <div class="status-label">Schultag beendet</div>
-      <h3 class="status-content-title">Schulschluss!</h3>
+      <h4 class="status-content-title">Schulschluss!</h4>
       <div class="status-meta">Für heute sind alle Stunden absolviert.</div>
     `;
   }
@@ -3612,7 +3619,7 @@ function renderExams() {
       container.innerHTML = `
         <div class="status-box" style="padding: 32px; text-align: center;">
           <span class="emoji-icon" style="font-size: 40px;" aria-hidden="true">📝</span>
-          <p style="font-size: var(--font-size-lg); font-weight: bold; margin-top: 12px;">Keine Prüfungen in WebUntis eingetragen</p>
+          <h3 style="font-size: var(--font-size-lg); font-weight: bold; margin-top: 12px;">Keine Prüfungen in WebUntis eingetragen</h3>
           <p class="field-hint" style="max-width: 520px; margin: 8px auto 0;">In deinem WebUntis-Konto am LWL-Berufskolleg Soest sind aktuell keine Klausuren oder Prüfungen hinterlegt. Sobald deine Lehrkräfte oder das Schulbüro Arbeiten ansetzen, werden diese hier automatisch synchronisiert.</p>
           <button type="button" class="btn btn-secondary" style="margin-top: 16px;" onclick="setExamFilter('all')">
             Alle Termine & Ferien anzeigen
@@ -3625,7 +3632,7 @@ function renderExams() {
     container.innerHTML = `
       <div class="status-box" style="padding: 32px; text-align: center;">
         <span class="emoji-icon" style="font-size: 40px;" aria-hidden="true">📅</span>
-        <p style="font-size: var(--font-size-lg); font-weight: bold; margin-top: 12px;">Keine Einträge für diesen Filter</p>
+        <h3 style="font-size: var(--font-size-lg); font-weight: bold; margin-top: 12px;">Keine Einträge für diesen Filter</h3>
         <p class="field-hint">Für den gewählten Filter liegen im Schuljahr ${schoolYearName} derzeit keine Termine vor.</p>
         <button type="button" class="btn btn-secondary" style="margin-top: 16px;" onclick="setExamFilter('all')">
           Alle Termine des Schuljahres anzeigen
@@ -4103,7 +4110,7 @@ function renderHomework() {
       html += `
         <div class="empty-state" role="status" aria-live="polite">
           <span aria-hidden="true"><span class="emoji-icon" aria-hidden="true">📋</span></span>
-          <p>Aktuell liegen keine offiziellen Klassenbucheinträge vor.</p>
+          <h4 style="margin: 0; font-size: inherit; font-weight: bold;">Aktuell liegen keine offiziellen Klassenbucheinträge vor.</h4>
           <p class="empty-hint">Neue Einträge von Lehrkräften werden automatisch aus WebUntis geladen.</p>
         </div>`;
     } else {
@@ -4130,9 +4137,9 @@ function renderHomework() {
                 <span class="emoji-icon" aria-hidden="true">🔊 </span>Vorlesen
               </button>
             </div>
-            <div style="font-size: 16px; font-weight: 600; line-height: 1.5; color: var(--text-color); margin: 8px 0 12px 0;">
+            <h4 class="classreg-event-title">
               ${escHtml(ev.text)}
-            </div>
+            </h4>
             <div style="font-size: 13px; color: var(--text-muted); font-weight: 500;">
               <span class="emoji-icon" aria-hidden="true">👤 </span><strong>Eingetragen von:</strong> ${escHtml(ev.teacher)} ${ev.teacherCode ? '(' + escHtml(ev.teacherCode) + ')' : ''}
             </div>
@@ -4159,7 +4166,7 @@ function renderHomework() {
       html += `
         <div class="empty-state" role="status" aria-live="polite">
           <span aria-hidden="true"><span class="emoji-icon" aria-hidden="true">📖</span></span>
-          <p>Noch kein Unterrichtsstoff im Klassenbuch erfasst.</p>
+          <h4 style="margin: 0; font-size: inherit; font-weight: bold;">Noch kein Unterrichtsstoff im Klassenbuch erfasst.</h4>
         </div>`;
     } else {
       classbook.forEach(entry => {
@@ -4178,7 +4185,7 @@ function renderHomework() {
           <article class="homework-card classbook-entry" role="article" tabindex="0" aria-label="Lehrstoff in ${escHtml(entry.subject || 'Fach')}: ${escHtml(displayText)}">
             <div class="homework-header">
               ${dateStr ? `<span class="homework-date-badge"><span class="emoji-icon" aria-hidden="true">📅 </span>${dateStr}</span>` : ''}
-              <span class="homework-subject">${escHtml(entry.subject || 'Allgemein')}</span>
+              <h4 class="homework-subject">${escHtml(entry.subject || 'Allgemein')}</h4>
               ${entry.period ? `<span class="homework-assigned">${escHtml(entry.period)}</span>` : ''}
               ${entry.teacher ? `<span class="homework-assigned"><span class="emoji-icon" aria-hidden="true">👤 </span>${escHtml(entry.teacher)}</span>` : ''}
             </div>
@@ -4198,7 +4205,7 @@ function renderHomework() {
     container.innerHTML = `
       <div class="empty-state" role="status" aria-live="polite">
         <span aria-hidden="true"><span class="emoji-icon" aria-hidden="true">📚</span></span>
-        <p>Keine Hausaufgaben vorhanden.</p>
+        <h4 style="margin: 0; font-size: inherit; font-weight: bold;">Keine Hausaufgaben vorhanden.</h4>
         <p class="empty-hint">Hausaufgaben werden automatisch aus WebUntis geladen. Du kannst oben auf <strong>„<span class="emoji-icon" aria-hidden="true">📋 </span>Klassenbucheinträge“</strong> klicken, um offizielle Beschlüsse und Einträge deiner Klasse zu sehen.</p>
       </div>`;
     return;
@@ -4208,7 +4215,7 @@ function renderHomework() {
     html += `
       <div class="status-box" style="padding: 24px; text-align: center; margin-bottom: 20px;">
         <span class="emoji-icon" style="font-size: 36px;" aria-hidden="true">🎉</span>
-        <p style="font-size: var(--font-size-lg); font-weight: bold; margin-top: 8px;">Keine offenen Hausaufgaben</p>
+        <h4 style="font-size: var(--font-size-lg); font-weight: bold; margin-top: 8px;">Keine offenen Hausaufgaben</h4>
         <p class="field-hint">Alle anstehenden Hausaufgaben sind erledigt! Du hast insgesamt ${allHw.length} Aufgabe(n) in WebUntis.</p>
         <button type="button" class="btn btn-secondary" style="margin-top: 12px;" onclick="setHomeworkFilter('all')">
           Alle Hausaufgaben anzeigen (${allHw.length})
@@ -4243,7 +4250,7 @@ function renderHomework() {
             <span class="homework-date-badge${isOverdue ? ' overdue' : ''}" aria-label="Fällig am ${dueStr}">
               <span class="emoji-icon" aria-hidden="true">📅 </span>${dueStr}${isOverdue ? ' – Überfällig!' : ''}
             </span>
-            <span class="homework-subject">${escHtml(hw.subject || 'Allgemein')}</span>
+            <h4 class="homework-subject">${escHtml(hw.subject || 'Allgemein')}</h4>
             ${hw.teacher ? `<span class="homework-assigned"><span class="emoji-icon" aria-hidden="true">👤 </span>${escHtml(hw.teacher)}</span>` : ''}
             ${assignedStr ? `<span class="homework-assigned">Aufgegeben: ${assignedStr}</span>` : ''}
           </div>
@@ -4391,7 +4398,7 @@ function renderAbsences() {
     container.innerHTML = `
       <div class="empty-state" role="status" aria-live="polite">
         <span aria-hidden="true"><span class="emoji-icon" aria-hidden="true">✅</span></span>
-        <p>Keine Fehlzeiten vorhanden.</p>
+        <h3 style="margin: 0; font-size: inherit; font-weight: bold;">Keine Fehlzeiten vorhanden.</h3>
         <p class="empty-hint">Fehlzeiten werden automatisch aus WebUntis geladen.</p>
       </div>`;
     return;
@@ -4403,7 +4410,7 @@ function renderAbsences() {
     return s.slice(0,2) + ':' + s.slice(2);
   };
 
-  let html = '';
+  let html = `<h3 class="section-subheading" style="margin: 18px 0 12px 0; font-size: 1.25rem;"><span class="emoji-icon" aria-hidden="true">⏱️ </span>Erfasste Fehlzeiten (${absences.length})</h3>`;
   absences.forEach(abs => {
     const dateStr = abs.date
       ? formatGermanDate(new Date(
@@ -4423,7 +4430,7 @@ function renderAbsences() {
       <article class="absence-item ${statusClass}" role="article"
                aria-label="Fehlzeit am ${dateStr}, ${statusLabel}">
         <div class="absence-header">
-          <span class="absence-date"><span class="emoji-icon" aria-hidden="true">📅 </span>${dateStr}</span>
+          <h4 class="absence-date"><span class="emoji-icon" aria-hidden="true">📅 </span>${dateStr}</h4>
           <span class="absence-time"><span class="emoji-icon" aria-hidden="true">⏰ </span>${timeStr}</span>
           <span class="absence-status ${statusClass}">${statusLabel}</span>
         </div>
@@ -4547,7 +4554,7 @@ function renderUrgentNotificationBanner() {
           <span class="field-hint" style="font-weight: bold;">${escHtml(dateFormatted)}${ev.timeStr ? ' • ' + escHtml(ev.timeStr) : ''}</span>
         </div>
         <div>
-          <div class="urgent-item-subject">${escHtml(ev.subject || 'Klassenbuch')} (${escHtml(ev.klasse || 'BFW2B')})</div>
+          <h4 class="urgent-item-subject">${escHtml(ev.subject || 'Klassenbuch')} (${escHtml(ev.klasse || 'BFW2B')})</h4>
           <p class="urgent-item-desc">${escHtml(ev.text)}</p>
         </div>
         <button type="button" class="btn btn-secondary urgent-action-btn" onclick="switchTab('homework'); setHomeworkFilter('classreg');" aria-label="Zu den Klassenbucheinträgen wechseln">
@@ -4568,7 +4575,7 @@ function renderUrgentNotificationBanner() {
           <span class="field-hint" style="font-weight: bold;">${escHtml(dateFormatted)}</span>
         </div>
         <div>
-          <div class="urgent-item-subject">${escHtml(msg.subject || 'Schulinformation')}</div>
+          <h4 class="urgent-item-subject">${escHtml(msg.subject || 'Schulinformation')}</h4>
           <p class="urgent-item-desc">${escHtml(msg.text || msg.body || '')}</p>
         </div>
         <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
@@ -4593,7 +4600,7 @@ function renderUrgentNotificationBanner() {
           <span class="field-hint" style="font-weight: bold;">${escHtml(dateFormatted)}</span>
         </div>
         <div>
-          <div class="urgent-item-subject">${escHtml(hw.subject || 'Hausaufgabe')}</div>
+          <h4 class="urgent-item-subject">${escHtml(hw.subject || 'Hausaufgabe')}</h4>
           <p class="urgent-item-desc">${escHtml(hw.text || 'Hausaufgabe ohne Text')}</p>
         </div>
         <button type="button" class="btn btn-secondary urgent-action-btn" onclick="switchTab('homework')" aria-label="Zu den Hausaufgaben wechseln">
@@ -4613,7 +4620,7 @@ function renderUrgentNotificationBanner() {
           <span class="field-hint" style="font-weight: bold;">${escHtml(dateFormatted)}</span>
         </div>
         <div>
-          <div class="urgent-item-subject">${escHtml(hw.subject || 'Hausaufgabe')}</div>
+          <h4 class="urgent-item-subject">${escHtml(hw.subject || 'Hausaufgabe')}</h4>
           <p class="urgent-item-desc">${escHtml(hw.text || 'Hausaufgabe ohne Text')}</p>
         </div>
         <button type="button" class="btn btn-secondary urgent-action-btn" onclick="switchTab('homework')" aria-label="Zu den Hausaufgaben wechseln">
@@ -4634,7 +4641,7 @@ function renderUrgentNotificationBanner() {
           <span class="urgent-badge exam" style="background: rgba(124,58,237,0.25); color: var(--text-primary); border: 1.5px solid #7c3aed;"><span class="emoji-icon" aria-hidden="true">⏳ </span>${dText}</span>
         </div>
         <div>
-          <div class="urgent-item-subject">${escHtml(nextExam.subject)}</div>
+          <h4 class="urgent-item-subject">${escHtml(nextExam.subject)}</h4>
           <p class="urgent-item-desc">
             <span class="emoji-icon" aria-hidden="true">📅 </span>${escHtml(dateFormatted)} • <span class="emoji-icon" aria-hidden="true">⏰ </span>${escHtml(timeFormatted)}<br>
             <span class="emoji-icon" aria-hidden="true">👨</span>‍<span class="emoji-icon" aria-hidden="true">🏫 </span>${escHtml(nextExam.teacher || 'Fachlehrkraft')} • <span class="emoji-icon" aria-hidden="true">🚪 </span>${escHtml(nextExam.room || 'Raum laut Plan')}
@@ -4657,7 +4664,7 @@ function renderUrgentNotificationBanner() {
           <span class="field-hint" style="font-weight: bold;">Handlungsbedarf</span>
         </div>
         <div>
-          <div class="urgent-item-subject">${unexcused.length} Fehlzeit${unexcused.length > 1 ? 'en' : ''} noch offen</div>
+          <h4 class="urgent-item-subject">${unexcused.length} Fehlzeit${unexcused.length > 1 ? 'en' : ''} noch offen</h4>
           <p class="urgent-item-desc">Bitte reiche zeitnah eine Entschuldigung oder Bescheinigung beim Klassenlehrer ein.</p>
         </div>
         <button type="button" class="btn btn-secondary urgent-action-btn" onclick="switchTab('absences')" aria-label="Zu den Fehlzeiten wechseln">
@@ -5291,13 +5298,13 @@ function renderMessagesView() {
     container.innerHTML = `
       <div class="empty-state" role="status" aria-live="polite">
         <span aria-hidden="true"><span class="emoji-icon" aria-hidden="true">💬</span></span>
-        <p>Keine Mitteilungen in dieser Kategorie vorhanden.</p>
+        <h3 style="margin: 0; font-size: inherit; font-weight: bold;">Keine Mitteilungen in dieser Kategorie vorhanden.</h3>
         <p class="empty-hint">Klicke oben auf „Neue Mitteilung verfassen“, um eine Nachricht an eine Lehrkraft zu senden, oder aktualisiere die Tagesnachrichten.</p>
       </div>`;
     return;
   }
 
-  let html = '<div class="messages-stack" role="list">';
+  let html = `<h3 class="section-subheading" style="margin: 18px 0 12px 0; font-size: 1.25rem;"><span class="emoji-icon" aria-hidden="true">📬 </span>Nachrichtenliste (${filtered.length})</h3><div class="messages-stack" role="list">`;
   filtered.forEach(msg => {
     const isNews = msg.type === 'news';
     const isSent = msg.type === 'sent';
@@ -5336,7 +5343,7 @@ function renderMessagesView() {
             </button>
           </div>
         </div>
-        <h3 class="msg-title">${escHtml(msg.subject || 'Ohne Betreff')}</h3>
+        <h4 class="msg-title">${escHtml(msg.subject || 'Ohne Betreff')}</h4>
         <div class="msg-author-line">
           ${isSent ? `<span class="emoji-icon" aria-hidden="true">👤 </span><strong>Empfänger:</strong> ${escHtml(msg.recipient || 'Lehrkraft')}` : `<span class="emoji-icon" aria-hidden="true">👤 </span><strong>Von:</strong> ${escHtml(msg.sender || 'LWL-Berufskolleg Soest')}`}
         </div>
@@ -5629,7 +5636,7 @@ function renderGradesView() {
   if (subjectsCountEl) subjectsCountEl.textContent = String(subjects.length);
 
   // Fächerkarten rendern
-  let html = '<div class="grades-grid">';
+  let html = '<h3 class="sr-only">Notenspiegel aller Schulfächer</h3><div class="grades-grid">';
   subjects.forEach(subj => {
     // Passende Klausuren für dieses Fach finden
     const matchingExams = exams.filter(ex => {
@@ -5694,9 +5701,9 @@ function renderGradesView() {
         </div>
 
         <div class="grade-exams-list">
-          <div style="font-size: 13px; font-weight: bold; margin-bottom: 6px; color: var(--text-secondary);">
+          <h4 class="grade-exams-heading">
             <span class="emoji-icon" aria-hidden="true">📝 </span>Termine &amp; Klassenarbeiten (${matchingExams.length}):
-          </div>
+          </h4>
           ${matchingExams.length === 0 ? '<p class="field-hint" style="padding: 6px 0;">Keine schriftlichen Klausuren für dieses Fach in WebUntis eingetragen.</p>' : ''}
           ${matchingExams.map((ex, idx) => {
             const gr = grades[ex.id];
@@ -5716,7 +5723,7 @@ function renderGradesView() {
             return `
               <div class="grade-exam-row">
                 <div style="flex: 1; min-width: 200px;">
-                  <strong>Arbeit ${idx + 1}: ${escHtml(ex.name || subj.code)}</strong>
+                  <h5 class="grade-exam-name">Arbeit ${idx + 1}: ${escHtml(ex.name || subj.code)}</h5>
                   <div class="field-hint"><span class="emoji-icon" aria-hidden="true">📅 </span>${escHtml(dateFormatted)} • <span class="emoji-icon" aria-hidden="true">⏰ </span>${escHtml(ex.startTime || '07:45')} - ${escHtml(ex.endTime || '09:15')} Uhr • <span class="emoji-icon" aria-hidden="true">🚪 </span>${escHtml(ex.room || 'Raum laut Plan')}</div>
                   ${gr && gr.note ? `<div style="font-size: 13px; color: var(--accent-primary); margin-top: 2px;"><span class="emoji-icon" aria-hidden="true">💬 </span>${escHtml(gr.note)}</div>` : ''}
                 </div>

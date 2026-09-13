@@ -162,6 +162,10 @@
          REITER 1: ZENTRALE ÜBERSICHT
          ======================================================================= -->
     <div id="view-overview" class="view-panel active" role="tabpanel" aria-labelledby="tab-overview">
+      <div class="banner-header">
+        <h2 class="banner-title" id="overview-view-title">Übersicht &amp; Tagesstatus</h2>
+        <p class="banner-subtitle">Tagesaktuelle Schulinformationen, Stundenstatus, Warnungen und Fristen auf einen Blick.</p>
+      </div>
 
       <!-- =======================================================================
            ZENTRALE ÜBERSICHTSSEITE: TAGESNACHRICHTEN, WARNUNGEN & FRISTEN
@@ -172,7 +176,7 @@
           <div class="urgent-title-group">
             <span class="urgent-icon" aria-hidden="true"><span class="emoji-icon" aria-hidden="true">📢</span></span>
             <div>
-              <h2 class="urgent-title" id="urgent-card-heading">Tagesnachrichten, Warnungen &amp; Fristen</h2>
+              <h3 class="urgent-title" id="urgent-card-heading">Tagesnachrichten, Warnungen &amp; Fristen</h3>
               <p class="urgent-subtitle" id="urgent-card-summary">Tagesaktuelle Schulinformationen, Klausuren-Countdown und Fristen auf einen Blick.</p>
             </div>
           </div>
@@ -193,6 +197,7 @@
 
       <!-- HIGHLIGHT-KARTE: AKTUELL & NÄCHSTE STUNDE AUF DER ÜBERSICHT -->
       <section class="now-next-card" aria-label="Aktueller Unterrichtsstatus">
+        <h3 class="sr-only">Aktueller Unterrichtsstatus</h3>
         <div class="status-box" id="box-now-lesson">
           <div class="status-label">Lade aktuellen Status...</div>
         </div>
@@ -222,6 +227,7 @@
 
       <!-- WOCHENAUSWAHL (EINE WOCHE ZURÜCK / VOR / AKTUELL) -->
       <section class="week-nav-bar" id="week-picker-bar" aria-label="Schulwoche auswählen" style="margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; background: var(--bg-card); border: 2px solid var(--border-subtle); border-radius: var(--border-radius-md); padding: 10px 14px;">
+        <h3 class="sr-only">Wochenauswahl</h3>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
           <button type="button" class="btn btn-secondary" id="btn-week-prev" onclick="changeWeekOffset(-1)" title="Vorherige Woche (Alt + links)" aria-label="Vorherige Schulwoche aufrufen">
             <span class="emoji-icon" aria-hidden="true">⬅️ </span>Vorherige Woche
@@ -242,6 +248,7 @@
 
       <!-- TAGESAUSWAHL -->
       <section class="day-nav-bar" id="day-picker-bar" aria-label="Wochentag auswählen">
+        <h3 class="sr-only">Tagesauswahl</h3>
         <div class="day-btn-group" role="group" aria-label="Tag filtern">
           <button type="button" class="day-btn active" id="day-btn-today" data-day="today" onclick="setDayFilter('today')">
             <span class="emoji-icon" aria-hidden="true">📍 </span><span id="day-label-today">Heute (H)</span>
@@ -291,6 +298,7 @@
 
       <!-- Jahres-Statistik & Filterleiste -->
       <section class="section-card" style="padding: 16px 20px; margin-bottom: 20px;" aria-label="Filter für Schuljahrstermine">
+        <h3 class="sr-only">Filter für Schuljahrstermine</h3>
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div class="exam-filter-group" role="group" aria-label="Termin-Filterauswahl">
             <button type="button" class="btn btn-secondary filter-btn active" id="filter-all" onclick="setExamFilter('all')">
@@ -340,6 +348,7 @@
 
       <!-- FILTERLEISTE FÜR HAUSAUFGABEN -->
       <section class="filter-card" aria-label="Hausaufgaben Filter und Ansichten">
+        <h3 class="sr-only">Hausaufgaben- und Klassenbuch-Filter</h3>
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div class="exam-filter-group" role="group" aria-label="Hausaufgaben- und Klassenbuch-Filter">
             <button type="button" class="btn btn-secondary filter-btn" id="hw-filter-classreg" onclick="setHomeworkFilter('classreg')">
@@ -388,6 +397,7 @@
       </div>
 
       <!-- STATISTIK-KARTEN -->
+      <h3 class="sr-only">Fehlzeiten-Statistik</h3>
       <div class="absence-stats-grid" id="absence-stats-container">
         <div class="absence-stat-card">
           <div class="absence-stat-number" id="stat-absence-days">0</div>
@@ -415,7 +425,7 @@
     </div>
 
     <!-- =======================================================================
-         REITER 5: TAGESNACHRICHTEN & MITTEILUNGEN (WEBUNTIS & MESSENGER)
+         REITER 6: TAGESNACHRICHTEN & MITTEILUNGEN (WEBUNTIS & MESSENGER)
          ======================================================================= -->
     <div id="view-messages" class="view-panel" role="tabpanel" aria-labelledby="tab-messages">
 
@@ -475,6 +485,7 @@
       </section>
 
       <!-- FILTERLEISTE FÜR MITTEILUNGEN -->
+      <h3 class="sr-only">Mitteilungsfilter</h3>
       <div class="filter-bar" role="group" aria-label="Mitteilungsfilter" style="margin-bottom: 16px;">
         <button type="button" class="filter-btn active" id="btn-filter-msg-all" onclick="filterMessages('all')">
           <span><span class="emoji-icon" aria-hidden="true">📬 </span>Alle Nachrichten</span> <span class="filter-count" id="count-msg-all">0</span>
@@ -520,6 +531,7 @@
       </div>
 
       <!-- KENNZAHLEN / STATISTIK-KARTEN -->
+      <h3 class="sr-only">Noten-Statistik und Schnitt</h3>
       <div class="absence-stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 20px;">
         <div class="absence-stat-card">
           <div class="absence-stat-number" id="stat-grade-gpa" style="color: var(--accent-primary);">--</div>
@@ -644,7 +656,7 @@
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div>
               <p style="font-size: var(--font-size-base); margin-bottom: 4px;">
-                Installierte Version: <strong id="app-version-display">v1.4.0</strong>
+                Installierte Version: <strong id="app-version-display">v1.9.4</strong>
               </p>
               <p style="font-size: 14px; color: var(--text-muted);" id="update-status-detail">
                 Automatische Hintergrundaktualisierung über GitHub ist aktiv.
