@@ -315,13 +315,17 @@ function setThemeDirect(themeName) {
 // =============================================================================
 // 3. BARRIEREFREIE SPRACHAUSGABE & SCREENREADER (NVDA/JAWS)
 // =============================================================================
+// Comprehensive emoji regex for clean screenreader & TTS output
+const ALL_EMOJI_REGEX = /[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2B00}-\u{2BFF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA9F}\u{231A}-\u{231B}\u{23E9}-\u{23F3}\u{23F8}-\u{23FA}\u{25AA}-\u{25AB}\u{25B6}\u{25C0}\u{25FB}-\u{25FE}\u{2614}-\u{2615}\u{2648}-\u{2653}\u{267F}\u{2693}\u{26A1}\u{26AA}-\u{26AB}\u{26BD}-\u{26BE}\u{26C4}-\u{26C5}\u{26CE}\u{26D4}\u{26EA}\u{26F2}-\u{26F3}\u{26F5}\u{26FA}\u{26FD}\u{2702}\u{2705}\u{2708}-\u{270D}\u{270F}\u{2712}\u{2714}\u{2716}\u{271D}\u{2721}\u{2728}\u{2733}-\u{2734}\u{2744}\u{2747}\u{274C}\u{274E}\u{2753}-\u{2755}\u{2757}\u{2763}-\u{2764}\u{2795}-\u{2797}\u{27A1}\u{27B0}\u{27BF}\u{2934}-\u{2935}\u{2B05}-\u{2B07}\u{2B1B}-\u{2B1C}\u{2B50}\u{2B55}\u{3030}\u{303D}\u{3297}\u{3299}\u{FE0F}]/gu;
+
 function announceSR(message, priority = 'polite') {
   const targetId = priority === 'assertive' ? 'sr-live-assertive' : 'sr-live';
   const liveEl = document.getElementById(targetId);
   if (!liveEl) return;
+  const cleanMsg = (message || '').replace(ALL_EMOJI_REGEX, '').trim();
   liveEl.textContent = '';
   setTimeout(() => {
-    liveEl.textContent = message;
+    liveEl.textContent = cleanMsg;
   }, 50);
 }
 
@@ -331,7 +335,7 @@ function speak(text, force = false) {
 
   try {
     speechSynth.cancel();
-    const cleanText = text.replace(/[\u{1F600}-\u{1F6FF}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '');
+    const cleanText = (text || '').replace(ALL_EMOJI_REGEX, '').trim();
     const utter = new SpeechSynthesisUtterance(cleanText);
     utter.lang = 'de-DE';
     utter.rate = appData.config.ttsRate || 1.0;
@@ -509,7 +513,7 @@ async function handleLoginSubmit(e) {
     statusBox.style.display = 'block';
     statusBox.innerHTML = `
       <div style="background: rgba(2, 132, 199, 0.1); border: 2px solid var(--accent-info); padding: 14px; border-radius: 8px;">
-        <strong style="color: var(--accent-info);">🔄 Melde an WebUntis des LWL-Berufskollegs Soest an...</strong>
+        <strong style="color: var(--accent-info);"><span class="emoji-icon" aria-hidden="true">🔄 </span>Melde an WebUntis des LWL-Berufskollegs Soest an...</strong>
       </div>
     `;
   }
@@ -553,7 +557,7 @@ async function handleLoginSubmit(e) {
         statusBox.style.display = 'block';
         statusBox.innerHTML = `
           <div style="background: rgba(185, 28, 28, 0.1); border: 2px solid var(--accent-danger); padding: 14px; border-radius: 8px;">
-            <strong style="color: var(--accent-danger);">❌ Anmeldung fehlgeschlagen</strong>
+            <strong style="color: var(--accent-danger);"><span class="emoji-icon" aria-hidden="true">❌ </span>Anmeldung fehlgeschlagen</strong>
             <p style="margin-top: 4px; font-size: 14px;">${escapeHtml(errDetail)}</p>
           </div>
         `;
@@ -574,7 +578,7 @@ async function handleLoginSubmit(e) {
         : 'Die lokale WebUntis-Brücke ist nicht erreichbar. Bitte starte Stundenplan_LWL.exe neu.';
       statusBox.innerHTML = `
         <div style="background: rgba(185, 28, 28, 0.1); border: 2px solid var(--accent-danger); padding: 14px; border-radius: 8px;">
-          <strong style="color: var(--accent-danger);">⚠️ Verbindung nicht möglich</strong>
+          <strong style="color: var(--accent-danger);"><span class="emoji-icon" aria-hidden="true">⚠️ </span>Verbindung nicht möglich</strong>
           <p style="margin-top: 4px; font-size: 14px;">${escapeHtml(errMsg)}</p>
         </div>
       `;
@@ -604,7 +608,7 @@ function exitApp() {
     fetch('/api/shutdown?confirmed=true').catch(() => {}).finally(() => {
       document.body.innerHTML = `
         <div style="text-align: center; padding: 60px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-          <h1 style="font-size: 28px; margin-bottom: 16px;">✅ Stundenplan-App beendet</h1>
+          <h1 style="font-size: 28px; margin-bottom: 16px;"><span class="emoji-icon" aria-hidden="true">✅ </span>Stundenplan-App beendet</h1>
           <p style="font-size: 18px; color: #4b5563;">Der lokale Dienst wurde ordnungsgemäß gestoppt.</p>
           <p style="font-size: 16px; margin-top: 10px;">Du kannst diesen Browser-Tab nun schließen.</p>
         </div>
@@ -3376,7 +3380,7 @@ function updateCurrentAndNextLesson() {
       <div class="status-label">Nächste Stunde (Montag 1. Std.)</div>
       <div class="status-content-title">${mondayFirst ? mondayFirst.subject : 'Unterrichtsbeginn'}</div>
       <div class="status-meta" style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
-        ${mondayFirst ? `<div>🚪 <strong>Raum:</strong> ${monRoom}</div><div>👨‍🏫 <strong>Lehrer:</strong> ${monTeach}</div>` : '<div>07:45 Uhr</div>'}
+        ${mondayFirst ? `<div><span class="emoji-icon" aria-hidden="true">🚪 </span><strong>Raum:</strong> ${monRoom}</div><div><span class="emoji-icon" aria-hidden="true">👨</span>‍<span class="emoji-icon" aria-hidden="true">🏫 </span><strong>Lehrer:</strong> ${monTeach}</div>` : '<div>07:45 Uhr</div>'}
       </div>
     `;
     return;
@@ -3407,13 +3411,13 @@ function updateCurrentAndNextLesson() {
     const curTeach = cleanTeacherName(currentLesson.teacher);
     boxNow.classList.add('active-now');
     boxNow.innerHTML = `
-      <div class="status-label">🔴 Aktuell läuft (${currentLesson.periodData.start} - ${currentLesson.periodData.end})</div>
+      <div class="status-label"><span class="emoji-icon" aria-hidden="true">🔴 </span>Aktuell läuft (${currentLesson.periodData.start} - ${currentLesson.periodData.end})</div>
       <div class="status-content-title">${currentLesson.subject}</div>
       <div class="status-meta" style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
-        <div>🚪 <strong>Raum:</strong> ${curRoom}</div>
-        <div>👨‍🏫 <strong>Lehrer:</strong> ${curTeach}</div>
-        ${currentLesson.klasse ? `<div>🏫 <strong>Klasse:</strong> ${escHtml(currentLesson.klasse)}</div>` : ''}
-        ${currentLesson.status === 'cancelled' ? '<div style="color: var(--accent-danger); font-weight: bold;">⚠️ [ENTFALL] Diese Stunde entfällt!</div>' : ''}
+        <div><span class="emoji-icon" aria-hidden="true">🚪 </span><strong>Raum:</strong> ${curRoom}</div>
+        <div><span class="emoji-icon" aria-hidden="true">👨</span>‍<span class="emoji-icon" aria-hidden="true">🏫 </span><strong>Lehrer:</strong> ${curTeach}</div>
+        ${currentLesson.klasse ? `<div><span class="emoji-icon" aria-hidden="true">🏫 </span><strong>Klasse:</strong> ${escHtml(currentLesson.klasse)}</div>` : ''}
+        ${currentLesson.status === 'cancelled' ? '<div style="color: var(--accent-danger); font-weight: bold;"><span class="emoji-icon" aria-hidden="true">⚠️ </span>[ENTFALL] Diese Stunde entfällt!</div>' : ''}
       </div>
     `;
   } else {
@@ -3429,12 +3433,12 @@ function updateCurrentAndNextLesson() {
     const nxtRoom = formatRoomNameOnly(nextLesson.room, nextLesson.teacher);
     const nxtTeach = cleanTeacherName(nextLesson.teacher);
     boxNext.innerHTML = `
-      <div class="status-label">🔜 Nächste Stunde (${nextLesson.period}. Std. ab ${nextLesson.periodData.start} Uhr)</div>
+      <div class="status-label"><span class="emoji-icon" aria-hidden="true">🔜 </span>Nächste Stunde (${nextLesson.period}. Std. ab ${nextLesson.periodData.start} Uhr)</div>
       <div class="status-content-title">${nextLesson.subject}</div>
       <div class="status-meta" style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
-        <div>🚪 <strong>Raum:</strong> ${nxtRoom}</div>
-        <div>👨‍🏫 <strong>Lehrer:</strong> ${nxtTeach}</div>
-        ${nextLesson.klasse ? `<div>🏫 <strong>Klasse:</strong> ${escHtml(nextLesson.klasse)}</div>` : ''}
+        <div><span class="emoji-icon" aria-hidden="true">🚪 </span><strong>Raum:</strong> ${nxtRoom}</div>
+        <div><span class="emoji-icon" aria-hidden="true">👨</span>‍<span class="emoji-icon" aria-hidden="true">🏫 </span><strong>Lehrer:</strong> ${nxtTeach}</div>
+        ${nextLesson.klasse ? `<div><span class="emoji-icon" aria-hidden="true">🏫 </span><strong>Klasse:</strong> ${escHtml(nextLesson.klasse)}</div>` : ''}
       </div>
     `;
   } else {
@@ -3650,7 +3654,7 @@ function renderExams() {
     html += `
       <section class="month-section" aria-labelledby="${groupId}">
         <h3 id="${groupId}" class="month-heading">
-          <span>📅 ${group.name}</span>
+          <span><span class="emoji-icon" aria-hidden="true">📅 </span>${group.name}</span>
           <span style="font-size: 14px; opacity: 0.85;">${group.items.length} ${group.items.length === 1 ? 'Eintrag' : 'Einträge'}</span>
         </h3>
         <div role="list">
@@ -3668,7 +3672,7 @@ function renderExams() {
         countdownText = 'Bereits vergangen';
         countdownClass = 'countdown-past';
       } else if (isToday) {
-        countdownText = '🔴 HEUTE!';
+        countdownText = '<span class="emoji-icon" aria-hidden="true">🔴 </span>HEUTE!';
         countdownClass = 'countdown-urgent';
       } else if (daysDiff === 1) {
         countdownText = 'Morgen!';
@@ -3688,13 +3692,13 @@ function renderExams() {
       let typeBadge = '';
       let itemClass = '';
       if (ev.type === 'exam') {
-        typeBadge = '<span class="event-type-badge type-exam">📝 Prüfung / Klausur</span>';
+        typeBadge = '<span class="event-type-badge type-exam"><span class="emoji-icon" aria-hidden="true">📝 </span>Prüfung / Klausur</span>';
         itemClass = 'exam-item';
       } else if (ev.type === 'holiday') {
-        typeBadge = '<span class="event-type-badge type-holiday">🏖️ Schulferien / Frei</span>';
+        typeBadge = '<span class="event-type-badge type-holiday"><span class="emoji-icon" aria-hidden="true">🏖️ </span>Schulferien / Frei</span>';
         itemClass = 'holiday-item';
       } else {
-        typeBadge = '<span class="event-type-badge type-appointment">📌 Schultermin</span>';
+        typeBadge = '<span class="event-type-badge type-appointment"><span class="emoji-icon" aria-hidden="true">📌 </span>Schultermin</span>';
         itemClass = 'appointment-item';
       }
 
@@ -3715,12 +3719,12 @@ function renderExams() {
             </div>
             <h4 class="event-title">${ev.title}</h4>
             <div class="event-meta-row">
-              <span class="event-meta-item">📅 <strong>${dateLabel}</strong></span>
-              <span class="event-meta-item">⏰ <strong>${ev.timeStr}</strong></span>
-              ${ev.type === 'exam' ? `<span class="event-meta-item">🚪 <strong>${ev.room}</strong></span>` : ''}
-              ${ev.type === 'exam' ? `<span class="event-meta-item">👨‍🏫 <strong>${ev.teacher}</strong></span>` : ''}
+              <span class="event-meta-item"><span class="emoji-icon" aria-hidden="true">📅 </span><strong>${dateLabel}</strong></span>
+              <span class="event-meta-item"><span class="emoji-icon" aria-hidden="true">⏰ </span><strong>${ev.timeStr}</strong></span>
+              ${ev.type === 'exam' ? `<span class="event-meta-item"><span class="emoji-icon" aria-hidden="true">🚪 </span><strong>${ev.room}</strong></span>` : ''}
+              ${ev.type === 'exam' ? `<span class="event-meta-item"><span class="emoji-icon" aria-hidden="true">👨</span>‍<span class="emoji-icon" aria-hidden="true">🏫 </span><strong>${ev.teacher}</strong></span>` : ''}
             </div>
-            ${ev.subTitle && ev.subTitle !== ev.title ? `<div style="margin-top: 6px; font-size: 14px; color: var(--text-muted);">📋 ${ev.subTitle}</div>` : ''}
+            ${ev.subTitle && ev.subTitle !== ev.title ? `<div style="margin-top: 6px; font-size: 14px; color: var(--text-muted);"><span class="emoji-icon" aria-hidden="true">📋 </span>${ev.subTitle}</div>` : ''}
           </div>
           <div class="event-side-box">
             <span class="countdown-pill ${countdownClass}" aria-hidden="true">${countdownText}</span>
@@ -3813,31 +3817,31 @@ function openLessonDetails(lessonId) {
     body.innerHTML = `
       <dl class="modal-detail-list">
         <div class="modal-detail-row">
-          <dt class="modal-detail-label">📘 Fach</dt>
+          <dt class="modal-detail-label"><span class="emoji-icon" aria-hidden="true">📘 </span>Fach</dt>
           <dd class="modal-detail-content" data-key="subject">${escHtml(lesson.subject || '–')}</dd>
         </div>
         <div class="modal-detail-row">
-          <dt class="modal-detail-label">📅 Datum</dt>
+          <dt class="modal-detail-label"><span class="emoji-icon" aria-hidden="true">📅 </span>Datum</dt>
           <dd class="modal-detail-content" data-key="date">${escHtml(lesson.dateStr || '–')}</dd>
         </div>
         <div class="modal-detail-row">
-          <dt class="modal-detail-label">⏰ Zeit</dt>
+          <dt class="modal-detail-label"><span class="emoji-icon" aria-hidden="true">⏰ </span>Zeit</dt>
           <dd class="modal-detail-content" data-key="time">${fmtTime(lesson.startTime)} – ${fmtTime(lesson.endTime)}</dd>
         </div>
         <div class="modal-detail-row">
-          <dt class="modal-detail-label">🏫 Raum</dt>
+          <dt class="modal-detail-label"><span class="emoji-icon" aria-hidden="true">🏫 </span>Raum</dt>
           <dd class="modal-detail-content" data-key="room">${escHtml(lesson.room || '–')}</dd>
         </div>
         <div class="modal-detail-row">
-          <dt class="modal-detail-label">👤 Lehrer</dt>
+          <dt class="modal-detail-label"><span class="emoji-icon" aria-hidden="true">👤 </span>Lehrer</dt>
           <dd class="modal-detail-content" data-key="teacher">${escHtml(lesson.teacher || '–')}</dd>
         </div>
         <div class="modal-detail-row">
-          <dt class="modal-detail-label">📝 Lehrstoff</dt>
+          <dt class="modal-detail-label"><span class="emoji-icon" aria-hidden="true">📝 </span>Lehrstoff</dt>
           <dd class="modal-detail-content" data-key="lstext">${lstextText}</dd>
         </div>
         <div class="modal-detail-row">
-          <dt class="modal-detail-label">📚 Hausaufgaben</dt>
+          <dt class="modal-detail-label"><span class="emoji-icon" aria-hidden="true">📚 </span>Hausaufgaben</dt>
           <dd class="modal-detail-content" data-key="homework">${hwText}</dd>
         </div>
       </dl>`;
@@ -3971,14 +3975,14 @@ function renderHomework() {
   if (filter === 'classreg') {
     html += `
       <div class="banner-header" style="padding: 12px 0; margin-bottom: 16px;">
-        <h3 class="section-subheading" style="margin: 0; font-size: 1.25rem;">📋 Offizielle Klassenbucheinträge (${classregEvents.length} aus WebUntis)</h3>
+        <h3 class="section-subheading" style="margin: 0; font-size: 1.25rem;"><span class="emoji-icon" aria-hidden="true">📋 </span>Offizielle Klassenbucheinträge (${classregEvents.length} aus WebUntis)</h3>
         <p class="field-hint">Offizielle Beschlüsse, Sprecherwahlen und Ankündigungen deiner Klasse ${escHtml(appData.config.klasse || 'BFW2B')} live aus dem WebUntis-Klassenbuch.</p>
       </div>`;
 
     if (classregEvents.length === 0) {
       html += `
         <div class="empty-state" role="status" aria-live="polite">
-          <span aria-hidden="true">📋</span>
+          <span aria-hidden="true"><span class="emoji-icon" aria-hidden="true">📋</span></span>
           <p>Aktuell liegen keine offiziellen Klassenbucheinträge vor.</p>
           <p class="empty-hint">Neue Einträge von Lehrkräften werden automatisch aus WebUntis geladen.</p>
         </div>`;
@@ -3993,13 +3997,13 @@ function renderHomework() {
             <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
               <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                 <span class="homework-date-badge" style="background: var(--bg-highlight); color: var(--text-color); font-weight: bold; font-size: 14px;">
-                  📅 ${escHtml(dateFormatted)}${timeFormatted ? ' um ' + escHtml(timeFormatted) : ''}
+                  <span class="emoji-icon" aria-hidden="true">📅 </span>${escHtml(dateFormatted)}${timeFormatted ? ' um ' + escHtml(timeFormatted) : ''}
                 </span>
                 <span class="urgent-badge" style="background: #e0e7ff; color: #3730a3; font-weight: bold; font-size: 13px;">
-                  🏫 Klasse: ${escHtml(ev.klasse || 'BFW2B')}
+                  <span class="emoji-icon" aria-hidden="true">🏫 </span>Klasse: ${escHtml(ev.klasse || 'BFW2B')}
                 </span>
                 <span class="urgent-badge" style="background: #fef3c7; color: #92400e; font-weight: bold; font-size: 13px;">
-                  📚 Fach: ${escHtml(ev.subject || 'Allgemein')}
+                  <span class="emoji-icon" aria-hidden="true">📚 </span>Fach: ${escHtml(ev.subject || 'Allgemein')}
                 </span>
               </div>
               <button type="button" class="btn btn-secondary" style="min-height: 32px; padding: 4px 12px; font-size: 13px;" onclick="speakClassregEvent('${ev.id}')" aria-label="Diesen Klassenbucheintrag vorlesen">
@@ -4010,7 +4014,7 @@ function renderHomework() {
               ${escHtml(ev.text)}
             </div>
             <div style="font-size: 13px; color: var(--text-muted); font-weight: 500;">
-              👤 <strong>Eingetragen von:</strong> ${escHtml(ev.teacher)} ${ev.teacherCode ? '(' + escHtml(ev.teacherCode) + ')' : ''}
+              <span class="emoji-icon" aria-hidden="true">👤 </span><strong>Eingetragen von:</strong> ${escHtml(ev.teacher)} ${ev.teacherCode ? '(' + escHtml(ev.teacherCode) + ')' : ''}
             </div>
           </article>
         `;
@@ -4027,14 +4031,14 @@ function renderHomework() {
   if (filter === 'classbook') {
     html += `
       <div class="banner-header" style="padding: 12px 0; margin-bottom: 16px;">
-        <h3 class="section-subheading" style="margin: 0; font-size: 1.25rem;">📖 Durchgenommener Lehrstoff (${classbook.length} Unterrichtsstunden)</h3>
+        <h3 class="section-subheading" style="margin: 0; font-size: 1.25rem;"><span class="emoji-icon" aria-hidden="true">📖 </span>Durchgenommener Lehrstoff (${classbook.length} Unterrichtsstunden)</h3>
         <p class="field-hint">Themen und behandelter Stoff der einzelnen Schulstunden aus WebUntis.</p>
       </div>`;
 
     if (classbook.length === 0) {
       html += `
         <div class="empty-state" role="status" aria-live="polite">
-          <span aria-hidden="true">📖</span>
+          <span aria-hidden="true"><span class="emoji-icon" aria-hidden="true">📖</span></span>
           <p>Noch kein Unterrichtsstoff im Klassenbuch erfasst.</p>
         </div>`;
     } else {
@@ -4053,10 +4057,10 @@ function renderHomework() {
         html += `
           <article class="homework-card classbook-entry" role="article" tabindex="0" aria-label="Lehrstoff in ${escHtml(entry.subject || 'Fach')}: ${escHtml(displayText)}">
             <div class="homework-header">
-              ${dateStr ? `<span class="homework-date-badge">📅 ${dateStr}</span>` : ''}
+              ${dateStr ? `<span class="homework-date-badge"><span class="emoji-icon" aria-hidden="true">📅 </span>${dateStr}</span>` : ''}
               <span class="homework-subject">${escHtml(entry.subject || 'Allgemein')}</span>
               ${entry.period ? `<span class="homework-assigned">${escHtml(entry.period)}</span>` : ''}
-              ${entry.teacher ? `<span class="homework-assigned">👤 ${escHtml(entry.teacher)}</span>` : ''}
+              ${entry.teacher ? `<span class="homework-assigned"><span class="emoji-icon" aria-hidden="true">👤 </span>${escHtml(entry.teacher)}</span>` : ''}
             </div>
             <p class="homework-desc">${escHtml(displayText)}</p>
           </article>`;
@@ -4073,9 +4077,9 @@ function renderHomework() {
   if (items.length === 0 && allHw.length === 0) {
     container.innerHTML = `
       <div class="empty-state" role="status" aria-live="polite">
-        <span aria-hidden="true">📚</span>
+        <span aria-hidden="true"><span class="emoji-icon" aria-hidden="true">📚</span></span>
         <p>Keine Hausaufgaben vorhanden.</p>
-        <p class="empty-hint">Hausaufgaben werden automatisch aus WebUntis geladen. Du kannst oben auf <strong>„📋 Klassenbucheinträge“</strong> klicken, um offizielle Beschlüsse und Einträge deiner Klasse zu sehen.</p>
+        <p class="empty-hint">Hausaufgaben werden automatisch aus WebUntis geladen. Du kannst oben auf <strong>„<span class="emoji-icon" aria-hidden="true">📋 </span>Klassenbucheinträge“</strong> klicken, um offizielle Beschlüsse und Einträge deiner Klasse zu sehen.</p>
       </div>`;
     return;
   }
@@ -4117,10 +4121,10 @@ function renderHomework() {
                  role="article" aria-label="Hausaufgabe: ${escHtml(hw.subject || 'Unbekannt')}">
           <div class="homework-header">
             <span class="homework-date-badge${isOverdue ? ' overdue' : ''}" aria-label="Fällig am ${dueStr}">
-              📅 ${dueStr}${isOverdue ? ' – Überfällig!' : ''}
+              <span class="emoji-icon" aria-hidden="true">📅 </span>${dueStr}${isOverdue ? ' – Überfällig!' : ''}
             </span>
             <span class="homework-subject">${escHtml(hw.subject || 'Allgemein')}</span>
-            ${hw.teacher ? `<span class="homework-assigned">👤 ${escHtml(hw.teacher)}</span>` : ''}
+            ${hw.teacher ? `<span class="homework-assigned"><span class="emoji-icon" aria-hidden="true">👤 </span>${escHtml(hw.teacher)}</span>` : ''}
             ${assignedStr ? `<span class="homework-assigned">Aufgegeben: ${assignedStr}</span>` : ''}
           </div>
           <p class="homework-desc">${escHtml(displayText)}</p>
@@ -4130,7 +4134,7 @@ function renderHomework() {
                    ${hw.completed ? 'checked' : ''}
                    aria-label="Als erledigt markieren: ${escHtml(hw.subject || '')}"
                    onchange="toggleHomeworkCompleted('${hw.id}')">
-            ${hw.completed ? 'Erledigt ✓' : 'Als erledigt markieren'}
+            ${hw.completed ? 'Erledigt <span class="emoji-icon" aria-hidden="true">✓</span>' : 'Als erledigt markieren'}
           </label>
         </article>`;
     });
@@ -4266,7 +4270,7 @@ function renderAbsences() {
   if (absences.length === 0) {
     container.innerHTML = `
       <div class="empty-state" role="status" aria-live="polite">
-        <span aria-hidden="true">✅</span>
+        <span aria-hidden="true"><span class="emoji-icon" aria-hidden="true">✅</span></span>
         <p>Keine Fehlzeiten vorhanden.</p>
         <p class="empty-hint">Fehlzeiten werden automatisch aus WebUntis geladen.</p>
       </div>`;
@@ -4292,18 +4296,18 @@ function renderAbsences() {
       ? `${fmtTime(abs.startTime)} – ${fmtTime(abs.endTime)}`
       : 'Ganztägig';
 
-    const statusLabel = abs.isExcused ? '✅ Entschuldigt' : '⚠️ Unentschuldigt';
+    const statusLabel = abs.isExcused ? '<span class="emoji-icon" aria-hidden="true">✅ </span>Entschuldigt' : '<span class="emoji-icon" aria-hidden="true">⚠️ </span>Unentschuldigt';
     const statusClass = abs.isExcused ? 'excused' : 'unexcused';
 
     html += `
       <article class="absence-item ${statusClass}" role="article"
                aria-label="Fehlzeit am ${dateStr}, ${statusLabel}">
         <div class="absence-header">
-          <span class="absence-date">📅 ${dateStr}</span>
-          <span class="absence-time">⏰ ${timeStr}</span>
+          <span class="absence-date"><span class="emoji-icon" aria-hidden="true">📅 </span>${dateStr}</span>
+          <span class="absence-time"><span class="emoji-icon" aria-hidden="true">⏰ </span>${timeStr}</span>
           <span class="absence-status ${statusClass}">${statusLabel}</span>
         </div>
-        ${abs.subject ? `<span class="absence-subject">📘 ${escHtml(abs.subject)}</span>` : ''}
+        ${abs.subject ? `<span class="absence-subject"><span class="emoji-icon" aria-hidden="true">📘 </span>${escHtml(abs.subject)}</span>` : ''}
         ${abs.reason  ? `<span class="absence-reason">Grund: ${escHtml(abs.reason)}</span>`  : ''}
       </article>`;
   });
@@ -4390,20 +4394,20 @@ function renderUrgentNotificationBanner() {
   // Text-Zusammenfassung generieren
   const summaryParts = [];
   if (classregEvents.length > 0) {
-    summaryParts.push(`📋 ${classregEvents.length} offizielle Klassenbucheinträge`);
+    summaryParts.push(`<span class="emoji-icon" aria-hidden="true">📋 </span>${classregEvents.length} offizielle Klassenbucheinträge`);
   }
   if (activeNews.length > 0) {
-    summaryParts.push(`📢 ${activeNews.length} Schulinformation / Mitteilung`);
+    summaryParts.push(`<span class="emoji-icon" aria-hidden="true">📢 </span>${activeNews.length} Schulinformation / Mitteilung`);
   }
   if (overdueHw.length > 0) {
-    summaryParts.push(`🚨 ${overdueHw.length} überfällige Aufgabe${overdueHw.length > 1 ? 'n' : ''}`);
+    summaryParts.push(`<span class="emoji-icon" aria-hidden="true">🚨 </span>${overdueHw.length} überfällige Aufgabe${overdueHw.length > 1 ? 'n' : ''}`);
   }
   if (soonHw.length > 0) {
-    summaryParts.push(`⏳ ${soonHw.length} anstehende Frist${soonHw.length > 1 ? 'en' : ''} in den nächsten 7 Tagen`);
+    summaryParts.push(`<span class="emoji-icon" aria-hidden="true">⏳ </span>${soonHw.length} anstehende Frist${soonHw.length > 1 ? 'en' : ''} in den nächsten 7 Tagen`);
   }
   if (nextExam) {
     const daysLabel = nextExam.diffDays === 0 ? 'Heute!' : (nextExam.diffDays === 1 ? 'Morgen!' : `in ${nextExam.diffDays} Tagen`);
-    summaryParts.push(`📝 Nächste Klausur: ${nextExam.subject || 'Klausur'} (${daysLabel})`);
+    summaryParts.push(`<span class="emoji-icon" aria-hidden="true">📝 </span>Nächste Klausur: ${nextExam.subject || 'Klausur'} (${daysLabel})`);
   }
   if (summaryEl) {
     summaryEl.textContent = summaryParts.join(' • ') || 'Aktuelle Fristenübersicht aus WebUntis.';
@@ -4419,7 +4423,7 @@ function renderUrgentNotificationBanner() {
     itemsHtml += `
       <div class="urgent-item" style="border-left: 6px solid #2563eb;" tabindex="0" role="article" aria-label="Klassenbucheintrag: ${escHtml(ev.text)}">
         <div class="urgent-item-header">
-          <span class="urgent-badge" style="background: #dbeafe; color: #1e40af;">📋 Klassenbucheintrag</span>
+          <span class="urgent-badge" style="background: #dbeafe; color: #1e40af;"><span class="emoji-icon" aria-hidden="true">📋 </span>Klassenbucheintrag</span>
           <span class="field-hint" style="font-weight: bold;">${escHtml(dateFormatted)}${ev.timeStr ? ' • ' + escHtml(ev.timeStr) : ''}</span>
         </div>
         <div>
@@ -4427,7 +4431,7 @@ function renderUrgentNotificationBanner() {
           <p class="urgent-item-desc">${escHtml(ev.text)}</p>
         </div>
         <button type="button" class="btn btn-secondary urgent-action-btn" onclick="switchTab('homework'); setHomeworkFilter('classreg');" aria-label="Zu den Klassenbucheinträgen wechseln">
-          <span>📋 Zu den Klassenbucheinträgen</span>
+          <span><span class="emoji-icon" aria-hidden="true">📋 </span>Zu den Klassenbucheinträgen</span>
         </button>
       </div>`;
   });
@@ -4435,7 +4439,7 @@ function renderUrgentNotificationBanner() {
   // 0b. Schulinformationen / Tagesnachrichten
   activeNews.forEach(msg => {
     const isNews = msg.type === 'news';
-    const badgeLabel = isNews ? '📢 Tagesnachricht' : '💬 Neue Mitteilung';
+    const badgeLabel = isNews ? '<span class="emoji-icon" aria-hidden="true">📢 </span>Tagesnachricht' : '<span class="emoji-icon" aria-hidden="true">💬 </span>Neue Mitteilung';
     const dateFormatted = msg.date ? formatGermanDate(new Date(msg.date)) : 'Aktuell';
     itemsHtml += `
       <div class="urgent-item" style="border-left: 6px solid #eab308;" tabindex="0" role="article" aria-label="${badgeLabel}: ${escHtml(msg.subject || 'Nachricht')}">
@@ -4449,10 +4453,10 @@ function renderUrgentNotificationBanner() {
         </div>
         <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
           <button type="button" class="btn btn-secondary urgent-action-btn" onclick="switchTab('messages')" aria-label="Zu den Mitteilungen wechseln">
-            <span>💬 Zur Mitteilung</span>
+            <span><span class="emoji-icon" aria-hidden="true">💬 </span>Zur Mitteilung</span>
           </button>
           <button type="button" class="btn btn-danger urgent-action-btn" onclick="deleteMessage('${msg.id}')" aria-label="Mitteilung ${escHtml(msg.subject || '')} löschen">
-            <span>🗑️ Löschen</span>
+            <span><span class="emoji-icon" aria-hidden="true">🗑️ </span>Löschen</span>
           </button>
         </div>
       </div>`;
@@ -4465,7 +4469,7 @@ function renderUrgentNotificationBanner() {
     itemsHtml += `
       <div class="urgent-item overdue" tabindex="0" role="article" aria-label="Überfällige Hausaufgabe in ${escHtml(hw.subject || 'Hausaufgabe')}">
         <div class="urgent-item-header">
-          <span class="urgent-badge overdue">🚨 Überfällig (seit ${daysOverdue} Tag${daysOverdue === 1 ? '' : 'en'})</span>
+          <span class="urgent-badge overdue"><span class="emoji-icon" aria-hidden="true">🚨 </span>Überfällig (seit ${daysOverdue} Tag${daysOverdue === 1 ? '' : 'en'})</span>
           <span class="field-hint" style="font-weight: bold;">${escHtml(dateFormatted)}</span>
         </div>
         <div>
@@ -4473,7 +4477,7 @@ function renderUrgentNotificationBanner() {
           <p class="urgent-item-desc">${escHtml(hw.text || 'Hausaufgabe ohne Text')}</p>
         </div>
         <button type="button" class="btn btn-secondary urgent-action-btn" onclick="switchTab('homework')" aria-label="Zu den Hausaufgaben wechseln">
-          <span>📚 Zu den Hausaufgaben</span>
+          <span><span class="emoji-icon" aria-hidden="true">📚 </span>Zu den Hausaufgaben</span>
         </button>
       </div>`;
   });
@@ -4485,7 +4489,7 @@ function renderUrgentNotificationBanner() {
     itemsHtml += `
       <div class="urgent-item due-soon" tabindex="0" role="article" aria-label="Anstehende Hausaufgabe in ${escHtml(hw.subject || 'Hausaufgabe')}, ${dText}">
         <div class="urgent-item-header">
-          <span class="urgent-badge due-soon">⏳ ${dText}</span>
+          <span class="urgent-badge due-soon"><span class="emoji-icon" aria-hidden="true">⏳ </span>${dText}</span>
           <span class="field-hint" style="font-weight: bold;">${escHtml(dateFormatted)}</span>
         </div>
         <div>
@@ -4493,7 +4497,7 @@ function renderUrgentNotificationBanner() {
           <p class="urgent-item-desc">${escHtml(hw.text || 'Hausaufgabe ohne Text')}</p>
         </div>
         <button type="button" class="btn btn-secondary urgent-action-btn" onclick="switchTab('homework')" aria-label="Zu den Hausaufgaben wechseln">
-          <span>📚 Zu den Hausaufgaben</span>
+          <span><span class="emoji-icon" aria-hidden="true">📚 </span>Zu den Hausaufgaben</span>
         </button>
       </div>`;
   });
@@ -4506,18 +4510,18 @@ function renderUrgentNotificationBanner() {
     itemsHtml += `
       <div class="urgent-item exam-countdown" tabindex="0" role="article" aria-label="Nächste Klausur in ${escHtml(nextExam.subject)}, ${dText}">
         <div class="urgent-item-header">
-          <span class="urgent-badge exam">📝 Klausur-Countdown</span>
-          <span class="urgent-badge exam" style="background: rgba(124,58,237,0.25); color: var(--text-primary); border: 1.5px solid #7c3aed;">⏳ ${dText}</span>
+          <span class="urgent-badge exam"><span class="emoji-icon" aria-hidden="true">📝 </span>Klausur-Countdown</span>
+          <span class="urgent-badge exam" style="background: rgba(124,58,237,0.25); color: var(--text-primary); border: 1.5px solid #7c3aed;"><span class="emoji-icon" aria-hidden="true">⏳ </span>${dText}</span>
         </div>
         <div>
           <div class="urgent-item-subject">${escHtml(nextExam.subject)}</div>
           <p class="urgent-item-desc">
-            📅 ${escHtml(dateFormatted)} • ⏰ ${escHtml(timeFormatted)}<br>
-            👨‍🏫 ${escHtml(nextExam.teacher || 'Fachlehrkraft')} • 🚪 ${escHtml(nextExam.room || 'Raum laut Plan')}
+            <span class="emoji-icon" aria-hidden="true">📅 </span>${escHtml(dateFormatted)} • <span class="emoji-icon" aria-hidden="true">⏰ </span>${escHtml(timeFormatted)}<br>
+            <span class="emoji-icon" aria-hidden="true">👨</span>‍<span class="emoji-icon" aria-hidden="true">🏫 </span>${escHtml(nextExam.teacher || 'Fachlehrkraft')} • <span class="emoji-icon" aria-hidden="true">🚪 </span>${escHtml(nextExam.room || 'Raum laut Plan')}
           </p>
         </div>
         <button type="button" class="btn btn-secondary urgent-action-btn" onclick="switchTab('exams')" aria-label="Zum Prüfungskalender wechseln">
-          <span>📝 Zum Prüfungskalender</span>
+          <span><span class="emoji-icon" aria-hidden="true">📝 </span>Zum Prüfungskalender</span>
         </button>
       </div>`;
   }
@@ -4529,7 +4533,7 @@ function renderUrgentNotificationBanner() {
     itemsHtml += `
       <div class="urgent-item overdue" tabindex="0" role="article" aria-label="Warnung: ${unexcused.length} unentschuldigte Fehlzeiten">
         <div class="urgent-item-header">
-          <span class="urgent-badge overdue">⚠️ Unentschuldigte Fehlzeit</span>
+          <span class="urgent-badge overdue"><span class="emoji-icon" aria-hidden="true">⚠️ </span>Unentschuldigte Fehlzeit</span>
           <span class="field-hint" style="font-weight: bold;">Handlungsbedarf</span>
         </div>
         <div>
@@ -4537,7 +4541,7 @@ function renderUrgentNotificationBanner() {
           <p class="urgent-item-desc">Bitte reiche zeitnah eine Entschuldigung oder Bescheinigung beim Klassenlehrer ein.</p>
         </div>
         <button type="button" class="btn btn-secondary urgent-action-btn" onclick="switchTab('absences')" aria-label="Zu den Fehlzeiten wechseln">
-          <span>⏱️ Zu den Fehlzeiten</span>
+          <span><span class="emoji-icon" aria-hidden="true">⏱️ </span>Zu den Fehlzeiten</span>
         </button>
       </div>`;
   }
@@ -4825,7 +4829,7 @@ async function checkSoftwareUpdate() {
       if (data.updated) {
         box.innerHTML = `
           <div style="background: rgba(21, 128, 61, 0.15); border: 2px solid var(--accent-ok); border-radius: 8px; padding: 14px;">
-            <strong style="color: var(--accent-ok);">🎉 Neues Update erfolgreich heruntergeladen!</strong>
+            <strong style="color: var(--accent-ok);"><span class="emoji-icon" aria-hidden="true">🎉 </span>Neues Update erfolgreich heruntergeladen!</strong>
             <p style="margin-top: 6px; font-size: 14px;">Version ${data.currentVersion} wurde installiert. Die Seite wird jetzt neu geladen...</p>
           </div>
         `;
@@ -4834,7 +4838,7 @@ async function checkSoftwareUpdate() {
       } else {
         box.innerHTML = `
           <div style="background: rgba(2, 132, 199, 0.1); border: 2px solid var(--accent-info); border-radius: 8px; padding: 14px;">
-            <strong style="color: var(--accent-info);">✅ Alles auf dem neuesten Stand!</strong>
+            <strong style="color: var(--accent-info);"><span class="emoji-icon" aria-hidden="true">✅ </span>Alles auf dem neuesten Stand!</strong>
             <p style="margin-top: 6px; font-size: 14px;">Du nutzt bereits die aktuellste Version ${data.currentVersion}.</p>
           </div>
         `;
@@ -4846,7 +4850,7 @@ async function checkSoftwareUpdate() {
       box.style.display = 'block';
       box.innerHTML = `
         <div style="background: rgba(185, 28, 28, 0.1); border: 2px solid var(--accent-danger); border-radius: 8px; padding: 14px;">
-          <strong style="color: var(--accent-danger);">⚠️ Update-Prüfung fehlgeschlagen</strong>
+          <strong style="color: var(--accent-danger);"><span class="emoji-icon" aria-hidden="true">⚠️ </span>Update-Prüfung fehlgeschlagen</strong>
           <p style="margin-top: 6px; font-size: 14px;">GitHub konnte nicht erreicht werden. Bitte prüfe deine Internetverbindung.</p>
         </div>
       `;
@@ -4888,7 +4892,7 @@ async function sendUserFeedback(e) {
     return;
   }
 
-  const category = catEl ? catEl.value : '💡 Vorschlag / Feedback';
+  const category = catEl ? catEl.value : '<span class="emoji-icon" aria-hidden="true">💡 </span>Vorschlag / Feedback';
   const rawAuthor = (authorEl && authorEl.value.trim()) ? authorEl.value.trim() : '';
   // NUR wenn der Nutzer ausdrücklich einen Namen eingegeben hat, wird dieser übertragen.
   // Sonst anonym - der WebUntis-Benutzername wird NICHT übertragen!
@@ -4956,7 +4960,7 @@ async function sendUserFeedback(e) {
     statusBox.style.display = 'block';
     statusBox.innerHTML = `
       <div style="background: rgba(21, 128, 61, 0.15); border: 2px solid var(--accent-ok); border-radius: var(--radius-md); padding: 16px;">
-        <strong style="color: var(--accent-ok); font-size: 16px;">✅ Vielen Dank für deine Rückmeldung!</strong>
+        <strong style="color: var(--accent-ok); font-size: 16px;"><span class="emoji-icon" aria-hidden="true">✅ </span>Vielen Dank für deine Rückmeldung!</strong>
         <p style="margin-top: 6px; font-size: 14px;">Dein Feedback wurde erfolgreich an den Entwickler übermittelt und direkt hier im Archiv gespeichert.</p>
       </div>
     `;
@@ -4985,7 +4989,7 @@ async function loadFeedbackArchive() {
     if (!raw.trim()) {
       container.innerHTML = `
         <div style="background: var(--bg-surface); border: 2px dashed var(--border-subtle); border-radius: var(--radius-md); padding: 22px; text-align: center;">
-          <p style="color: var(--text-muted); font-size: 15px;">📭 Noch keine gesendeten Feedback-Nachrichten im Archiv vorhanden.</p>
+          <p style="color: var(--text-muted); font-size: 15px;"><span class="emoji-icon" aria-hidden="true">📭 </span>Noch keine gesendeten Feedback-Nachrichten im Archiv vorhanden.</p>
         </div>
       `;
       return;
@@ -4995,7 +4999,7 @@ async function loadFeedbackArchive() {
     if (chunks.length === 0) {
       container.innerHTML = `
         <div style="background: var(--bg-surface); border: 2px dashed var(--border-subtle); border-radius: var(--radius-md); padding: 22px; text-align: center;">
-          <p style="color: var(--text-muted); font-size: 15px;">📭 Noch keine gesendeten Feedback-Nachrichten im Archiv vorhanden.</p>
+          <p style="color: var(--text-muted); font-size: 15px;"><span class="emoji-icon" aria-hidden="true">📭 </span>Noch keine gesendeten Feedback-Nachrichten im Archiv vorhanden.</p>
         </div>
       `;
       return;
@@ -5018,7 +5022,7 @@ async function loadFeedbackArchive() {
         parsed = JSON.parse(bodyStr);
       } catch (e) { }
 
-      let category = '💬 Feedback / Nachricht';
+      let category = '<span class="emoji-icon" aria-hidden="true">💬 </span>Feedback / Nachricht';
       let author = 'App-Nutzer';
       let email = '';
       let msg = bodyStr;
@@ -5034,10 +5038,10 @@ async function loadFeedbackArchive() {
         <article class="feedback-card" role="listitem" tabindex="0" aria-label="Feedback vom ${escapeHTML(timeStr)}: ${escapeHTML(category)} von ${escapeHTML(author)}">
           <div class="feedback-header">
             <span class="feedback-type-badge">${escapeHTML(category)}</span>
-            <span class="feedback-timestamp">🕒 ${escapeHTML(timeStr)}</span>
+            <span class="feedback-timestamp"><span class="emoji-icon" aria-hidden="true">🕒 </span>${escapeHTML(timeStr)}</span>
           </div>
           <div class="feedback-sender">
-            👤 <strong>Absender:</strong> ${escapeHTML(author)} ${email ? `| ✉️ ${escapeHTML(email)}` : ''}
+            <span class="emoji-icon" aria-hidden="true">👤 </span><strong>Absender:</strong> ${escapeHTML(author)} ${email ? `| <span class="emoji-icon" aria-hidden="true">✉️ </span>${escapeHTML(email)}` : ''}
           </div>
           <div class="feedback-message">${escapeHTML(msg)}</div>
         </article>
@@ -5049,7 +5053,7 @@ async function loadFeedbackArchive() {
   } catch (err) {
     container.innerHTML = `
       <div style="background: rgba(185, 28, 28, 0.1); border: 2px solid var(--accent-danger); border-radius: var(--radius-md); padding: 14px;">
-        <span style="color: var(--accent-danger);">⚠️ Archiv konnte nicht geladen werden.</span>
+        <span style="color: var(--accent-danger);"><span class="emoji-icon" aria-hidden="true">⚠️ </span>Archiv konnte nicht geladen werden.</span>
       </div>
     `;
   }
@@ -5166,7 +5170,7 @@ function renderMessagesView() {
   if (filtered.length === 0) {
     container.innerHTML = `
       <div class="empty-state" role="status" aria-live="polite">
-        <span aria-hidden="true">💬</span>
+        <span aria-hidden="true"><span class="emoji-icon" aria-hidden="true">💬</span></span>
         <p>Keine Mitteilungen in dieser Kategorie vorhanden.</p>
         <p class="empty-hint">Klicke oben auf „Neue Mitteilung verfassen“, um eine Nachricht an eine Lehrkraft zu senden, oder aktualisiere die Tagesnachrichten.</p>
       </div>`;
@@ -5180,16 +5184,16 @@ function renderMessagesView() {
     const isInbox = msg.type === 'inbox' || (!isNews && !isSent);
 
     let badgeClass = 'msg-badge-inbox';
-    let badgeLabel = '📥 Posteingang';
+    let badgeLabel = '<span class="emoji-icon" aria-hidden="true">📥 </span>Posteingang';
     let highlightClass = 'inbox-highlight';
 
     if (isNews) {
       badgeClass = 'msg-badge-news';
-      badgeLabel = '📢 Tagesnachricht der Schule';
+      badgeLabel = '<span class="emoji-icon" aria-hidden="true">📢 </span>Tagesnachricht der Schule';
       highlightClass = 'news-highlight';
     } else if (isSent) {
       badgeClass = 'msg-badge-sent';
-      badgeLabel = '📤 Gesendet';
+      badgeLabel = '<span class="emoji-icon" aria-hidden="true">📤 </span>Gesendet';
       highlightClass = 'sent-highlight';
     }
 
@@ -5201,7 +5205,7 @@ function renderMessagesView() {
         <div class="msg-header">
           <div class="msg-badges">
             <span class="msg-badge ${badgeClass}">${badgeLabel}</span>
-            <span class="msg-date">📅 ${escHtml(dateFormatted)}${timeFormatted ? ' um ' + escHtml(timeFormatted) + ' Uhr' : ''}</span>
+            <span class="msg-date"><span class="emoji-icon" aria-hidden="true">📅 </span>${escHtml(dateFormatted)}${timeFormatted ? ' um ' + escHtml(timeFormatted) + ' Uhr' : ''}</span>
           </div>
           <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <button type="button" class="btn btn-secondary" style="min-height: 34px; padding: 4px 10px; font-size: 13px;" onclick="speakMsg('${msg.id}')" aria-label="Diese Mitteilung vorlesen">
@@ -5214,7 +5218,7 @@ function renderMessagesView() {
         </div>
         <h3 class="msg-title">${escHtml(msg.subject || 'Ohne Betreff')}</h3>
         <div class="msg-author-line">
-          ${isSent ? `👤 <strong>Empfänger:</strong> ${escHtml(msg.recipient || 'Lehrkraft')}` : `👤 <strong>Von:</strong> ${escHtml(msg.sender || 'LWL-Berufskolleg Soest')}`}
+          ${isSent ? `<span class="emoji-icon" aria-hidden="true">👤 </span><strong>Empfänger:</strong> ${escHtml(msg.recipient || 'Lehrkraft')}` : `<span class="emoji-icon" aria-hidden="true">👤 </span><strong>Von:</strong> ${escHtml(msg.sender || 'LWL-Berufskolleg Soest')}`}
         </div>
         <div class="msg-body">${escHtml(msg.text || msg.body || '')}</div>
       </article>
@@ -5550,28 +5554,28 @@ function renderGradesView() {
               <span class="homework-subject">${escHtml(subj.code)}</span>
               <span>${escHtml(subj.name)}</span>
             </h3>
-            <span class="field-hint">👨‍🏫 ${escHtml(subj.teacher)} • 🏫 Klasse ${escHtml(subj.klasse || 'BFW2B')}</span>
+            <span class="field-hint"><span class="emoji-icon" aria-hidden="true">👨</span>‍<span class="emoji-icon" aria-hidden="true">🏫 </span>${escHtml(subj.teacher)} • <span class="emoji-icon" aria-hidden="true">🏫 </span>Klasse ${escHtml(subj.klasse || 'BFW2B')}</span>
           </div>
           <div>
-            ${officialMarkDisplay ? `<span class="grade-average-badge" style="background: #15803d; color: #fff;">🏆 ${escHtml(officialMarkDisplay)}</span>` : (subjAvg ? `<span class="grade-average-badge">Ø ${subjAvg}</span>` : '<span class="field-hint" style="font-weight: bold; color: var(--accent-primary);">⚡ Live WebUntis</span>')}
+            ${officialMarkDisplay ? `<span class="grade-average-badge" style="background: #15803d; color: #fff;"><span class="emoji-icon" aria-hidden="true">🏆 </span>${escHtml(officialMarkDisplay)}</span>` : (subjAvg ? `<span class="grade-average-badge">Ø ${subjAvg}</span>` : '<span class="field-hint" style="font-weight: bold; color: var(--accent-primary);"><span class="emoji-icon" aria-hidden="true">⚡ </span>Live WebUntis</span>')}
           </div>
         </div>
 
         <div style="padding: 10px 14px; background: var(--bg-surface-elevated); border-radius: var(--radius-sm); margin: 10px 0; font-size: 13.5px;">
           ${officialMarkDisplay ? `
             <div style="color: #15803d; font-weight: bold;">
-              ✅ Offizielle Zeugnisnote aus WebUntis: <strong>${escHtml(officialMarkDisplay)}</strong>
+              <span class="emoji-icon" aria-hidden="true">✅ </span>Offizielle Zeugnisnote aus WebUntis: <strong>${escHtml(officialMarkDisplay)}</strong>
             </div>
           ` : `
             <div style="color: var(--text-secondary);">
-              📋 <strong>Offizieller Status:</strong> Laufendes Schuljahr 2026/2027 (Zeugnisnote wird zum Halbjahr eingetragen).
+              <span class="emoji-icon" aria-hidden="true">📋 </span><strong>Offizieller Status:</strong> Laufendes Schuljahr 2026/2027 (Zeugnisnote wird zum Halbjahr eingetragen).
             </div>
           `}
         </div>
 
         <div class="grade-exams-list">
           <div style="font-size: 13px; font-weight: bold; margin-bottom: 6px; color: var(--text-secondary);">
-            📝 Termine &amp; Klassenarbeiten (${matchingExams.length}):
+            <span class="emoji-icon" aria-hidden="true">📝 </span>Termine &amp; Klassenarbeiten (${matchingExams.length}):
           </div>
           ${matchingExams.length === 0 ? '<p class="field-hint" style="padding: 6px 0;">Keine schriftlichen Klausuren für dieses Fach in WebUntis eingetragen.</p>' : ''}
           ${matchingExams.map((ex, idx) => {
@@ -5593,15 +5597,15 @@ function renderGradesView() {
               <div class="grade-exam-row">
                 <div style="flex: 1; min-width: 200px;">
                   <strong>Arbeit ${idx + 1}: ${escHtml(ex.name || subj.code)}</strong>
-                  <div class="field-hint">📅 ${escHtml(dateFormatted)} • ⏰ ${escHtml(ex.startTime || '07:45')} - ${escHtml(ex.endTime || '09:15')} Uhr • 🚪 ${escHtml(ex.room || 'Raum laut Plan')}</div>
-                  ${gr && gr.note ? `<div style="font-size: 13px; color: var(--accent-primary); margin-top: 2px;">💬 ${escHtml(gr.note)}</div>` : ''}
+                  <div class="field-hint"><span class="emoji-icon" aria-hidden="true">📅 </span>${escHtml(dateFormatted)} • <span class="emoji-icon" aria-hidden="true">⏰ </span>${escHtml(ex.startTime || '07:45')} - ${escHtml(ex.endTime || '09:15')} Uhr • <span class="emoji-icon" aria-hidden="true">🚪 </span>${escHtml(ex.room || 'Raum laut Plan')}</div>
+                  ${gr && gr.note ? `<div style="font-size: 13px; color: var(--accent-primary); margin-top: 2px;"><span class="emoji-icon" aria-hidden="true">💬 </span>${escHtml(gr.note)}</div>` : ''}
                 </div>
                 <div style="display: flex; align-items: center; gap: 10px;">
                   <span class="grade-badge-value ${badgeClass}" title="${hasGrade ? 'Note: ' + gr.mark : 'Ausstehend / noch nicht benotet'}">
                     ${hasGrade ? gr.mark : 'Offen'}
                   </span>
                   <button type="button" class="btn btn-secondary" style="min-height: 36px; padding: 4px 10px; font-size: 13px;" onclick="openAddGradeModal('${ex.id}')" aria-label="Optionale Notiz oder Note zu Klausur am ${dateFormatted}">
-                    <span>${hasGrade ? '✏️ Notiz' : '➕ Notiz'}</span>
+                    <span>${hasGrade ? '<span class="emoji-icon" aria-hidden="true">✏️ </span>Notiz' : '<span class="emoji-icon" aria-hidden="true">➕ </span>Notiz'}</span>
                   </button>
                 </div>
               </div>

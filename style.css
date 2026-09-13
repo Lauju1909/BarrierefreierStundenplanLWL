@@ -133,7 +133,8 @@ body {
 }
 
 /* Text-Only Modus (versteckt Emojis für Braille/Screenreader) */
-body.text-only-mode .emoji-icon {
+body.text-only-mode .emoji-icon,
+body.text-only-mode .urgent-icon {
   display: none !important;
 }
 

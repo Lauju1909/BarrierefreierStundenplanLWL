@@ -25,7 +25,7 @@
   <header class="app-header" role="banner">
     <div class="header-content">
       <div class="brand">
-        <span class="app-icon emoji-icon" aria-hidden="true">🏫</span>
+        <span class="app-icon emoji-icon" aria-hidden="true"><span class="emoji-icon" aria-hidden="true">🏫</span></span>
         <div class="brand-text">
           <h1>Mein Stundenplan &amp; Prüfungen</h1>
           <span class="school-tag" id="header-school-name">LWL-Berufskolleg Soest • Live aus WebUntis</span>
@@ -103,7 +103,7 @@
 
       <!-- Schnellzugriff Barrierefreiheit direkt beim Login -->
       <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-        <span style="font-size: 14px; font-weight: bold;">👁️ Schnellauswahl Kontrast:</span>
+        <span style="font-size: 14px; font-weight: bold;"><span class="emoji-icon" aria-hidden="true">👁️ </span>Schnellauswahl Kontrast:</span>
         <div style="display: flex; gap: 8px;">
           <button type="button" class="btn btn-secondary" style="min-height: 38px; padding: 4px 10px; font-size: 13px;" onclick="setThemeDirect('theme-light')">Hell</button>
           <button type="button" class="btn btn-secondary" style="min-height: 38px; padding: 4px 10px; font-size: 13px;" onclick="setThemeDirect('theme-dark')">Dunkel</button>
@@ -170,7 +170,7 @@
       <section id="urgent-notifications-card" class="urgent-card" aria-live="polite" aria-label="Zentrale Übersicht: Tagesnachrichten, Warnungen und Fristen">
         <div class="urgent-card-header">
           <div class="urgent-title-group">
-            <span class="urgent-icon" aria-hidden="true">📢</span>
+            <span class="urgent-icon" aria-hidden="true"><span class="emoji-icon" aria-hidden="true">📢</span></span>
             <div>
               <h2 class="urgent-title" id="urgent-card-heading">Tagesnachrichten, Warnungen &amp; Fristen</h2>
               <p class="urgent-subtitle" id="urgent-card-summary">Tagesaktuelle Schulinformationen, Klausuren-Countdown und Fristen auf einen Blick.</p>
@@ -294,16 +294,16 @@
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div class="exam-filter-group" role="group" aria-label="Termin-Filterauswahl">
             <button type="button" class="btn btn-secondary filter-btn active" id="filter-all" onclick="setExamFilter('all')">
-              <span>📅 <strong>Alle Termine</strong> (<span id="count-all">0</span>)</span>
+              <span><span class="emoji-icon" aria-hidden="true">📅 </span><strong>Alle Termine</strong> (<span id="count-all">0</span>)</span>
             </button>
             <button type="button" class="btn btn-secondary filter-btn" id="filter-exams" onclick="setExamFilter('exams')">
-              <span>📝 <strong>Prüfungen &amp; Klausuren</strong> (<span id="count-exams">0</span>)</span>
+              <span><span class="emoji-icon" aria-hidden="true">📝 </span><strong>Prüfungen &amp; Klausuren</strong> (<span id="count-exams">0</span>)</span>
             </button>
             <button type="button" class="btn btn-secondary filter-btn" id="filter-holidays" onclick="setExamFilter('holidays')">
-              <span>🏖️ <strong>Ferien &amp; Feiertage</strong> (<span id="count-holidays">0</span>)</span>
+              <span><span class="emoji-icon" aria-hidden="true">🏖️ </span><strong>Ferien &amp; Feiertage</strong> (<span id="count-holidays">0</span>)</span>
             </button>
             <button type="button" class="btn btn-secondary filter-btn" id="filter-upcoming" onclick="setExamFilter('upcoming')">
-              <span>⏳ <strong>Nur anstehend</strong> (<span id="count-upcoming">0</span>)</span>
+              <span><span class="emoji-icon" aria-hidden="true">⏳ </span><strong>Nur anstehend</strong> (<span id="count-upcoming">0</span>)</span>
             </button>
           </div>
           <div id="exams-schoolyear-badge" class="today-badge" style="font-size: 14px; font-weight: bold; background: rgba(2, 132, 199, 0.15); border: 2px solid var(--accent-info);">
@@ -343,19 +343,19 @@
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
           <div class="exam-filter-group" role="group" aria-label="Hausaufgaben- und Klassenbuch-Filter">
             <button type="button" class="btn btn-secondary filter-btn" id="hw-filter-classreg" onclick="setHomeworkFilter('classreg')">
-              <span>📋 <strong>Klassenbucheinträge</strong> (<span id="hw-count-classreg">2</span>)</span>
+              <span><span class="emoji-icon" aria-hidden="true">📋 </span><strong>Klassenbucheinträge</strong> (<span id="hw-count-classreg">2</span>)</span>
             </button>
             <button type="button" class="btn btn-secondary filter-btn active" id="hw-filter-pending" onclick="setHomeworkFilter('pending')">
-              <span>⏳ <strong>Offene Aufgaben</strong> (<span id="hw-count-pending">0</span>)</span>
+              <span><span class="emoji-icon" aria-hidden="true">⏳ </span><strong>Offene Aufgaben</strong> (<span id="hw-count-pending">0</span>)</span>
             </button>
             <button type="button" class="btn btn-secondary filter-btn" id="hw-filter-all" onclick="setHomeworkFilter('all')">
-              <span>📝 <strong>Alle Hausaufgaben</strong> (<span id="hw-count-all">0</span>)</span>
+              <span><span class="emoji-icon" aria-hidden="true">📝 </span><strong>Alle Hausaufgaben</strong> (<span id="hw-count-all">0</span>)</span>
             </button>
             <button type="button" class="btn btn-secondary filter-btn" id="hw-filter-completed" onclick="setHomeworkFilter('completed')">
-              <span>✅ <strong>Erledigt</strong> (<span id="hw-count-completed">0</span>)</span>
+              <span><span class="emoji-icon" aria-hidden="true">✅ </span><strong>Erledigt</strong> (<span id="hw-count-completed">0</span>)</span>
             </button>
             <button type="button" class="btn btn-secondary filter-btn" id="hw-filter-classbook" onclick="setHomeworkFilter('classbook')">
-              <span>📖 <strong>Durchgenommener Lehrstoff</strong> (<span id="hw-count-classbook">0</span>)</span>
+              <span><span class="emoji-icon" aria-hidden="true">📖 </span><strong>Durchgenommener Lehrstoff</strong> (<span id="hw-count-classbook">0</span>)</span>
             </button>
           </div>
         </div>
@@ -391,19 +391,19 @@
       <div class="absence-stats-grid" id="absence-stats-container">
         <div class="absence-stat-card">
           <div class="absence-stat-number" id="stat-absence-days">0</div>
-          <div class="absence-stat-label">📅 Fehltage gesamt</div>
+          <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">📅 </span>Fehltage gesamt</div>
         </div>
         <div class="absence-stat-card">
           <div class="absence-stat-number" id="stat-absence-hours">0</div>
-          <div class="absence-stat-label">⏱️ Fehlstunden gesamt</div>
+          <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">⏱️ </span>Fehlstunden gesamt</div>
         </div>
         <div class="absence-stat-card">
           <div class="absence-stat-number" id="stat-absence-excused" style="color: var(--accent-ok);">0</div>
-          <div class="absence-stat-label">🟢 Entschuldigt</div>
+          <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">🟢 </span>Entschuldigt</div>
         </div>
         <div class="absence-stat-card">
           <div class="absence-stat-number" id="stat-absence-unexcused" style="color: var(--accent-danger);">0</div>
-          <div class="absence-stat-label">🔴 Unentschuldigt / Offen</div>
+          <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">🔴 </span>Unentschuldigt / Offen</div>
         </div>
       </div>
 
@@ -442,8 +442,8 @@
       <!-- FORMULAR ZUM VERFASSEN EINER NEUEN MITTEILUNG (EINKLAPPBAR) -->
       <section id="message-composer-card" class="section-card" style="display: none; border-color: var(--accent-primary);" aria-labelledby="composer-heading">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-          <h3 id="composer-heading" style="font-size: var(--font-size-lg); color: var(--accent-primary);">✍️ Neue Mitteilung verfassen</h3>
-          <button type="button" class="btn btn-secondary" style="min-height: 36px; padding: 4px 10px;" onclick="toggleMessageComposer(false)" aria-label="Formular schließen">✕ Schließen</button>
+          <h3 id="composer-heading" style="font-size: var(--font-size-lg); color: var(--accent-primary);"><span class="emoji-icon" aria-hidden="true">✍️ </span>Neue Mitteilung verfassen</h3>
+          <button type="button" class="btn btn-secondary" style="min-height: 36px; padding: 4px 10px;" onclick="toggleMessageComposer(false)" aria-label="Formular schließen"><span class="emoji-icon" aria-hidden="true">✕ </span>Schließen</button>
         </div>
         <form id="form-send-message" onsubmit="handleSendMessageSubmit(event)" class="accessible-form">
           <div class="form-row-2">
@@ -477,16 +477,16 @@
       <!-- FILTERLEISTE FÜR MITTEILUNGEN -->
       <div class="filter-bar" role="group" aria-label="Mitteilungsfilter" style="margin-bottom: 16px;">
         <button type="button" class="filter-btn active" id="btn-filter-msg-all" onclick="filterMessages('all')">
-          <span>📬 Alle Nachrichten</span> <span class="filter-count" id="count-msg-all">0</span>
+          <span><span class="emoji-icon" aria-hidden="true">📬 </span>Alle Nachrichten</span> <span class="filter-count" id="count-msg-all">0</span>
         </button>
         <button type="button" class="filter-btn" id="btn-filter-msg-news" onclick="filterMessages('news')">
-          <span>📢 Tagesnachrichten / Ticker</span> <span class="filter-count" id="count-msg-news">0</span>
+          <span><span class="emoji-icon" aria-hidden="true">📢 </span>Tagesnachrichten / Ticker</span> <span class="filter-count" id="count-msg-news">0</span>
         </button>
         <button type="button" class="filter-btn" id="btn-filter-msg-inbox" onclick="filterMessages('inbox')">
-          <span>📥 Posteingang</span> <span class="filter-count" id="count-msg-inbox">0</span>
+          <span><span class="emoji-icon" aria-hidden="true">📥 </span>Posteingang</span> <span class="filter-count" id="count-msg-inbox">0</span>
         </button>
         <button type="button" class="filter-btn" id="btn-filter-msg-sent" onclick="filterMessages('sent')">
-          <span>📤 Gesendet</span> <span class="filter-count" id="count-msg-sent">0</span>
+          <span><span class="emoji-icon" aria-hidden="true">📤 </span>Gesendet</span> <span class="filter-count" id="count-msg-sent">0</span>
         </button>
       </div>
 
@@ -523,19 +523,19 @@
       <div class="absence-stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 20px;">
         <div class="absence-stat-card">
           <div class="absence-stat-number" id="stat-grade-gpa" style="color: var(--accent-primary);">--</div>
-          <div class="absence-stat-label">📊 Gesamtschnitt</div>
+          <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">📊 </span>Gesamtschnitt</div>
         </div>
         <div class="absence-stat-card">
           <div class="absence-stat-number" id="stat-grade-total-exams">13</div>
-          <div class="absence-stat-label">📝 Klausuren im Schuljahr</div>
+          <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">📝 </span>Klausuren im Schuljahr</div>
         </div>
         <div class="absence-stat-card">
           <div class="absence-stat-number" id="stat-grade-graded-exams" style="color: var(--accent-ok);">0 / 13</div>
-          <div class="absence-stat-label">✅ Bewertete Arbeiten</div>
+          <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">✅ </span>Bewertete Arbeiten</div>
         </div>
         <div class="absence-stat-card">
           <div class="absence-stat-number" id="stat-grade-subjects-count">12</div>
-          <div class="absence-stat-label">📚 Schulfächer gesamt</div>
+          <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">📚 </span>Schulfächer gesamt</div>
         </div>
       </div>
 
@@ -558,7 +558,7 @@
 
       <!-- 1. WEBUNTIS KONTO STATUS -->
       <section class="section-card" aria-labelledby="account-heading">
-        <h3 id="account-heading" style="font-size: var(--font-size-lg); margin-bottom: 8px;">👤 Angemeldetes WebUntis-Konto</h3>
+        <h3 id="account-heading" style="font-size: var(--font-size-lg); margin-bottom: 8px;"><span class="emoji-icon" aria-hidden="true">👤 </span>Angemeldetes WebUntis-Konto</h3>
         <p class="field-hint">Informationen zu deiner aktuellen Verbindung zum LWL-Berufskolleg Soest:</p>
 
         <div style="background: var(--bg-surface-elevated); border: 2px solid var(--border-color); border-radius: var(--radius-md); padding: 18px; margin-top: 14px;">
@@ -588,7 +588,7 @@
 
       <!-- 2. BARRIEREFREIHEIT & DESIGN -->
       <section class="section-card" aria-labelledby="a11y-cfg-heading">
-        <h3 id="a11y-cfg-heading" style="font-size: var(--font-size-lg); margin-bottom: 6px;">👁️ Barrierefreiheit &amp; Kontraste (WCAG 2.2 AAA)</h3>
+        <h3 id="a11y-cfg-heading" style="font-size: var(--font-size-lg); margin-bottom: 6px;"><span class="emoji-icon" aria-hidden="true">👁️ </span>Barrierefreiheit &amp; Kontraste (WCAG 2.2 AAA)</h3>
         <p class="field-hint">Optimiere Farben, Schriftgrößen und Sprachausgabe für deine Sehbedürfnisse:</p>
 
         <div class="accessible-form" style="margin-top: 16px;">
@@ -637,7 +637,7 @@
 
       <!-- 3. SOFTWARE-UPDATES & GITHUB -->
       <section class="section-card" aria-labelledby="updates-heading">
-        <h3 id="updates-heading" style="font-size: var(--font-size-lg); margin-bottom: 6px;">🔄 Software-Updates &amp; GitHub (Auto-Updater)</h3>
+        <h3 id="updates-heading" style="font-size: var(--font-size-lg); margin-bottom: 6px;"><span class="emoji-icon" aria-hidden="true">🔄 </span>Software-Updates &amp; GitHub (Auto-Updater)</h3>
         <p class="field-hint">Die Anwendung prüft bei jedem Start und automatisch im Hintergrund auf neue Versionen:</p>
 
         <div style="background: var(--bg-surface-elevated); border: 2px solid var(--border-color); border-radius: var(--radius-md); padding: 18px; margin-top: 14px;">
@@ -652,7 +652,7 @@
             </div>
             <div>
               <span class="today-badge" style="background: rgba(21, 128, 61, 0.15); border: 2px solid var(--accent-ok); font-weight: bold;">
-                🟢 Auto-Update bereit
+                <span class="emoji-icon" aria-hidden="true">🟢 </span>Auto-Update bereit
               </span>
             </div>
           </div>
@@ -671,7 +671,7 @@
 
       <!-- 4. FEEDBACK, WÜNSCHE & PROBLEM MELDEN -->
       <section class="section-card" aria-labelledby="feedback-heading">
-        <h3 id="feedback-heading" style="font-size: var(--font-size-lg); margin-bottom: 6px;">💬 Feedback, Wünsche &amp; Fehler melden</h3>
+        <h3 id="feedback-heading" style="font-size: var(--font-size-lg); margin-bottom: 6px;"><span class="emoji-icon" aria-hidden="true">💬 </span>Feedback, Wünsche &amp; Fehler melden</h3>
         <p class="field-hint">Hast du eine Idee, einen Wunsch oder ein Problem? Sende dein Feedback direkt hier über die App:</p>
 
         <form id="feedback-form" onsubmit="sendUserFeedback(event)" class="accessible-form" style="margin-top: 16px;">
@@ -679,10 +679,10 @@
             <div class="form-group">
               <label for="feedback-category" class="field-label"><strong>Art des Feedbacks:</strong></label>
               <select id="feedback-category" class="large-select" required>
-                <option value="💡 Neue Idee / Verbesserungsvorschlag">💡 Neue Idee / Verbesserungsvorschlag</option>
-                <option value="🐛 Problem / Fehler melden">🐛 Problem / Fehler melden</option>
-                <option value="⭐ Lob &amp; Zufriedenheit">⭐ Lob &amp; Zufriedenheit</option>
-                <option value="❓ Frage zur Stundenplan-App">❓ Frage zur Stundenplan-App</option>
+                <option value="Neue Idee / Verbesserungsvorschlag">Neue Idee / Verbesserungsvorschlag</option>
+                <option value="Problem / Fehler melden">Problem / Fehler melden</option>
+                <option value="Lob &amp; Zufriedenheit">Lob &amp; Zufriedenheit</option>
+                <option value="Frage zur Stundenplan-App">Frage zur Stundenplan-App</option>
               </select>
             </div>
             <div class="form-group">
@@ -714,7 +714,7 @@
         <div style="margin-top: 32px; border-top: 2px solid var(--border-subtle); padding-top: 24px;">
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
             <div>
-              <h4 style="font-size: var(--font-size-base); font-weight: bold; margin-bottom: 4px;">📬 Gesendete Nachrichten &amp; Archiv</h4>
+              <h4 style="font-size: var(--font-size-base); font-weight: bold; margin-bottom: 4px;"><span class="emoji-icon" aria-hidden="true">📬 </span>Gesendete Nachrichten &amp; Archiv</h4>
               <p class="field-hint">Alle aus dieser App versendeten Nachrichten und Vorschläge auf einen Blick:</p>
             </div>
             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -750,7 +750,7 @@
     <div class="modal-card" role="document">
       <div class="modal-header">
         <h3 id="modal-lesson-title" class="modal-title">Stunden-Details</h3>
-        <button type="button" class="modal-close-btn" onclick="closeLessonDetails()" aria-label="Details schließen (Taste Esc)">✕</button>
+        <button type="button" class="modal-close-btn" onclick="closeLessonDetails()" aria-label="Details schließen (Taste Esc)"><span class="emoji-icon" aria-hidden="true">✕</span></button>
       </div>
       <div class="modal-body" id="modal-lesson-body">
         <!-- Dynamisch befüllt -->
@@ -773,7 +773,7 @@
     <div class="modal-card" role="document">
       <div class="modal-header">
         <h3 id="modal-grade-title" class="modal-title">Klausurnote eintragen</h3>
-        <button type="button" class="modal-close-btn" onclick="closeGradeModal()" aria-label="Modal schließen (Taste Esc)">✕</button>
+        <button type="button" class="modal-close-btn" onclick="closeGradeModal()" aria-label="Modal schließen (Taste Esc)"><span class="emoji-icon" aria-hidden="true">✕</span></button>
       </div>
       <form id="form-save-grade" onsubmit="handleSaveGradeSubmit(event)">
         <div class="modal-body">

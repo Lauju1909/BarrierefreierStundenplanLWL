@@ -1,9 +1,11 @@
 {
-  "version": "1.8.9",
+  "version": "1.9.0",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-13",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
+    "Reiner Textmodus (0 Emojis für NVDA / Braillezeile): Sämtliche Emojis in der gesamten Benutzeroberfläche, Stundenkarten, Tab-Leisten, Hinweisen und Buttons werden vollständig ausgeblendet",
+    "Screenreader- und TTS-Emoji-Filterung: Weder NVDA noch die Sprachausgabe lesen störende Emoji-Zeichen vor",
     "Korrekte Untereinander-Anzeige von Raum, Lehrer und Klasse in den Stundenkarten (CSS-Layoutfix)",
     "Klar strukturierte Anzeige untereinander für Raum, Lehrer und Klasse ohne Zeilenüberlappung",
     "Beseitigung von doppeltem 'Raum: Raum' und 'Lehrer: Lehrer' in allen Stundenplan- und Übersichtskarten",
