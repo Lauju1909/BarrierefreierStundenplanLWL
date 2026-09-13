@@ -487,7 +487,7 @@ async function handleLoginSubmit(e) {
     return;
   }
 
-  // Schutz vor doppelter Eingabe des Benutzernamens (z. B. SchneiLauSchneiLau)
+  // Schutz vor doppelter Eingabe des Benutzernamens (z. B. versehentliches Doppeleinfügen)
   if (userVal.length >= 6 && userVal.length % 2 === 0) {
     const half = userVal.length / 2;
     if (userVal.slice(0, half).toLowerCase() === userVal.slice(half).toLowerCase()) {
@@ -535,7 +535,7 @@ async function handleLoginSubmit(e) {
       let errDetail = 'Benutzername oder Passwort ist nicht korrekt. Bitte überprüfe deine Eingabe.';
       if (lastLoginAuthError) {
         if (lastLoginAuthError.code === -8504 || (lastLoginAuthError.message && lastLoginAuthError.message.toLowerCase().includes('bad credentials'))) {
-          errDetail = 'Benutzername oder Passwort ist nicht korrekt. Bitte achte darauf, dass der Benutzername (z. B. SchneiLau) ohne Tippfehler eingegeben wird.';
+          errDetail = 'Benutzername oder Passwort ist nicht korrekt. Bitte achte darauf, dass der Benutzername ohne Tippfehler eingegeben wird.';
         } else if (lastLoginAuthError.code === -8520) {
           errDetail = 'Dein WebUntis-Konto ist vorübergehend gesperrt. Bitte wende dich an das Schulsekretariat.';
         } else if (lastLoginAuthError.message) {
