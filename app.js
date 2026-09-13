@@ -3330,7 +3330,7 @@ function renderTimetable() {
           ${isWeekView ? `<div style="font-size: 13px; font-weight: bold; color: var(--accent-info); margin-top: 2px;">${getDayName(l.day)}</div>` : ''}
         </div>
         <div class="lesson-main">
-          <div class="lesson-subject-title">${l.subject}</div>
+          <h3 class="lesson-subject-title"><span class="sr-only">${isWeekView ? getDayName(l.day) + ', ' : ''}${l.period}. Stunde: </span>${l.subject}</h3>
           <div style="margin-top: 6px; font-size: var(--font-size-base); color: var(--text-secondary);">
             <div style="display: block; line-height: 1.8;"><span class="emoji-icon" aria-hidden="true">🚪 </span><strong>Raum:</strong> ${cleanRoom}</div>
             <div style="display: block; line-height: 1.8;"><span class="emoji-icon" aria-hidden="true">👨‍🏫 </span><strong>Lehrer:</strong> ${cleanTeacher}</div>
@@ -3375,7 +3375,7 @@ function updateCurrentAndNextLesson() {
   if (currentJsDay < 1 || currentJsDay > 5) {
     boxNow.innerHTML = `
       <div class="status-label">Aktuell (Wochenende)</div>
-      <div class="status-content-title">Schönes Wochenende!</div>
+      <h3 class="status-content-title">Schönes Wochenende!</h3>
       <div class="status-meta">Am Montag geht die Schule wieder um 07:45 Uhr los.</div>
     `;
     const mondayFirst = currentWeekLessons.find(t => t.day === 1 && t.period === 1);
@@ -3383,9 +3383,9 @@ function updateCurrentAndNextLesson() {
     const monTeach = mondayFirst ? cleanTeacherName(mondayFirst.teacher) : '';
     boxNext.innerHTML = `
       <div class="status-label">Nächste Stunde (Montag 1. Std.)</div>
-      <div class="status-content-title">${mondayFirst ? mondayFirst.subject : 'Unterrichtsbeginn'}</div>
+      <h3 class="status-content-title">${mondayFirst ? mondayFirst.subject : 'Unterrichtsbeginn'}</h3>
       <div class="status-meta" style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
-        ${mondayFirst ? `<div><span class="emoji-icon" aria-hidden="true">🚪 </span><strong>Raum:</strong> ${monRoom}</div><div><span class="emoji-icon" aria-hidden="true">👨</span>‍<span class="emoji-icon" aria-hidden="true">🏫 </span><strong>Lehrer:</strong> ${monTeach}</div>` : '<div>07:45 Uhr</div>'}
+        ${mondayFirst ? `<div><span class="emoji-icon" aria-hidden="true">🚪 </span><strong>Raum:</strong> ${monRoom}</div><div><span class="emoji-icon" aria-hidden="true">👨‍🏫 </span><strong>Lehrer:</strong> ${monTeach}</div>` : '<div>07:45 Uhr</div>'}
       </div>
     `;
     return;
@@ -3417,10 +3417,10 @@ function updateCurrentAndNextLesson() {
     boxNow.classList.add('active-now');
     boxNow.innerHTML = `
       <div class="status-label"><span class="emoji-icon" aria-hidden="true">🔴 </span>Aktuell läuft (${currentLesson.periodData.start} - ${currentLesson.periodData.end})</div>
-      <div class="status-content-title">${currentLesson.subject}</div>
+      <h3 class="status-content-title">${currentLesson.subject}</h3>
       <div class="status-meta" style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
         <div><span class="emoji-icon" aria-hidden="true">🚪 </span><strong>Raum:</strong> ${curRoom}</div>
-        <div><span class="emoji-icon" aria-hidden="true">👨</span>‍<span class="emoji-icon" aria-hidden="true">🏫 </span><strong>Lehrer:</strong> ${curTeach}</div>
+        <div><span class="emoji-icon" aria-hidden="true">👨‍🏫 </span><strong>Lehrer:</strong> ${curTeach}</div>
         ${currentLesson.klasse ? `<div><span class="emoji-icon" aria-hidden="true">🏫 </span><strong>Klasse:</strong> ${escHtml(currentLesson.klasse)}</div>` : ''}
         ${currentLesson.status === 'cancelled' ? '<div style="color: var(--accent-danger); font-weight: bold;"><span class="emoji-icon" aria-hidden="true">⚠️ </span>[ENTFALL] Diese Stunde entfällt!</div>' : ''}
       </div>
@@ -3429,7 +3429,7 @@ function updateCurrentAndNextLesson() {
     boxNow.classList.remove('active-now');
     boxNow.innerHTML = `
       <div class="status-label">Aktuell</div>
-      <div class="status-content-title">Kein laufender Unterricht</div>
+      <h3 class="status-content-title">Kein laufender Unterricht</h3>
       <div class="status-meta">Aktuell ist Pause oder unterrichtsfreie Zeit.</div>
     `;
   }
@@ -3439,17 +3439,17 @@ function updateCurrentAndNextLesson() {
     const nxtTeach = cleanTeacherName(nextLesson.teacher);
     boxNext.innerHTML = `
       <div class="status-label"><span class="emoji-icon" aria-hidden="true">🔜 </span>Nächste Stunde (${nextLesson.period}. Std. ab ${nextLesson.periodData.start} Uhr)</div>
-      <div class="status-content-title">${nextLesson.subject}</div>
+      <h3 class="status-content-title">${nextLesson.subject}</h3>
       <div class="status-meta" style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
         <div><span class="emoji-icon" aria-hidden="true">🚪 </span><strong>Raum:</strong> ${nxtRoom}</div>
-        <div><span class="emoji-icon" aria-hidden="true">👨</span>‍<span class="emoji-icon" aria-hidden="true">🏫 </span><strong>Lehrer:</strong> ${nxtTeach}</div>
+        <div><span class="emoji-icon" aria-hidden="true">👨‍🏫 </span><strong>Lehrer:</strong> ${nxtTeach}</div>
         ${nextLesson.klasse ? `<div><span class="emoji-icon" aria-hidden="true">🏫 </span><strong>Klasse:</strong> ${escHtml(nextLesson.klasse)}</div>` : ''}
       </div>
     `;
   } else {
     boxNext.innerHTML = `
       <div class="status-label">Schultag beendet</div>
-      <div class="status-content-title">Schulschluss!</div>
+      <h3 class="status-content-title">Schulschluss!</h3>
       <div class="status-meta">Für heute sind alle Stunden absolviert.</div>
     `;
   }

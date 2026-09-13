@@ -473,9 +473,11 @@ body.theme-high-contrast .status-box.active-now {
 }
 
 .status-content-title {
+  margin: 0;
   font-size: var(--font-size-lg);
   font-weight: bold;
   color: var(--text-primary);
+  line-height: 1.2;
 }
 
 .status-meta {
@@ -603,9 +605,11 @@ body.theme-high-contrast .lesson-card.status-substitute {
 }
 
 .lesson-subject-title {
+  margin: 0;
   font-size: var(--font-size-lg);
   font-weight: bold;
   color: var(--text-primary);
+  line-height: 1.2;
 }
 
 .lesson-details-row {
