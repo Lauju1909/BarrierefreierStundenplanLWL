@@ -1203,20 +1203,20 @@ async function performWebUntisSync(userOverride, passOverride) {
     const teachersMap = {};
     if (teaRes && teaRes.result && Array.isArray(teaRes.result)) {
       teaRes.result.forEach(t => {
-        const tName = `${t.foreName ? t.foreName + ' ' : ''}${t.longName || t.name}`;
-        teachersMap[t.id] = tName;
-        if (t.name) teachersMap[t.name] = tName;
+        // Use longName as full name, fallback to name (abbreviation). Never include foreName separately.
+        const tName = t.longName || t.name || '';
+        if (tName) {
+          teachersMap[t.id] = tName;
+          if (t.name) teachersMap[t.name] = tName;
+        }
       });
     }
 
     const roomsMap = {};
     if (rooRes && rooRes.result && Array.isArray(rooRes.result)) {
       rooRes.result.forEach(r => {
-        let label = r.name || '';
-        if (r.longName && r.longName !== r.name) {
-          label = r.name ? `${r.name} (${r.longName})` : r.longName;
-        }
-        if (!label) label = r.name || r.longName || ('Raum ' + r.id);
+        // Only store the room's short name (e.g. "B208"), not the longName (which is often a teacher name like "Hanauer")
+        const label = r.name || r.longName || ('Raum ' + r.id);
         roomsMap[r.id] = label;
         if (r.name) roomsMap[r.name] = label;
       });
@@ -2916,23 +2916,32 @@ function formatRoomDisplay(roomStr, teacherStr) {
 }
 
 function formatRoomNameOnly(roomStr, teacherStr) {
-  const disp = formatRoomDisplay(roomStr, teacherStr);
-  if (!disp || disp.toLowerCase() === 'raum wird bekanntgegeben' || disp.toLowerCase() === 'wird bekanntgegeben') {
+  if (!roomStr || typeof roomStr !== 'string') return 'wird bekanntgegeben';
+  // Strip ALL "Raum"/"Raum " prefixes (however many times repeated)
+  let clean = roomStr.trim().replace(/^(?:raum\s*)+/i, '').trim();
+  if (!clean || clean.toLowerCase() === 'wird bekanntgegeben'
+      || clean.toLowerCase() === 'hanauer'
+      || clean.toLowerCase() === 'null'
+      || clean.toLowerCase() === 'undefined') {
     return 'wird bekanntgegeben';
   }
-  let clean = disp.replace(/^(?:raum\s*)+/i, '').trim();
-  return clean || 'wird bekanntgegeben';
+  // Also check against teacher to avoid using teacher name as room
+  if (teacherStr && typeof teacherStr === 'string') {
+    const tClean = teacherStr.trim().replace(/^(?:lehrer(?:in)?|lehrkraft)\s*/i, '').trim().toLowerCase();
+    if (tClean && clean.toLowerCase() === tClean) return 'wird bekanntgegeben';
+  }
+  return clean;
 }
 
 function cleanTeacherName(teacherStr) {
   if (!teacherStr || typeof teacherStr !== 'string') return 'Lehrkraft';
-  let clean = teacherStr.trim();
+  // Strip ALL "Lehrer"/"Lehrkraft"/"Lehrerin" prefixes (however many times repeated)
+  let clean = teacherStr.trim().replace(/^(?:lehrkraft|lehrer(?:in)?)\s*/i, '').trim();
   const lower = clean.toLowerCase();
   if (!clean || lower === 'lehrkraft' || lower === 'lehrer' || lower === 'null' || lower === 'undefined') {
     return 'Lehrkraft';
   }
-  clean = clean.replace(/^(?:lehrkraft|lehrer(?:in)?)\s+/i, '').trim();
-  return clean || 'Lehrkraft';
+  return clean;
 }
 
 // =============================================================================
@@ -3328,8 +3337,8 @@ function renderTimetable() {
           ${l.notes && l.notes !== l.lstext ? `<div style="display: block; font-size: 13px; font-weight: bold; color: var(--accent-warn); margin-top: 4px;">ℹ️ ${escapeHTML(l.notes)}</div>` : ''}
         </div>
         <div class="lesson-badge-wrap">
-          <span class="status-badge ${badgeClass}">${badgeText}</span>
-          <span style="font-size: 12px; color: var(--text-muted); font-weight: bold; margin-top: 4px; display: block; text-align: right;">Details ↗</span>
+          <div style="display: block;"><span class="status-badge ${badgeClass}">${badgeText}</span></div>
+          <div style="display: block; font-size: 12px; color: var(--text-muted); font-weight: bold; margin-top: 6px; text-align: right;">Details ↗</div>
         </div>
       </article>
     `;
