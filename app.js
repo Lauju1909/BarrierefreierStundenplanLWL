@@ -110,7 +110,10 @@ let appData = {
   webuntisGradeList: [],
   webuntisLessons: [],
   webuntisFinalMarks: {},
-  selectedGradeSchoolYear: '2025/2026'
+  selectedGradeSchoolYear: '2025/2026',
+  canteen: null,
+  selectedCanteenWeek: 'kw38',
+  selectedCanteenDay: 'all'
 };
 
 let currentTab = 'overview';
@@ -179,6 +182,9 @@ function loadAppData() {
         webuntisLessons: (parsed.webuntisLessons && Array.isArray(parsed.webuntisLessons)) ? parsed.webuntisLessons : [],
         webuntisFinalMarks: (parsed.webuntisFinalMarks && typeof parsed.webuntisFinalMarks === 'object') ? parsed.webuntisFinalMarks : {},
         selectedGradeSchoolYear: parsed.selectedGradeSchoolYear || '2025/2026',
+        canteen: (parsed.canteen && typeof parsed.canteen === 'object') ? parsed.canteen : null,
+        selectedCanteenWeek: parsed.selectedCanteenWeek || 'kw38',
+        selectedCanteenDay: parsed.selectedCanteenDay || 'all',
         holidays: (parsed.holidays && parsed.holidays.length > 0) ? parsed.holidays : [...DEFAULT_NRW_HOLIDAYS_2026_2027],
         schoolYear: parsed.schoolYear || null,
         examFilter: 'all',
@@ -384,6 +390,7 @@ function switchTab(tabId) {
     { id: 'absences', btn: 'tab-absences', view: 'view-absences' },
     { id: 'messages', btn: 'tab-messages', view: 'view-messages' },
     { id: 'grades', btn: 'tab-grades', view: 'view-grades' },
+    { id: 'canteen', btn: 'tab-canteen', view: 'view-canteen' },
     { id: 'settings', btn: 'tab-settings', view: 'view-settings' }
   ];
 
@@ -427,9 +434,12 @@ function switchTab(tabId) {
   } else if (tabId === 'grades') {
     renderGradesView();
     announceSR('Reiter 7: Noten und Leistungsübersicht ausgewählt.', 'polite');
+  } else if (tabId === 'canteen') {
+    renderCanteenView();
+    announceSR('Reiter 8: Mensa und Speisepläne ausgewählt.', 'polite');
   } else if (tabId === 'settings') {
     loadFeedbackArchive();
-    announceSR('Reiter 8: Konto und Einstellungen ausgewählt.', 'polite');
+    announceSR('Reiter 9: Konto und Einstellungen ausgewählt.', 'polite');
   }
 }
 
@@ -4849,6 +4859,9 @@ function initApp() {
       switchTab('grades');
     } else if (e.key === '8') {
       e.preventDefault();
+      switchTab('canteen');
+    } else if (e.key === '9') {
+      e.preventDefault();
       switchTab('settings');
     } else if (e.key === 'h' || e.key === 'H') {
       e.preventDefault();
@@ -4885,10 +4898,16 @@ function initApp() {
         readMessagesSummary();
       } else if (currentTab === 'grades') {
         readGradesSummary();
+      } else if (currentTab === 'canteen') {
+        readCanteenSummary();
       }
     } else if (e.key === 'a' || e.key === 'A') {
       e.preventDefault();
-      triggerManualSync();
+      if (currentTab === 'canteen') {
+        refreshCanteenData();
+      } else {
+        triggerManualSync();
+      }
     } else if (e.key === 'Escape') {
       closeLessonDetails();
       closeGradeModal();
@@ -4907,6 +4926,7 @@ function initApp() {
     renderAbsences();
     renderMessagesView();
     renderGradesView();
+    renderCanteenView();
     renderUrgentNotificationBanner();
     updateCurrentAndNextLesson();
     performWebUntisSync();
@@ -5704,6 +5724,12 @@ function renderGradesView() {
     appData.selectedGradeSchoolYear = selectedSy;
   }
 
+  // Oberes Schuljahr-Auswahlmenü synchronisieren
+  const gradeSySelect = document.getElementById('grade-schoolyear-select');
+  if (gradeSySelect && gradeSySelect.value !== selectedSy) {
+    gradeSySelect.value = selectedSy;
+  }
+
   // Schuljahr-Filter-Leiste rendern
   if (syBar) {
     const syOptions = [
@@ -6145,6 +6171,323 @@ function readGradesSummary() {
   announceSR(speech, 'assertive');
 }
 
+
+
+
+
+// =============================================================================
+// 14. MENSA & SPEISEPLÄNE (REITER 8)
+// Offizielle Speisepläne der Mensa LWL-Von-Vincke-Schule & BBW Soest
+// =============================================================================
+
+const DEFAULT_CANTEEN_DATA = {"source": "LWL-Von-Vincke-Schule Soest & BBW Soest", "sourceUrl": "https://www.lwl-von-vincke-schule.de/de/aktuelles/speiseplane/", "lastUpdated": "2026-09-13T17:40:00Z", "weeks": [{"weekId": "kw38", "kw": 38, "label": "Diese Woche (KW 38: 14.09. – 17.09.2026)", "dateRange": "14.09. bis 17.09.2026", "isCurrent": true, "days": [{"day": "Montag", "date": "14.09.2026", "breakfast": "Gouda", "menu1": "6 Geflügel Cevapcici E,G,D\nZaziki M;\ntomatisierter Gemüsereis C\nWeißkohl-Paprikasalat in Essig/Öldressing Dressing Bio Vanillejoghurt M", "menu2": "6 Geflügel Cevapcici E,G,D\nZaziki M;\ntomatisierterGemüsereis C\nWeißkohl-Paprikasalat in\nEssig/Öldressing D\nBio Vanillejoghurt M", "menu3": "Gemüsenuggets C\nfruchtige Currysoße M\nKartoffelwedges\nWeißkohl-Paprikasalat in\nEssig/Öldressing D\nBio Vanillejoghurt M", "extra": "Eine Salattheke mit diversen Salaten und Dressinge , zur Selbstbedienung steht für Sie bereit", "dinner": "Geflügelfrisch wurst, Geflügel dauerwurst"}, {"day": "Dienstag", "date": "15.09.2026", "breakfast": "Edamer", "menu1": "Schweinerückesteak auf griechischer Art E,G\nZwiebel-Senfsenfdip\nrustikaler Salat mit Hirtenkäse in pikanten Kräuterdip C,D\nFladenbrot G,\nZitronenkuchen GE", "menu2": "Putensteak auf griechischer Art E,G\nZwiebel-Senfsenfdip\nrustikaler Salat mit Hirtenkäse in pikanten Kräuterdip C,D\nFladenbrot G\nZitronenkuchen G,E", "menu3": "2 Hot Dogs M;G;C;D\nvegetarische Bockwurst, Hot- Dogbrötchen, hausgemachte Hot- Dogsauce, Tomatenketchup, Röstzwiebel\nSalatbeilage Kräuterdressing C;H\nZitronenkuchen G,E", "extra": "Tagessuppe", "dinner": "Geflügelleber-wurst\nBitte über den Tagesanforderungsschein bestellen."}, {"day": "Mittwoch", "date": "16.09.2026", "breakfast": "Tilsiter\nFruchtjoghurt oder Fruchtquark speise", "menu1": "Hähnchenschnitzel G,H,E\nRahmsoße M\nKartoffelkroketten\nbunter Gemüsemix M\nSchokopudding mit Sahne M,S", "menu2": "Hähnchenschnitzel G,H,E\nRahmsoße M\nKartoffelkroketten\nbunter Gemüsemix M\nSchokopudding mit Sahne M,S", "menu3": "Kartoffelpizza\ndiverse Gemüse, Tomate mit veganem Käse überbacken C,G,M\nSalatbeilage mit Joghurtdressing\nSchokopudding mit Sahne M,S", "extra": "Eine Salattheke mit diversen Salaten und Dressinge , zur Selbstbedienung steht für Sie bereit", "dinner": "Toast Hawaii"}, {"day": "Donnerstag", "date": "17.09.2026", "breakfast": "Butterkäse oder\nMaasdamer", "menu1": "Tortellini mit Rindfleischfüllung\nfruchtiger Tomatensoße G,M,E,C geriebener Hartkäse\ngemischte Salatbeilage mit Joghurtdressing M\nObst", "menu2": "Tortellini mit Rindfleischfüllung\nfruchtiger Tomatensoße G,M,E,C geriebener Hartkäse\nSalatbeilage mit Joghurtdressing M\nObst", "menu3": "Eierpfannkuchen mit Spinat und Mozzarella gefüllt. G,E,M\nGemüse-Bulgur C,G\nObst", "extra": "", "dinner": "Geflügelfrisch wurst, Geflügel dauerwurst"}]}, {"weekId": "kw39", "kw": 39, "label": "Nächste Woche (KW 39: 21.09. – 24.09.2026)", "dateRange": "21.09. bis 24.09.2026", "isCurrent": false, "days": [{"day": "Montag", "date": "21.09.2026", "breakfast": "Gouda", "menu1": "Hähnchencrossies G,M,E\nfruchtige Currysoße M\nReis\ngemischter Salat\nmit Joghurtdressing M\nObstsalat", "menu2": "Hähnchencrossies G,M,E\nfruchtige Currysoße M\nReis\ngemischter Salat\nmit Joghurtdressing M\nObstsalat", "menu3": "Gemüseknusperrösti S,H,G,E\nFrischkäse-Kräuterdip M\nReis\ngemischter Salatteller\nmit Joghurtdressing M\nObstsalat", "extra": "Eine Salattheke mit diversen Salaten und Dressinge, steht zur Selbstbedienung für Sie bereit", "dinner": "Geflügelfrisch wurst, Geflügel dauerwurst"}, {"day": "Dienstag", "date": "22.09.2026", "breakfast": "Edamer", "menu1": "Fischfilet gebacken E,G,\nTomatencremesoße\nMexicogemüse\nKartoffelplätzchen\nVanillecreme mit Sahne M", "menu2": "Geflügelhacksteak\nTomatencremesoße\nMexicogemüse\nKartoffelplätzchen\nVanillecreme mit Sahne M", "menu3": "5 Gemüse-Maultaschen\nBlumenkohl-Schnittlauchcremesauce\nPfannengemüse Pastinake, Möhre und Kohlrabi\nG,E,C,M Vanillecreme mit Sahne M", "extra": "Tagessuppe", "dinner": "Mozzarella\nBitte über den Tagesanforderungsschein bestellen"}, {"day": "Mittwoch", "date": "23.09.2026", "breakfast": "Tilsiter\nFruchtjoghurt oder Fruchtquark speise", "menu1": "Nudelauflauf\nmit Gemüse, gebratenen Putenbrustgeschnetzeltem und Käse überbachen G,E,H,M\nRahmsoße M,\nEisdessert G,S", "menu2": "Nudelauflauf\nmit Gemüse und Käse überbachen G,E,H,M\nRahmsoße M,\nEisdessert G,S", "menu3": "Tortellini mit Ricottafüllung\nfruchtige Paprika-Tomatensoße M,G,C,E,D\nSalatbeilage mit Thousend Islanddressing M,C,\nEisdessert G,S", "extra": "Eine Salattheke mit diversen Salaten und Dressinge, steht zur Selbstbedienung für Sie bereit", "dinner": "Coleslaw\namerikanischer Krautsalat. Weißkohl, Möhre, Joghurt-Majonnaisedressing M"}, {"day": "Donnerstag", "date": "24.09.2026", "breakfast": "Butterkäse oder\nMaasdamer", "menu1": "Chili con carne\nRindfleisch, Kidneybohnen,Tomaten, Paprika, Mais,Möhre, Sellerie Zwiebel in pikanter Soße C,G\nhausgemachtes Baguettebrot G\nMilchreis mit Topping M,S", "menu2": "Chili con carne\nRindfleisch, Kidneybohnen,Tomaten, Paprika, Mais,Möhre, Sellerie Zwiebel in pikanter Soße C,G\nhausgemachtes Baguettebrot G\nMilchreis mit Topping M,S", "menu3": "Süßkartoffel-Schupfnudel-Topf\nverschiedene Gemüse, gebratene Sojawürfel\nGemüse-Veloûte M,G,E,A,C\nMilchreis mit Topping M,S", "extra": "", "dinner": "Geflügelfrisch wurst, Geflügel dauerwurst"}]}, {"weekId": "kw37", "kw": 37, "label": "Vorige Woche (KW 37: 07.09. – 10.09.2026)", "dateRange": "07.09. bis 10.09.2026", "isCurrent": false, "days": [{"day": "Montag", "date": "07.09.2026", "breakfast": "Gouda", "menu1": "leicht gebratenes Hahnchenbrustfilet\nChampignoncremesosse M,G,D,C Brokkoligemüse mit Mandelbutter M,S\nReis G,E,M,C\nFruchtjoghurt M,", "menu2": "leicht gebratenes Hahnchenbrustfilet\nCremesosse M,G,D,C Brokkoligemüse mit Mandelbutter M,S\nReis G,E,M,C\nFruchtjoghurt M", "menu3": "2 Gemüse-Knusperbagel Schnittlauchrahmdip M\nBrokkoligemüse mit Mandelbutter M,S\nFruchjoghurt M", "extra": "Eine Salattheke mit diversen Salaten und Dressinge, steht zur Selbstbedienung für Sie bereit", "dinner": "Geflügelfrisch- wurst, Geflügel dauerwurst"}, {"day": "Dienstag", "date": "08.09.2026", "breakfast": "Edamer", "menu1": "Geschnetzeltes vom Schwein\nmit Gemüse M,C\nButterspätzle E,G,M\nGrießpudding G,M", "menu2": "Putenragout\nmit Gemüse M,C\nButterspätzle E,G,M\nGrießpudding G,M", "menu3": "Salat-Boule\ndiverse Blattsalate und Rohkostsalate,Fetakäse, gekochtes Ei, Baguettebrot G\nEssig/Öldressing D,C\nJoghurtdressing M\nGrießpudding G,M", "extra": "Tagessuppe", "dinner": "Fleischwurst am Stück\nBitte über den Tagesanforderungsschein bestellen"}, {"day": "Mittwoch", "date": "09.09.2026", "breakfast": "Tilsiter\nFruchtjoghurt oder Fruchtquark speise", "menu1": "Döner Teller\nHähnchenfleisch, Salate,\nJoghurtsoße, scharfe Soße,\nPommes-frites\nSchokocreme M,S", "menu2": "Döner Teller\nHähnchenfleisch, Salate,\nJoghurtsoße, scharfe Soße,\nPommes-frites\nSchokocreme M,S", "menu3": "Nudel Bolognese G vegetarische Bolognesesoße A,C,H,S geriebener Hartkäse Salatbeilage Italiendressing C,D\nSchokocreme M,S", "extra": "Eine Salattheke mit diversen Salaten und Dressinge, steht zur Selbstbedienung für Sie bereit", "dinner": "Nudelsalat G,M,E\nmit Geflügelfleischwurst-streifen, gekochtem Ei, Erbsen und Paprikawürfel, in Majonnaisecreme"}, {"day": "Donnerstag", "date": "10.09.2026", "breakfast": "", "menu1": "Grünkernhacksteak natur C,E,D,G,\nBratensoße Provencial G,C,\nReis\nRatatouillegemüse\nObst", "menu2": "gebackene Ofenkartoffel\nSchnittlauchrahmdip M Blumenkohl, Brokkoli mit Semmelbröselbutter Petersilie,gekochtes Ei M,G,E\nObst", "menu3": "gebackene Champignons G,A,E,9,10\ngebackener Blumenkohl G,A,E,9,10\nZaziki M\nBulgur mit Paprikastücken G\nObst", "extra": "", "dinner": ""}]}]};
+
+function getCanteenData() {
+  if (appData.canteen && appData.canteen.weeks && appData.canteen.weeks.length > 0) {
+    return appData.canteen;
+  }
+  return DEFAULT_CANTEEN_DATA;
+}
+
+function setCanteenWeek(weekId) {
+  appData.selectedCanteenWeek = weekId;
+  saveAppData();
+  renderCanteenView();
+  const data = getCanteenData();
+  const wk = (data.weeks || []).find(w => w.weekId === weekId);
+  const label = wk ? wk.label : weekId;
+  announceSR(`Speiseplan für ${label} geladen.`, 'polite');
+}
+
+function setCanteenDay(dayName) {
+  appData.selectedCanteenDay = dayName;
+  saveAppData();
+  renderCanteenView();
+  const label = dayName === 'all' ? 'Alle Wochentage' : dayName;
+  announceSR(`Tagesfilter ${label} aktiviert.`, 'polite');
+}
+
+function isCanteenDateToday(dateStr) {
+  if (!dateStr) return false;
+  const now = new Date();
+  const d = String(now.getDate()).padStart(2, '0');
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const y = String(now.getFullYear());
+  const todayFormatted = `${d}.${m}.${y}`;
+  return dateStr.trim() === todayFormatted;
+}
+
+function renderCanteenView() {
+  const container = document.getElementById('canteen-days-container');
+  if (!container) return;
+
+  const data = getCanteenData();
+  const weeks = data.weeks || [];
+
+  // 1. Wochenauswahl-Dropdown synchronisieren
+  let selectedWeekId = appData.selectedCanteenWeek;
+  if (!selectedWeekId || !weeks.some(w => w.weekId === selectedWeekId)) {
+    const currentWk = weeks.find(w => w.isCurrent) || weeks[0];
+    selectedWeekId = currentWk ? currentWk.weekId : 'kw38';
+    appData.selectedCanteenWeek = selectedWeekId;
+  }
+
+  const weekSelect = document.getElementById('canteen-week-select');
+  if (weekSelect) {
+    weekSelect.innerHTML = weeks.map(w => `
+      <option value="${escHtml(w.weekId)}" ${w.weekId === selectedWeekId ? 'selected' : ''}>
+        ${escHtml(w.label)} (${escHtml(w.dateRange)})
+      </option>
+    `).join('');
+  }
+
+  // 2. Status- und Quellen-Banner
+  const statusBanner = document.getElementById('canteen-status-banner');
+  if (statusBanner) {
+    statusBanner.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+        <span class="canteen-source-tag">
+          <span class="emoji-icon" aria-hidden="true">🏫 </span>
+          <strong>Quelle:</strong> ${escHtml(data.source || 'LWL-Bildungszentrum Soest')}
+        </span>
+        <span style="color: var(--text-secondary); font-size: 13.5px;">
+          <span class="emoji-icon" aria-hidden="true">🕒 </span>Stand: ${escHtml(data.lastUpdated || 'Aktuell')}
+        </span>
+      </div>
+      <div style="font-size: 13.5px; color: var(--text-secondary);">
+        <span class="emoji-icon" aria-hidden="true">ℹ️ </span>Offizieller Speiseplan (Mo–Do Vollkost, Muslimisch &amp; Vegetarisch)
+      </div>
+    `;
+  }
+
+  // 3. Tages-Schnellfilter-Leiste
+  const dayFilterBar = document.getElementById('canteen-day-filter-bar');
+  const selectedDay = appData.selectedCanteenDay || 'all';
+
+  if (dayFilterBar) {
+    const dayButtons = [
+      { id: 'all', label: 'Ganze Woche' },
+      { id: 'Montag', label: 'Montag' },
+      { id: 'Dienstag', label: 'Dienstag' },
+      { id: 'Mittwoch', label: 'Mittwoch' },
+      { id: 'Donnerstag', label: 'Donnerstag' }
+    ];
+
+    dayFilterBar.innerHTML = dayButtons.map(btn => {
+      const isActive = (selectedDay === btn.id);
+      return `
+        <button type="button" 
+                class="canteen-day-btn ${isActive ? 'active' : ''}" 
+                role="tab" 
+                aria-selected="${isActive}" 
+                onclick="setCanteenDay('${btn.id}')"
+                aria-label="${btn.label} anzeigen">
+          ${escHtml(btn.label)}
+        </button>
+      `;
+    }).join('');
+  }
+
+  // 4. Gewählte Woche ermitteln & Tage darstellen
+  const activeWeek = weeks.find(w => w.weekId === selectedWeekId) || weeks[0];
+  if (!activeWeek || !activeWeek.days || activeWeek.days.length === 0) {
+    container.innerHTML = `
+      <div class="empty-card" style="padding: 30px; text-align: center;">
+        <h3 style="margin-bottom: 8px;"><span class="emoji-icon" aria-hidden="true">🍽️ </span>Kein Speiseplan verfügbar</h3>
+        <p>Für diese Woche liegen aktuell keine Menüdaten vor.</p>
+      </div>
+    `;
+    return;
+  }
+
+  let daysToRender = activeWeek.days;
+  if (selectedDay !== 'all') {
+    daysToRender = activeWeek.days.filter(d => (d.day || '').toLowerCase() === selectedDay.toLowerCase());
+  }
+
+  let html = '';
+  daysToRender.forEach(d => {
+    const isToday = isCanteenDateToday(d.date);
+
+    html += `
+      <article class="canteen-day-card ${isToday ? 'is-today' : ''}" aria-labelledby="heading-day-${escHtml(d.day)}">
+        <header class="canteen-day-header">
+          <h3 id="heading-day-${escHtml(d.day)}" class="canteen-day-title">
+            <span class="emoji-icon" aria-hidden="true">📅 </span>
+            <span>${escHtml(d.day)}, ${escHtml(d.date)}</span>
+            ${isToday ? '<span class="canteen-today-badge"><span class="emoji-icon" aria-hidden="true">🔴 </span>Heute</span>' : ''}
+          </h3>
+          <span style="font-size: 13.5px; color: var(--text-secondary); font-weight: 600;">
+            Mensa Essensausgabe 11:45 – 13:45 Uhr
+          </span>
+        </header>
+
+        <div class="canteen-menus-grid" role="region" aria-label="Mittagsmenüs">
+          <!-- Menü 1: Vollkost -->
+          <div class="canteen-menu-card">
+            <div class="canteen-menu-header">
+              <h4 style="margin: 0; font-size: 14.5px; font-weight: 700; color: var(--text-primary);">
+                <span class="emoji-icon" aria-hidden="true">🍲 </span>Menü 1: Vollkost
+              </h4>
+              <span class="canteen-menu-badge badge-vollkost">Vollkost</span>
+            </div>
+            <div class="canteen-dish-text">${escHtml(d.menu1 || 'Kein Angebot')}</div>
+          </div>
+
+          <!-- Menü 2: Muslimische Kost -->
+          <div class="canteen-menu-card">
+            <div class="canteen-menu-header">
+              <h4 style="margin: 0; font-size: 14.5px; font-weight: 700; color: var(--text-primary);">
+                <span class="emoji-icon" aria-hidden="true">🥩 </span>Menü 2: Muslimische Kost
+              </h4>
+              <span class="canteen-menu-badge badge-muslimisch">Ohne Schwein</span>
+            </div>
+            <div class="canteen-dish-text">${escHtml(d.menu2 || 'Kein Angebot')}</div>
+          </div>
+
+          <!-- Menü 3: Vegetarisch -->
+          <div class="canteen-menu-card">
+            <div class="canteen-menu-header">
+              <h4 style="margin: 0; font-size: 14.5px; font-weight: 700; color: var(--text-primary);">
+                <span class="emoji-icon" aria-hidden="true">🥗 </span>Menü 3: Vegetarisch
+              </h4>
+              <span class="canteen-menu-badge badge-vegetarisch">Vegetarisch</span>
+            </div>
+            <div class="canteen-dish-text">${escHtml(d.menu3 || 'Kein Angebot')}</div>
+          </div>
+        </div>
+
+        <!-- Ergänzende Mahlzeiten / Salattheke / Frühstück / Abendessen -->
+        <div class="canteen-side-grid" role="region" aria-label="Zusatzangebot und weitere Mahlzeiten">
+          ${d.breakfast ? `
+            <div class="canteen-side-box">
+              <h5 class="canteen-side-title"><span class="emoji-icon" aria-hidden="true">🥐 </span>Frühstück:</h5>
+              <div class="canteen-dish-text">${escHtml(d.breakfast)}</div>
+            </div>
+          ` : ''}
+
+          ${d.extra ? `
+            <div class="canteen-side-box">
+              <h5 class="canteen-side-title"><span class="emoji-icon" aria-hidden="true">🥗 </span>Salattheke &amp; Extras:</h5>
+              <div class="canteen-dish-text">${escHtml(d.extra)}</div>
+            </div>
+          ` : ''}
+
+          ${d.dinner ? `
+            <div class="canteen-side-box">
+              <h5 class="canteen-side-title"><span class="emoji-icon" aria-hidden="true">🥪 </span>Abendessen (Internat):</h5>
+              <div class="canteen-dish-text">${escHtml(d.dinner)}</div>
+            </div>
+          ` : ''}
+        </div>
+      </article>
+    `;
+  });
+
+  // Freitag-Hinweis anfügen, falls ganze Woche gewählt
+  if (selectedDay === 'all') {
+    html += `
+      <article class="canteen-day-card" style="border-style: dashed; background: var(--bg-surface-elevated);" aria-labelledby="heading-day-freitag">
+        <header class="canteen-day-header" style="border-bottom: none; margin-bottom: 0; padding-bottom: 0;">
+          <h3 id="heading-day-freitag" class="canteen-day-title" style="font-size: 1.05rem;">
+            <span class="emoji-icon" aria-hidden="true">🚌 </span>
+            <span>Freitag (Heimreisetag / Lunchpakete)</span>
+          </h3>
+          <span style="font-size: 13px; color: var(--text-secondary);">Mensa geöffnet bis 12:30 Uhr</span>
+        </header>
+        <p style="margin: 8px 0 0 0; font-size: 14px; color: var(--text-secondary); line-height: 1.5;">
+          Am Freitag findet im Internat und Bildungszentrum die Heimreise statt. In der Mensa werden Snackangebote, belegte Brötchen und Lunchpakete ausgegeben.
+        </p>
+      </article>
+    `;
+  }
+
+  container.innerHTML = html;
+}
+
+function readCanteenSummary() {
+  const data = getCanteenData();
+  const weeks = data.weeks || [];
+  const selectedWeekId = appData.selectedCanteenWeek || 'kw38';
+  const activeWeek = weeks.find(w => w.weekId === selectedWeekId) || weeks[0];
+
+  if (!activeWeek || !activeWeek.days || activeWeek.days.length === 0) {
+    const msg = 'Es liegt derzeit kein Speiseplan für die Mensa vor.';
+    speak(msg, true);
+    announceSR(msg, 'assertive');
+    return;
+  }
+
+  // Priorisiere heutigen Tag, ansonsten ersten Tag der Auswahl
+  const selectedDay = appData.selectedCanteenDay || 'all';
+  let targetDay = null;
+
+  if (selectedDay !== 'all') {
+    targetDay = activeWeek.days.find(d => (d.day || '').toLowerCase() === selectedDay.toLowerCase());
+  } else {
+    targetDay = activeWeek.days.find(d => isCanteenDateToday(d.date)) || activeWeek.days[0];
+  }
+
+  if (!targetDay) {
+    targetDay = activeWeek.days[0];
+  }
+
+  let speech = `Mensa Speiseplan für ${targetDay.day}, den ${targetDay.date}. `;
+  if (targetDay.menu1) {
+    speech += `Menü 1 Vollkost: ${targetDay.menu1.replace(/\n/g, ', ')}. `;
+  }
+  if (targetDay.menu2) {
+    speech += `Menü 2 Muslimische Kost ohne Schwein: ${targetDay.menu2.replace(/\n/g, ', ')}. `;
+  }
+  if (targetDay.menu3) {
+    speech += `Menü 3 Vegetarisch: ${targetDay.menu3.replace(/\n/g, ', ')}. `;
+  }
+  if (targetDay.extra) {
+    speech += `Salattheke und Zusatzangebot: ${targetDay.extra.replace(/\n/g, ', ')}. `;
+  }
+
+  speak(speech, true);
+  announceSR(speech, 'assertive');
+}
+
+async function refreshCanteenData() {
+  const btn = document.getElementById('btn-sync-canteen');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="emoji-icon" aria-hidden="true">⏳ </span>Lade Speisepläne...';
+  }
+
+  announceSR('Mensa-Speisepläne werden aus dem Internet synchronisiert...', 'assertive');
+
+  try {
+    const resp = await fetch('/api/canteen', { cache: 'no-store' });
+    if (resp.ok) {
+      const freshData = await resp.json();
+      if (freshData && freshData.weeks && freshData.weeks.length > 0) {
+        appData.canteen = freshData;
+        saveAppData();
+        renderCanteenView();
+        const successMsg = `Mensa-Speisepläne erfolgreich aktualisiert (${freshData.weeks.length} Wochen geladen).`;
+        speak(successMsg, true);
+        announceSR(successMsg, 'assertive');
+        return;
+      }
+    }
+    throw new Error('Ungültige Server-Antwort');
+  } catch (err) {
+    console.warn('Canteen sync error:', err);
+    // Fallback auf vorhandene Daten
+    renderCanteenView();
+    const warnMsg = 'Speisepläne konnten nicht neu geladen werden. Gespeicherter Speiseplan wird verwendet.';
+    speak(warnMsg, true);
+    announceSR(warnMsg, 'assertive');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="emoji-icon" aria-hidden="true">🔄 </span><strong>Aktualisieren (A)</strong>';
+    }
+  }
+}
 
 
 document.addEventListener('DOMContentLoaded', initApp);

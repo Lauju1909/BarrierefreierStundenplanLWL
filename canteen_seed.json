@@ -1,0 +1,154 @@
+{
+  "source": "LWL-Von-Vincke-Schule Soest & BBW Soest",
+  "sourceUrl": "https://www.lwl-von-vincke-schule.de/de/aktuelles/speiseplane/",
+  "lastUpdated": "2026-09-13T17:40:00Z",
+  "weeks": [
+    {
+      "weekId": "kw38",
+      "kw": 38,
+      "label": "Diese Woche (KW 38: 14.09. – 17.09.2026)",
+      "dateRange": "14.09. bis 17.09.2026",
+      "isCurrent": true,
+      "days": [
+        {
+          "day": "Montag",
+          "date": "14.09.2026",
+          "breakfast": "Gouda",
+          "menu1": "6 Geflügel Cevapcici E,G,D\nZaziki M;\ntomatisierter Gemüsereis C\nWeißkohl-Paprikasalat in Essig/Öldressing Dressing Bio Vanillejoghurt M",
+          "menu2": "6 Geflügel Cevapcici E,G,D\nZaziki M;\ntomatisierterGemüsereis C\nWeißkohl-Paprikasalat in\nEssig/Öldressing D\nBio Vanillejoghurt M",
+          "menu3": "Gemüsenuggets C\nfruchtige Currysoße M\nKartoffelwedges\nWeißkohl-Paprikasalat in\nEssig/Öldressing D\nBio Vanillejoghurt M",
+          "extra": "Eine Salattheke mit diversen Salaten und Dressinge , zur Selbstbedienung steht für Sie bereit",
+          "dinner": "Geflügelfrisch wurst, Geflügel dauerwurst"
+        },
+        {
+          "day": "Dienstag",
+          "date": "15.09.2026",
+          "breakfast": "Edamer",
+          "menu1": "Schweinerückesteak auf griechischer Art E,G\nZwiebel-Senfsenfdip\nrustikaler Salat mit Hirtenkäse in pikanten Kräuterdip C,D\nFladenbrot G,\nZitronenkuchen GE",
+          "menu2": "Putensteak auf griechischer Art E,G\nZwiebel-Senfsenfdip\nrustikaler Salat mit Hirtenkäse in pikanten Kräuterdip C,D\nFladenbrot G\nZitronenkuchen G,E",
+          "menu3": "2 Hot Dogs M;G;C;D\nvegetarische Bockwurst, Hot- Dogbrötchen, hausgemachte Hot- Dogsauce, Tomatenketchup, Röstzwiebel\nSalatbeilage Kräuterdressing C;H\nZitronenkuchen G,E",
+          "extra": "Tagessuppe",
+          "dinner": "Geflügelleber-wurst\nBitte über den Tagesanforderungsschein bestellen."
+        },
+        {
+          "day": "Mittwoch",
+          "date": "16.09.2026",
+          "breakfast": "Tilsiter\nFruchtjoghurt oder Fruchtquark speise",
+          "menu1": "Hähnchenschnitzel G,H,E\nRahmsoße M\nKartoffelkroketten\nbunter Gemüsemix M\nSchokopudding mit Sahne M,S",
+          "menu2": "Hähnchenschnitzel G,H,E\nRahmsoße M\nKartoffelkroketten\nbunter Gemüsemix M\nSchokopudding mit Sahne M,S",
+          "menu3": "Kartoffelpizza\ndiverse Gemüse, Tomate mit veganem Käse überbacken C,G,M\nSalatbeilage mit Joghurtdressing\nSchokopudding mit Sahne M,S",
+          "extra": "Eine Salattheke mit diversen Salaten und Dressinge , zur Selbstbedienung steht für Sie bereit",
+          "dinner": "Toast Hawaii"
+        },
+        {
+          "day": "Donnerstag",
+          "date": "17.09.2026",
+          "breakfast": "Butterkäse oder\nMaasdamer",
+          "menu1": "Tortellini mit Rindfleischfüllung\nfruchtiger Tomatensoße G,M,E,C geriebener Hartkäse\ngemischte Salatbeilage mit Joghurtdressing M\nObst",
+          "menu2": "Tortellini mit Rindfleischfüllung\nfruchtiger Tomatensoße G,M,E,C geriebener Hartkäse\nSalatbeilage mit Joghurtdressing M\nObst",
+          "menu3": "Eierpfannkuchen mit Spinat und Mozzarella gefüllt. G,E,M\nGemüse-Bulgur C,G\nObst",
+          "extra": "",
+          "dinner": "Geflügelfrisch wurst, Geflügel dauerwurst"
+        }
+      ]
+    },
+    {
+      "weekId": "kw39",
+      "kw": 39,
+      "label": "Nächste Woche (KW 39: 21.09. – 24.09.2026)",
+      "dateRange": "21.09. bis 24.09.2026",
+      "isCurrent": false,
+      "days": [
+        {
+          "day": "Montag",
+          "date": "21.09.2026",
+          "breakfast": "Gouda",
+          "menu1": "Hähnchencrossies G,M,E\nfruchtige Currysoße M\nReis\ngemischter Salat\nmit Joghurtdressing M\nObstsalat",
+          "menu2": "Hähnchencrossies G,M,E\nfruchtige Currysoße M\nReis\ngemischter Salat\nmit Joghurtdressing M\nObstsalat",
+          "menu3": "Gemüseknusperrösti S,H,G,E\nFrischkäse-Kräuterdip M\nReis\ngemischter Salatteller\nmit Joghurtdressing M\nObstsalat",
+          "extra": "Eine Salattheke mit diversen Salaten und Dressinge, steht zur Selbstbedienung für Sie bereit",
+          "dinner": "Geflügelfrisch wurst, Geflügel dauerwurst"
+        },
+        {
+          "day": "Dienstag",
+          "date": "22.09.2026",
+          "breakfast": "Edamer",
+          "menu1": "Fischfilet gebacken E,G,\nTomatencremesoße\nMexicogemüse\nKartoffelplätzchen\nVanillecreme mit Sahne M",
+          "menu2": "Geflügelhacksteak\nTomatencremesoße\nMexicogemüse\nKartoffelplätzchen\nVanillecreme mit Sahne M",
+          "menu3": "5 Gemüse-Maultaschen\nBlumenkohl-Schnittlauchcremesauce\nPfannengemüse Pastinake, Möhre und Kohlrabi\nG,E,C,M Vanillecreme mit Sahne M",
+          "extra": "Tagessuppe",
+          "dinner": "Mozzarella\nBitte über den Tagesanforderungsschein bestellen"
+        },
+        {
+          "day": "Mittwoch",
+          "date": "23.09.2026",
+          "breakfast": "Tilsiter\nFruchtjoghurt oder Fruchtquark speise",
+          "menu1": "Nudelauflauf\nmit Gemüse, gebratenen Putenbrustgeschnetzeltem und Käse überbachen G,E,H,M\nRahmsoße M,\nEisdessert G,S",
+          "menu2": "Nudelauflauf\nmit Gemüse und Käse überbachen G,E,H,M\nRahmsoße M,\nEisdessert G,S",
+          "menu3": "Tortellini mit Ricottafüllung\nfruchtige Paprika-Tomatensoße M,G,C,E,D\nSalatbeilage mit Thousend Islanddressing M,C,\nEisdessert G,S",
+          "extra": "Eine Salattheke mit diversen Salaten und Dressinge, steht zur Selbstbedienung für Sie bereit",
+          "dinner": "Coleslaw\namerikanischer Krautsalat. Weißkohl, Möhre, Joghurt-Majonnaisedressing M"
+        },
+        {
+          "day": "Donnerstag",
+          "date": "24.09.2026",
+          "breakfast": "Butterkäse oder\nMaasdamer",
+          "menu1": "Chili con carne\nRindfleisch, Kidneybohnen,Tomaten, Paprika, Mais,Möhre, Sellerie Zwiebel in pikanter Soße C,G\nhausgemachtes Baguettebrot G\nMilchreis mit Topping M,S",
+          "menu2": "Chili con carne\nRindfleisch, Kidneybohnen,Tomaten, Paprika, Mais,Möhre, Sellerie Zwiebel in pikanter Soße C,G\nhausgemachtes Baguettebrot G\nMilchreis mit Topping M,S",
+          "menu3": "Süßkartoffel-Schupfnudel-Topf\nverschiedene Gemüse, gebratene Sojawürfel\nGemüse-Veloûte M,G,E,A,C\nMilchreis mit Topping M,S",
+          "extra": "",
+          "dinner": "Geflügelfrisch wurst, Geflügel dauerwurst"
+        }
+      ]
+    },
+    {
+      "weekId": "kw37",
+      "kw": 37,
+      "label": "Vorige Woche (KW 37: 07.09. – 10.09.2026)",
+      "dateRange": "07.09. bis 10.09.2026",
+      "isCurrent": false,
+      "days": [
+        {
+          "day": "Montag",
+          "date": "07.09.2026",
+          "breakfast": "Gouda",
+          "menu1": "leicht gebratenes Hahnchenbrustfilet\nChampignoncremesosse M,G,D,C Brokkoligemüse mit Mandelbutter M,S\nReis G,E,M,C\nFruchtjoghurt M,",
+          "menu2": "leicht gebratenes Hahnchenbrustfilet\nCremesosse M,G,D,C Brokkoligemüse mit Mandelbutter M,S\nReis G,E,M,C\nFruchtjoghurt M",
+          "menu3": "2 Gemüse-Knusperbagel Schnittlauchrahmdip M\nBrokkoligemüse mit Mandelbutter M,S\nFruchjoghurt M",
+          "extra": "Eine Salattheke mit diversen Salaten und Dressinge, steht zur Selbstbedienung für Sie bereit",
+          "dinner": "Geflügelfrisch- wurst, Geflügel dauerwurst"
+        },
+        {
+          "day": "Dienstag",
+          "date": "08.09.2026",
+          "breakfast": "Edamer",
+          "menu1": "Geschnetzeltes vom Schwein\nmit Gemüse M,C\nButterspätzle E,G,M\nGrießpudding G,M",
+          "menu2": "Putenragout\nmit Gemüse M,C\nButterspätzle E,G,M\nGrießpudding G,M",
+          "menu3": "Salat-Boule\ndiverse Blattsalate und Rohkostsalate,Fetakäse, gekochtes Ei, Baguettebrot G\nEssig/Öldressing D,C\nJoghurtdressing M\nGrießpudding G,M",
+          "extra": "Tagessuppe",
+          "dinner": "Fleischwurst am Stück\nBitte über den Tagesanforderungsschein bestellen"
+        },
+        {
+          "day": "Mittwoch",
+          "date": "09.09.2026",
+          "breakfast": "Tilsiter\nFruchtjoghurt oder Fruchtquark speise",
+          "menu1": "Döner Teller\nHähnchenfleisch, Salate,\nJoghurtsoße, scharfe Soße,\nPommes-frites\nSchokocreme M,S",
+          "menu2": "Döner Teller\nHähnchenfleisch, Salate,\nJoghurtsoße, scharfe Soße,\nPommes-frites\nSchokocreme M,S",
+          "menu3": "Nudel Bolognese G vegetarische Bolognesesoße A,C,H,S geriebener Hartkäse Salatbeilage Italiendressing C,D\nSchokocreme M,S",
+          "extra": "Eine Salattheke mit diversen Salaten und Dressinge, steht zur Selbstbedienung für Sie bereit",
+          "dinner": "Nudelsalat G,M,E\nmit Geflügelfleischwurst-streifen, gekochtem Ei, Erbsen und Paprikawürfel, in Majonnaisecreme"
+        },
+        {
+          "day": "Donnerstag",
+          "date": "10.09.2026",
+          "breakfast": "",
+          "menu1": "Grünkernhacksteak natur C,E,D,G,\nBratensoße Provencial G,C,\nReis\nRatatouillegemüse\nObst",
+          "menu2": "gebackene Ofenkartoffel\nSchnittlauchrahmdip M Blumenkohl, Brokkoli mit Semmelbröselbutter Petersilie,gekochtes Ei M,G,E\nObst",
+          "menu3": "gebackene Champignons G,A,E,9,10\ngebackener Blumenkohl G,A,E,9,10\nZaziki M\nBulgur mit Paprikastücken G\nObst",
+          "extra": "",
+          "dinner": ""
+        }
+      ]
+    }
+  ]
+}

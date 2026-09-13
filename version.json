@@ -1,9 +1,12 @@
 {
-  "version": "1.9.5",
+  "version": "1.9.6",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-13",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
+    "Mensa & Speisepläne (Reiter 8, Taste 8): Vollständige wöchentliche Speisepläne der Mensa im LWL-Bildungszentrum Soest (Frühstück, Menü 1 Vollkost, Menü 2 Muslimisch, Menü 3 Vegetarisch, Salattheke/Zusatzangebot, Abendessen im Internat). Sprachausgabe mit Taste V.",
+    "Crawler-Kaskade für Mensa-Speisepläne: Regelmäßige Synchronisation nach Priorität: 1. Von-Vincke-Schule Soest, 2. BBW Soest, 3. Berufskolleg Soest.",
+    "Schuljahr-Auswahl ganz oben im Notenspiegel: Direktes Dropdown zur Wahl des Schuljahrs. Es werden ausschließlich die Schulfächer und Noten des ausgewählten Schuljahres angezeigt.",
     "Echte WebUntis-Noten & Leistungsübersicht: Vollständige Integration aller 168+ offiziellen Noten aus WebUntis (Klassenarbeiten, Klausuren, Tests, Portfolios, Sonstige Leistungen und laufende Mitarbeit)",
     "Schuljahr-Auswahl im Notenspiegel: Schnelles Umschalten zwischen Schuljahr 2026/2027 (Aktuell), Schuljahr 2025/2026 (65 Noten), 2024/2025 (103 Noten) und Gesamthistorie",
     "Detaillierte Fächer-Notenspiegel: Automatische Berechnung von Gesamtschnitt und Fachdurchschnitt, Anzeige von Notenwert (z.B. 2.0 / Gut, 1.3 / Sehr Gut -), Datum, Prüfungsbezeichnung und Bemerkungen der Lehrkräfte",

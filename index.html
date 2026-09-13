@@ -14,7 +14,7 @@
 
   <!-- Schnellsprunglinks für Tastaturbedienung -->
   <nav class="skip-links" aria-label="Schnellnavigation">
-    <a href="#main-nav-tabs" class="skip-link">Zur Menüauswahl springen (Tasten 1-8)</a>
+    <a href="#main-nav-tabs" class="skip-link">Zur Menüauswahl springen (Tasten 1-9)</a>
     <a href="#day-picker-bar" class="skip-link">Zur Tagesauswahl springen</a>
     <a href="#view-content-area" class="skip-link">Direkt zum Hauptinhalt springen</a>
   </nav>
@@ -114,7 +114,7 @@
   </div>
 
   <!-- =========================================================================
-       HAUPTNAVIGATION (8 TABS - TASTEN 1 BIS 8)
+       HAUPTNAVIGATION (9 TABS - TASTEN 1 BIS 9)
        ========================================================================= -->
   <nav class="nav-tabs-wrapper" aria-label="Hauptmenü" id="main-nav-tabs">
     <div class="tab-list" role="tablist">
@@ -146,8 +146,12 @@
         <span class="tab-key-hint" aria-hidden="true">7</span>
         <span><span class="emoji-icon" aria-hidden="true">📊 </span><strong>Noten &amp; Leistungen</strong></span>
       </button>
-      <button id="tab-settings" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-settings" onclick="switchTab('settings')" tabindex="-1">
+      <button id="tab-canteen" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-canteen" onclick="switchTab('canteen')" tabindex="-1">
         <span class="tab-key-hint" aria-hidden="true">8</span>
+        <span><span class="emoji-icon" aria-hidden="true">🍽️ </span><strong>Mensa &amp; Speisepläne</strong></span>
+      </button>
+      <button id="tab-settings" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-settings" onclick="switchTab('settings')" tabindex="-1">
+        <span class="tab-key-hint" aria-hidden="true">9</span>
         <span><span class="emoji-icon" aria-hidden="true">⚙️ </span><strong>Konto &amp; Einstellungen</strong></span>
       </button>
     </div>
@@ -530,9 +534,24 @@
         </div>
       </div>
 
-      <!-- SCHULJAHR-FILTER -->
-      <div id="grades-schoolyear-bar" class="grade-schoolyear-bar" role="tablist" aria-label="Schuljahr für Notenübersicht auswählen" style="margin-bottom: 20px;">
-        <!-- Wird dynamisch durch JavaScript befüllt -->
+      <!-- SCHULJAHR-FILTER & DROPDOWN GANZ OBEN -->
+      <div class="grade-schoolyear-container" role="region" aria-label="Schuljahr-Auswahl" style="margin-bottom: 20px;">
+        <div class="grade-schoolyear-box" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 16px; background: var(--bg-surface-elevated); border-radius: var(--radius-md); border: 1px solid var(--border-subtle);">
+          <div class="grade-schoolyear-select-wrapper" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <label for="grade-schoolyear-select" style="font-size: 15px; font-weight: bold; color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px;">
+              <span class="emoji-icon" aria-hidden="true">📅 </span><strong>Schuljahr auswählen:</strong>
+            </label>
+            <select id="grade-schoolyear-select" class="form-control" onchange="setGradeSchoolYear(this.value)" style="display: inline-block; width: auto; min-width: 250px; padding: 8px 12px; font-size: 14.5px; font-weight: 600; border-radius: var(--radius-sm); border: 2px solid var(--accent-primary); background: var(--bg-surface); color: var(--text-primary);" aria-label="Schuljahr für Notenspiegel auswählen">
+              <option value="2025/2026">Schuljahr 2025/2026 (65 Noten)</option>
+              <option value="2026/2027">Schuljahr 2026/2027 (Aktuell)</option>
+              <option value="2024/2025">Schuljahr 2024/2025 (103 Noten)</option>
+              <option value="all">Alle Schuljahre (168 Noten)</option>
+            </select>
+          </div>
+          <div id="grades-schoolyear-bar" class="grade-schoolyear-bar" role="tablist" aria-label="Schnellfilter Schuljahr" style="border: none; padding: 0; background: transparent;">
+            <!-- Dynamisch gefüllt durch JavaScript -->
+          </div>
+        </div>
       </div>
 
       <!-- KENNZAHLEN / STATISTIK-KARTEN -->
@@ -568,7 +587,56 @@
     </div>
 
     <!-- =======================================================================
-         REITER 7: KONTO, SYNCHRONISATION & EINSTELLUNGEN
+         REITER 8: MENSA & SPEISEPLÄNE
+         ======================================================================= -->
+    <div id="view-canteen" class="view-panel" role="tabpanel" aria-labelledby="tab-canteen">
+
+      <div class="banner-header">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div>
+            <h2 class="banner-title" id="canteen-view-title">Mensa &amp; Speisepläne</h2>
+            <p class="banner-subtitle">Wöchentlicher Speiseplan der Mensa im LWL-Bildungszentrum Soest (Von-Vincke-Schule, BBW &amp; Berufskolleg).</p>
+          </div>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-primary" onclick="refreshCanteenData()" id="btn-sync-canteen" aria-label="Speiseplan jetzt aus dem Internet aktualisieren">
+              <span class="emoji-icon" aria-hidden="true">🔄 </span><strong>Aktualisieren (A)</strong>
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="readCanteenSummary()" aria-label="Heutigen Speiseplan vorlesen">
+              <span class="emoji-icon" aria-hidden="true">🔊 </span>Speiseplan vorlesen (V)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- STATUS- & QUELLEN-BANNER -->
+      <div id="canteen-status-banner" class="canteen-info-banner" role="status" aria-live="polite" style="margin-bottom: 20px; padding: 12px 16px; background: var(--bg-surface-elevated); border-radius: var(--radius-md); border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+        <!-- Quelle & Aktualitätsanzeige -->
+      </div>
+
+      <!-- WOCHEN- & TAGESAUSWAHL -->
+      <div class="canteen-controls-wrapper" role="region" aria-label="Mensa Filter und Wochenauswahl" style="margin-bottom: 24px; padding: 14px 18px; background: var(--bg-surface-elevated); border-radius: var(--radius-md); border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 14px;">
+        <div class="canteen-control-group" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+          <label for="canteen-week-select" class="field-label" style="font-size: 15px; font-weight: bold; color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px;">
+            <span class="emoji-icon" aria-hidden="true">📅 </span><strong>Woche auswählen:</strong>
+          </label>
+          <select id="canteen-week-select" class="form-control" onchange="setCanteenWeek(this.value)" style="display: inline-block; width: auto; min-width: 260px; padding: 8px 12px; font-size: 14.5px; font-weight: 600; border-radius: var(--radius-sm); border: 2px solid var(--accent-primary); background: var(--bg-surface); color: var(--text-primary);" aria-label="Speiseplan-Woche auswählen">
+            <!-- Dynamisch befüllt -->
+          </select>
+        </div>
+        <div class="canteen-day-filter" role="tablist" aria-label="Wochentag filtern" id="canteen-day-filter-bar" style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px;">
+          <!-- Buttons für Heute, Mo, Di, Mi, Do, Ganze Woche -->
+        </div>
+      </div>
+
+      <!-- SPEISEPLAN-KARTEN -->
+      <section id="canteen-days-container" aria-live="polite" aria-label="Tagesmenüs der Mensa">
+        <!-- Dynamisch befüllt -->
+      </section>
+
+    </div>
+
+    <!-- =======================================================================
+         REITER 9: KONTO, SYNCHRONISATION & EINSTELLUNGEN
          ======================================================================= -->
     <div id="view-settings" class="view-panel" role="tabpanel" aria-labelledby="tab-settings">
 
@@ -665,7 +733,7 @@
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div>
               <p style="font-size: var(--font-size-base); margin-bottom: 4px;">
-                Installierte Version: <strong id="app-version-display">v1.9.5</strong>
+                Installierte Version: <strong id="app-version-display">v1.9.6</strong>
               </p>
               <p style="font-size: 14px; color: var(--text-muted);" id="update-status-detail">
                 Automatische Hintergrundaktualisierung über GitHub ist aktiv.

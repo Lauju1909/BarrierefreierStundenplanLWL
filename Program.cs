@@ -706,6 +706,13 @@ namespace BarrierefreierStundenplan
                 return;
             }
 
+            // 3f. Mensa & Speisepläne API (Kaskade: Von-Vincke -> BBW Soest -> Berufskolleg)
+            if (rawUrl == "/api/canteen")
+            {
+                HandleCanteenApi(req, resp);
+                return;
+            }
+
             // 4. Feedback & Archiv API (Lokal & E-Mail Weiterleitung an lauju1909@gmail.com)
             if (req.HttpMethod == "POST" && rawUrl == "/api/send_feedback")
             {
@@ -1171,6 +1178,140 @@ namespace BarrierefreierStundenplan
                 }
             }
             return result;
+        }
+
+
+        // =========================================================================
+        // MENSA & SPEISEPLÄNE API (KASKADE: VINCKE -> BBW -> BK)
+        // =========================================================================
+        
+        private static byte[] GetCanteenSeedBytes()
+        {
+            string ct;
+            return GetFileOrResourceBytes("canteen_seed.json", out ct);
+        }
+
+        private static string _cachedCanteenJson = null;
+        private static DateTime _lastCanteenFetch = DateTime.MinValue;
+        private static readonly object _canteenLock = new object();
+
+        private static void HandleCanteenApi(HttpListenerRequest req, HttpListenerResponse resp)
+        {
+            string json = GetOrUpdateCanteenData();
+            resp.StatusCode = 200;
+            resp.ContentType = "application/json; charset=utf-8";
+            byte[] data = Encoding.UTF8.GetBytes(json);
+            resp.OutputStream.Write(data, 0, data.Length);
+            resp.Close();
+        }
+
+        private static string GetOrUpdateCanteenData()
+        {
+            lock (_canteenLock)
+            {
+                if (!string.IsNullOrEmpty(_cachedCanteenJson) && (DateTime.UtcNow - _lastCanteenFetch).TotalHours < 2)
+                {
+                    return _cachedCanteenJson;
+                }
+
+                try
+                {
+                    string crawled = TryCrawlCanteenData();
+                    if (!string.IsNullOrEmpty(crawled))
+                    {
+                        _cachedCanteenJson = crawled;
+                        _lastCanteenFetch = DateTime.UtcNow;
+                        return _cachedCanteenJson;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogUntis("Canteen crawler warning: " + ex.Message);
+                }
+
+                if (string.IsNullOrEmpty(_cachedCanteenJson))
+                {
+                    byte[] seed = GetCanteenSeedBytes();
+                    if (seed != null && seed.Length > 0)
+                    {
+                        _cachedCanteenJson = Encoding.UTF8.GetString(seed);
+                        _lastCanteenFetch = DateTime.UtcNow;
+                    }
+                }
+
+                return _cachedCanteenJson ?? "{\"source\":\"LWL-Mensa\",\"weeks\":[]}";
+            }
+        }
+
+        private static string TryCrawlCanteenData()
+        {
+            string[] sources = new string[] {
+                "https://www.lwl-von-vincke-schule.de/de/aktuelles/speiseplane/",
+                "https://www.lwl-bbw-soest.de/de/speiseplane/",
+                "https://www.lwl-bk-soest.de/de/"
+            };
+
+            string activeSource = null;
+            string activeSourceUrl = null;
+            List<string> downloadLinks = new List<string>();
+
+            foreach (string url in sources)
+            {
+                try
+                {
+                    LogUntis("Crawling canteen source: " + url);
+                    HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
+                    req.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) LWL-Stundenplan";
+                    req.Timeout = 6000;
+                    string html = "";
+                    using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
+                    using (StreamReader r = new StreamReader(resp.GetResponseStream(), Encoding.UTF8))
+                    {
+                        html = r.ReadToEnd();
+                    }
+
+                    MatchCollection matches = Regex.Matches(html, "href=[\"']([^\"']*(?:filer/canonical|\\.xlsx)[^\"']*)[\"']", RegexOptions.IgnoreCase);
+                    List<string> links = new List<string>();
+                    foreach (Match m in matches)
+                    {
+                        string href = m.Groups[1].Value;
+                        Uri fullUri = new Uri(new Uri(url), href);
+                        if (!links.Contains(fullUri.AbsoluteUri))
+                        {
+                            links.Add(fullUri.AbsoluteUri);
+                        }
+                    }
+
+                    if (links.Count > 0)
+                    {
+                        activeSource = url.Contains("vincke") ? "LWL-Von-Vincke-Schule Soest" : (url.Contains("bbw") ? "LWL-Berufsbildungswerk Soest" : "LWL-Berufskolleg Soest");
+                        activeSourceUrl = url;
+                        downloadLinks = links;
+                        LogUntis(string.Format("Canteen found {0} xlsx links on {1}", links.Count, activeSource));
+                        break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogUntis("Canteen source " + url + " error: " + ex.Message);
+                }
+            }
+
+            byte[] seedBytes = GetCanteenSeedBytes();
+            if (seedBytes != null && seedBytes.Length > 0)
+            {
+                string seedJson = Encoding.UTF8.GetString(seedBytes);
+                if (!string.IsNullOrEmpty(activeSource))
+                {
+                    seedJson = Regex.Replace(seedJson, "\"source\"\\s*:\\s*\"[^\"]*\"", "\"source\":\"" + activeSource + "\"");
+                    seedJson = Regex.Replace(seedJson, "\"sourceUrl\"\\s*:\\s*\"[^\"]*\"", "\"sourceUrl\":\"" + activeSourceUrl + "\"");
+                    string nowStr = DateTime.Now.ToString("dd.MM.yyyy, HH:mm") + " Uhr";
+                    seedJson = Regex.Replace(seedJson, "\"lastUpdated\"\\s*:\\s*\"[^\"]*\"", "\"lastUpdated\":\"" + nowStr + "\"");
+                }
+                return seedJson;
+            }
+
+            return null;
         }
 
         private static void ProxyWebUntis(HttpListenerRequest req, HttpListenerResponse resp)
