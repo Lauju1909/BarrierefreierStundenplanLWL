@@ -541,11 +541,11 @@
             <label for="grade-schoolyear-select" style="font-size: 15px; font-weight: bold; color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px;">
               <span class="emoji-icon" aria-hidden="true">📅 </span><strong>Schuljahr auswählen:</strong>
             </label>
-            <select id="grade-schoolyear-select" class="form-control" onchange="setGradeSchoolYear(this.value)" style="display: inline-block; width: auto; min-width: 250px; padding: 8px 12px; font-size: 14.5px; font-weight: 600; border-radius: var(--radius-sm); border: 2px solid var(--accent-primary); background: var(--bg-surface); color: var(--text-primary);" aria-label="Schuljahr für Notenspiegel auswählen">
-              <option value="2025/2026">Schuljahr 2025/2026 (65 Noten)</option>
+            <select id="grade-schoolyear-select" class="form-control" onchange="setGradeSchoolYear(this.value, true)" style="display: inline-block; width: auto; min-width: 250px; padding: 8px 12px; font-size: 14.5px; font-weight: 600; border-radius: var(--radius-sm); border: 2px solid var(--accent-primary); background: var(--bg-surface); color: var(--text-primary);" aria-label="Schuljahr für Notenspiegel auswählen">
+              <option value="2025/2026">Schuljahr 2025/2026</option>
               <option value="2026/2027">Schuljahr 2026/2027 (Aktuell)</option>
-              <option value="2024/2025">Schuljahr 2024/2025 (103 Noten)</option>
-              <option value="all">Alle Schuljahre (168 Noten)</option>
+              <option value="2024/2025">Schuljahr 2024/2025</option>
+              <option value="all">Alle Schuljahre</option>
             </select>
           </div>
           <div id="grades-schoolyear-bar" class="grade-schoolyear-bar" role="tablist" aria-label="Schnellfilter Schuljahr" style="border: none; padding: 0; background: transparent;">
@@ -615,13 +615,24 @@
 
       <!-- WOCHEN- & TAGESAUSWAHL -->
       <div class="canteen-controls-wrapper" role="region" aria-label="Mensa Filter und Wochenauswahl" style="margin-bottom: 24px; padding: 14px 18px; background: var(--bg-surface-elevated); border-radius: var(--radius-md); border: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 14px;">
-        <div class="canteen-control-group" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <div class="canteen-control-group" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
           <label for="canteen-week-select" class="field-label" style="font-size: 15px; font-weight: bold; color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px;">
             <span class="emoji-icon" aria-hidden="true">📅 </span><strong>Woche auswählen:</strong>
           </label>
-          <select id="canteen-week-select" class="form-control" onchange="setCanteenWeek(this.value)" style="display: inline-block; width: auto; min-width: 260px; padding: 8px 12px; font-size: 14.5px; font-weight: 600; border-radius: var(--radius-sm); border: 2px solid var(--accent-primary); background: var(--bg-surface); color: var(--text-primary);" aria-label="Speiseplan-Woche auswählen">
-            <!-- Dynamisch befüllt -->
-          </select>
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-secondary" style="padding: 7px 12px; font-size: 14px;" onclick="changeCanteenWeek(-1)" aria-label="Vorherige Kalenderwoche aufrufen">
+              <span class="emoji-icon" aria-hidden="true">◀️ </span>Vorherige
+            </button>
+            <select id="canteen-week-select" class="form-control" onchange="setCanteenWeek(this.value, true)" style="display: inline-block; width: auto; min-width: 270px; padding: 8px 12px; font-size: 14.5px; font-weight: 600; border-radius: var(--radius-sm); border: 2px solid var(--accent-primary); background: var(--bg-surface); color: var(--text-primary);" aria-label="Speiseplan-Woche auswählen">
+              <!-- Dynamisch befüllt -->
+            </select>
+            <button type="button" class="btn btn-secondary" style="padding: 7px 12px; font-size: 14px;" onclick="changeCanteenWeek(1)" aria-label="Nächste Kalenderwoche aufrufen">
+              Nächste<span class="emoji-icon" aria-hidden="true"> ▶️</span>
+            </button>
+          </div>
+          <div id="canteen-week-quick-nav" style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <!-- Schnellfilter: Diese Woche, Nächste Woche -->
+          </div>
         </div>
         <div class="canteen-day-filter" role="tablist" aria-label="Wochentag filtern" id="canteen-day-filter-bar" style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px;">
           <!-- Buttons für Heute, Mo, Di, Mi, Do, Ganze Woche -->
@@ -733,7 +744,7 @@
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div>
               <p style="font-size: var(--font-size-base); margin-bottom: 4px;">
-                Installierte Version: <strong id="app-version-display">v1.9.6</strong>
+                Installierte Version: <strong id="app-version-display">v1.9.7</strong>
               </p>
               <p style="font-size: 14px; color: var(--text-muted);" id="update-status-detail">
                 Automatische Hintergrundaktualisierung über GitHub ist aktiv.

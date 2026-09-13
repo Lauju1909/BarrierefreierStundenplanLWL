@@ -1,9 +1,11 @@
 {
-  "version": "1.9.6",
+  "version": "1.9.7",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-13",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
+    "Optimierte Schuljahr- und Wochenauswahl im Kombinationsfeld: Dynamische Anzeige aller Schuljahre mit Noten. Reibungslose Navigation mit Pfeiltasten ohne störende Sprach-Unterbrechungen.",
+    "Erweiterte Mensa-Wochenauswahl mit Vorherige/Nächste-Tasten: Schnelles Durchblättern der Wochen und informative Hinweiskarte, wenn für eine Woche (z.B. KW 40) noch kein Plan der Küche vorliegt.",
     "Mensa & Speisepläne (Reiter 8, Taste 8): Vollständige wöchentliche Speisepläne der Mensa im LWL-Bildungszentrum Soest (Frühstück, Menü 1 Vollkost, Menü 2 Muslimisch, Menü 3 Vegetarisch, Salattheke/Zusatzangebot, Abendessen im Internat). Sprachausgabe mit Taste V.",
     "Crawler-Kaskade für Mensa-Speisepläne: Regelmäßige Synchronisation nach Priorität: 1. Von-Vincke-Schule Soest, 2. BBW Soest, 3. Berufskolleg Soest.",
     "Schuljahr-Auswahl ganz oben im Notenspiegel: Direktes Dropdown zur Wahl des Schuljahrs. Es werden ausschließlich die Schulfächer und Noten des ausgewählten Schuljahres angezeigt.",

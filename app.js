@@ -5689,15 +5689,18 @@ function getSubjectInfo(code) {
   return { code: trimmed, name: trimmed, teacher: 'Fachlehrkraft', klasse: 'BFW2B' };
 }
 
-function setGradeSchoolYear(sy) {
+function setGradeSchoolYear(sy, fromSelect = false) {
+  if (appData.selectedGradeSchoolYear === sy) return;
   appData.selectedGradeSchoolYear = sy;
   saveAppData();
-  renderGradesView();
-  const label = sy === 'all' ? 'Alle Schuljahre' : `Schuljahr ${sy}`;
-  announceSR(`${label} ausgewählt.`, 'polite');
+  renderGradesView(fromSelect);
+  if (!fromSelect) {
+    const label = sy === 'all' ? 'Alle Schuljahre' : `Schuljahr ${sy}`;
+    announceSR(`${label} ausgewählt.`, 'polite');
+  }
 }
 
-function renderGradesView() {
+function renderGradesView(fromSelect = false) {
   const container = document.getElementById('grades-list-container');
   if (!container) return;
 
@@ -5709,11 +5712,11 @@ function renderGradesView() {
   const manualGrades = appData.grades || {};
   const finalMarks = appData.webuntisFinalMarks || {};
 
-  // Schuljahre zählen
+  // Schuljahre dynamisch aus allen Noten zählen
   const syCounts = {};
   allGrades.forEach(g => {
     const sy = getGradeSchoolYear(g);
-    syCounts[sy] = (syCounts[sy] || 0) + 1;
+    if (sy) syCounts[sy] = (syCounts[sy] || 0) + 1;
   });
   if (!syCounts['2026/2027']) syCounts['2026/2027'] = 0;
 
@@ -5724,21 +5727,37 @@ function renderGradesView() {
     appData.selectedGradeSchoolYear = selectedSy;
   }
 
-  // Oberes Schuljahr-Auswahlmenü synchronisieren
+  // Alle Schuljahre mit Noten dynamisch auflisten + aktuelles Schuljahr
+  const yearKeys = Object.keys(syCounts).sort().reverse();
+  const syOptions = yearKeys.map(sy => ({
+    id: sy,
+    label: (sy === '2026/2027') ? `Schuljahr ${sy} (Aktuell)` : `Schuljahr ${sy}`,
+    count: syCounts[sy] || 0
+  }));
+  syOptions.push({
+    id: 'all',
+    label: 'Alle Schuljahre',
+    count: allGrades.length
+  });
+
+  // Oberes Schuljahr-Auswahlmenü (Kombinationsfeld) synchronisieren
   const gradeSySelect = document.getElementById('grade-schoolyear-select');
-  if (gradeSySelect && gradeSySelect.value !== selectedSy) {
-    gradeSySelect.value = selectedSy;
+  if (gradeSySelect) {
+    const currentOptCount = gradeSySelect.options ? gradeSySelect.options.length : 0;
+    if (currentOptCount !== syOptions.length) {
+      gradeSySelect.innerHTML = syOptions.map(opt => `
+        <option value="${escHtml(opt.id)}" ${opt.id === selectedSy ? 'selected' : ''}>
+          ${escHtml(opt.label)} (${opt.count} ${opt.count === 1 ? 'Note' : 'Noten'})
+        </option>
+      `).join('');
+    }
+    if (gradeSySelect.value !== selectedSy) {
+      gradeSySelect.value = selectedSy;
+    }
   }
 
-  // Schuljahr-Filter-Leiste rendern
+  // Schuljahr-Filter-Leiste (Schnellfilter-Buttons) rendern
   if (syBar) {
-    const syOptions = [
-      { id: '2025/2026', label: 'Schuljahr 2025/2026', count: syCounts['2025/2026'] || 0 },
-      { id: '2026/2027', label: 'Schuljahr 2026/2027 (Aktuell)', count: syCounts['2026/2027'] || 0 },
-      { id: '2024/2025', label: 'Schuljahr 2024/2025', count: syCounts['2024/2025'] || 0 },
-      { id: 'all', label: 'Alle Schuljahre', count: allGrades.length }
-    ];
-
     syBar.innerHTML = syOptions.map(opt => {
       const isActive = (selectedSy === opt.id);
       return `
@@ -5746,7 +5765,7 @@ function renderGradesView() {
                 class="grade-sy-btn ${isActive ? 'active' : ''}" 
                 role="tab" 
                 aria-selected="${isActive}" 
-                onclick="setGradeSchoolYear('${opt.id}')"
+                onclick="setGradeSchoolYear('${opt.id}', false)"
                 aria-label="${opt.label}, ${opt.count} Noten erfasst">
           ${escHtml(opt.label)} <span style="opacity: 0.85; font-size: 12px; margin-left: 4px;">(${opt.count})</span>
         </button>
@@ -6189,14 +6208,70 @@ function getCanteenData() {
   return DEFAULT_CANTEEN_DATA;
 }
 
-function setCanteenWeek(weekId) {
+function getFullCanteenWeeksList(canteenData) {
+  const data = canteenData || getCanteenData();
+  const knownWeeks = (data && data.weeks) ? data.weeks : [];
+  const knownDict = {};
+  knownWeeks.forEach(w => { if (w.weekId) knownDict[w.weekId] = w; });
+
+  const weekDefs = [
+    { kw: 37, dateRange: '07.09. bis 10.09.2026', label: 'Vorige Woche (KW 37: 07.09. – 10.09.2026)' },
+    { kw: 38, dateRange: '14.09. bis 17.09.2026', label: 'Diese Woche (KW 38: 14.09. – 17.09.2026)', isCurrent: true },
+    { kw: 39, dateRange: '21.09. bis 24.09.2026', label: 'Nächste Woche (KW 39: 21.09. – 24.09.2026)' },
+    { kw: 40, dateRange: '28.09. bis 01.10.2026', label: 'Kalenderwoche 40 (28.09. – 01.10.2026)' },
+    { kw: 41, dateRange: '05.10. bis 08.10.2026', label: 'Kalenderwoche 41 (05.10. – 08.10.2026)' },
+    { kw: 42, dateRange: '12.10. bis 15.10.2026', label: 'Kalenderwoche 42 (12.10. – 15.10.2026)' },
+    { kw: 43, dateRange: '19.10. bis 22.10.2026', label: 'Kalenderwoche 43 (Herbstferien NRW)' },
+    { kw: 44, dateRange: '26.10. bis 29.10.2026', label: 'Kalenderwoche 44 (Herbstferien NRW)' }
+  ];
+
+  return weekDefs.map(wdef => {
+    const wid = `kw${wdef.kw}`;
+    if (knownDict[wid]) {
+      const k = knownDict[wid];
+      return {
+        weekId: wid,
+        kw: wdef.kw,
+        label: k.label || wdef.label,
+        dateRange: k.dateRange || wdef.dateRange,
+        isCurrent: !!k.isCurrent || !!wdef.isCurrent,
+        hasData: Array.isArray(k.days) && k.days.length > 0,
+        days: k.days || []
+      };
+    }
+    return {
+      weekId: wid,
+      kw: wdef.kw,
+      label: wdef.label,
+      dateRange: wdef.dateRange,
+      isCurrent: !!wdef.isCurrent,
+      hasData: false,
+      days: []
+    };
+  });
+}
+
+function setCanteenWeek(weekId, fromSelect = false) {
+  if (appData.selectedCanteenWeek === weekId) return;
   appData.selectedCanteenWeek = weekId;
   saveAppData();
-  renderCanteenView();
-  const data = getCanteenData();
-  const wk = (data.weeks || []).find(w => w.weekId === weekId);
-  const label = wk ? wk.label : weekId;
-  announceSR(`Speiseplan für ${label} geladen.`, 'polite');
+  renderCanteenView(fromSelect);
+  if (!fromSelect) {
+    const allWeeks = getFullCanteenWeeksList();
+    const wk = allWeeks.find(w => w.weekId === weekId);
+    const label = wk ? wk.label : weekId;
+    announceSR(`Speiseplan für ${label} geladen.`, 'polite');
+  }
+}
+
+function changeCanteenWeek(delta) {
+  const allWeeks = getFullCanteenWeeksList();
+  let currentIdx = allWeeks.findIndex(w => w.weekId === appData.selectedCanteenWeek);
+  if (currentIdx === -1) currentIdx = 1; // default to KW 38
+  let newIdx = currentIdx + delta;
+  if (newIdx < 0) newIdx = 0;
+  if (newIdx >= allWeeks.length) newIdx = allWeeks.length - 1;
+  setCanteenWeek(allWeeks[newIdx].weekId, false);
 }
 
 function setCanteenDay(dayName) {
@@ -6217,31 +6292,60 @@ function isCanteenDateToday(dateStr) {
   return dateStr.trim() === todayFormatted;
 }
 
-function renderCanteenView() {
+function renderCanteenView(fromSelect = false) {
   const container = document.getElementById('canteen-days-container');
   if (!container) return;
 
   const data = getCanteenData();
-  const weeks = data.weeks || [];
+  const allWeeks = getFullCanteenWeeksList(data);
 
   // 1. Wochenauswahl-Dropdown synchronisieren
   let selectedWeekId = appData.selectedCanteenWeek;
-  if (!selectedWeekId || !weeks.some(w => w.weekId === selectedWeekId)) {
-    const currentWk = weeks.find(w => w.isCurrent) || weeks[0];
+  if (!selectedWeekId || !allWeeks.some(w => w.weekId === selectedWeekId)) {
+    const currentWk = allWeeks.find(w => w.isCurrent) || allWeeks[1];
     selectedWeekId = currentWk ? currentWk.weekId : 'kw38';
     appData.selectedCanteenWeek = selectedWeekId;
   }
 
   const weekSelect = document.getElementById('canteen-week-select');
   if (weekSelect) {
-    weekSelect.innerHTML = weeks.map(w => `
-      <option value="${escHtml(w.weekId)}" ${w.weekId === selectedWeekId ? 'selected' : ''}>
-        ${escHtml(w.label)} (${escHtml(w.dateRange)})
-      </option>
-    `).join('');
+    const currentCount = weekSelect.options ? weekSelect.options.length : 0;
+    if (currentCount !== allWeeks.length) {
+      weekSelect.innerHTML = allWeeks.map(w => `
+        <option value="${escHtml(w.weekId)}" ${w.weekId === selectedWeekId ? 'selected' : ''}>
+          ${escHtml(w.label)} ${w.hasData ? '(Speiseplan verfügbar)' : '(Noch kein Plan)'}
+        </option>
+      `).join('');
+    }
+    if (weekSelect.value !== selectedWeekId) {
+      weekSelect.value = selectedWeekId;
+    }
   }
 
-  // 2. Status- und Quellen-Banner
+  // 2. Schnellwahl-Buttons für Wochen
+  const quickNav = document.getElementById('canteen-week-quick-nav');
+  if (quickNav) {
+    const quickItems = [
+      { id: 'kw37', label: 'KW 37 (Vorige)' },
+      { id: 'kw38', label: 'KW 38 (Diese Woche)' },
+      { id: 'kw39', label: 'KW 39 (Nächste)' },
+      { id: 'kw40', label: 'KW 40' }
+    ];
+    quickNav.innerHTML = quickItems.map(item => {
+      const isSel = (selectedWeekId === item.id);
+      return `
+        <button type="button" 
+                class="canteen-day-btn ${isSel ? 'active' : ''}" 
+                style="font-size: 13px; padding: 5px 10px;" 
+                onclick="setCanteenWeek('${item.id}', false)"
+                aria-label="${escHtml(item.label)}">
+          ${escHtml(item.label)}
+        </button>
+      `;
+    }).join('');
+  }
+
+  // 3. Status- und Quellen-Banner
   const statusBanner = document.getElementById('canteen-status-banner');
   if (statusBanner) {
     statusBanner.innerHTML = `
@@ -6260,7 +6364,7 @@ function renderCanteenView() {
     `;
   }
 
-  // 3. Tages-Schnellfilter-Leiste
+  // 4. Tages-Schnellfilter-Leiste
   const dayFilterBar = document.getElementById('canteen-day-filter-bar');
   const selectedDay = appData.selectedCanteenDay || 'all';
 
@@ -6288,14 +6392,34 @@ function renderCanteenView() {
     }).join('');
   }
 
-  // 4. Gewählte Woche ermitteln & Tage darstellen
-  const activeWeek = weeks.find(w => w.weekId === selectedWeekId) || weeks[0];
-  if (!activeWeek || !activeWeek.days || activeWeek.days.length === 0) {
+  // 5. Gewählte Woche ermitteln & Tage darstellen
+  const activeWeek = allWeeks.find(w => w.weekId === selectedWeekId) || allWeeks[1];
+  
+  // Wenn noch kein Speiseplan für diese Woche vorliegt:
+  if (!activeWeek || !activeWeek.hasData || !activeWeek.days || activeWeek.days.length === 0) {
     container.innerHTML = `
-      <div class="empty-card" style="padding: 30px; text-align: center;">
-        <h3 style="margin-bottom: 8px;"><span class="emoji-icon" aria-hidden="true">🍽️ </span>Kein Speiseplan verfügbar</h3>
-        <p>Für diese Woche liegen aktuell keine Menüdaten vor.</p>
-      </div>
+      <article class="canteen-day-card" style="padding: 34px 20px; text-align: center; border: 2px dashed var(--accent-primary); background: var(--bg-surface-elevated);" aria-labelledby="heading-no-canteen-plan">
+        <h3 id="heading-no-canteen-plan" class="canteen-day-title" style="justify-content: center; font-size: 1.3rem; margin-bottom: 12px;">
+          <span class="emoji-icon" aria-hidden="true">📅 </span>Für diese Woche liegt noch kein Speiseplan vor
+        </h3>
+        <p style="font-size: 16px; color: var(--text-primary); max-width: 620px; margin: 0 auto 16px auto; line-height: 1.6;">
+          Für die <strong>Kalenderwoche ${activeWeek ? activeWeek.kw : ''} (${escHtml(activeWeek ? activeWeek.dateRange : '')})</strong> hat die Mensa noch keinen Speiseplan herausgegeben.
+        </p>
+        <div style="background: var(--bg-surface); padding: 14px 18px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); display: inline-block; text-align: left; max-width: 550px; margin-bottom: 20px;">
+          <p style="margin: 0; font-size: 14.5px; color: var(--text-secondary); line-height: 1.5;">
+            <span class="emoji-icon" aria-hidden="true">ℹ️ </span><strong>Wann erscheint der Plan?</strong><br>
+            Die Küche der Mensa (Von-Vincke-Schule &amp; BBW Soest) veröffentlicht neue Speisepläne gewöhnlich am <strong>Freitag vor Beginn der jeweiligen Schulwoche</strong>.
+          </p>
+        </div>
+        <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+          <button type="button" class="btn btn-primary" onclick="refreshCanteenData()" aria-label="Jetzt prüfen ob ein Speiseplan veröffentlicht wurde">
+            <span class="emoji-icon" aria-hidden="true">🔄 </span>Speisepläne jetzt neu abrufen (Taste A)
+          </button>
+          <button type="button" class="btn btn-secondary" onclick="setCanteenWeek('kw38', false)" aria-label="Zur aktuellen Schulwoche KW 38 zurückkehren">
+            <span class="emoji-icon" aria-hidden="true">🍽️ </span>Zur aktuellen Woche (KW 38)
+          </button>
+        </div>
+      </article>
     `;
     return;
   }
@@ -6407,12 +6531,13 @@ function renderCanteenView() {
 
 function readCanteenSummary() {
   const data = getCanteenData();
-  const weeks = data.weeks || [];
+  const allWeeks = getFullCanteenWeeksList(data);
   const selectedWeekId = appData.selectedCanteenWeek || 'kw38';
-  const activeWeek = weeks.find(w => w.weekId === selectedWeekId) || weeks[0];
+  const activeWeek = allWeeks.find(w => w.weekId === selectedWeekId) || allWeeks[1];
 
-  if (!activeWeek || !activeWeek.days || activeWeek.days.length === 0) {
-    const msg = 'Es liegt derzeit kein Speiseplan für die Mensa vor.';
+  if (!activeWeek || !activeWeek.hasData || !activeWeek.days || activeWeek.days.length === 0) {
+    const kwLabel = activeWeek ? `Kalenderwoche ${activeWeek.kw}` : 'diese Woche';
+    const msg = `Für die ${kwLabel} liegt noch kein Speiseplan der Mensa vor. Die Pläne werden in der Regel am Freitag der Vorwoche veröffentlicht.`;
     speak(msg, true);
     announceSR(msg, 'assertive');
     return;
@@ -6476,7 +6601,6 @@ async function refreshCanteenData() {
     throw new Error('Ungültige Server-Antwort');
   } catch (err) {
     console.warn('Canteen sync error:', err);
-    // Fallback auf vorhandene Daten
     renderCanteenView();
     const warnMsg = 'Speisepläne konnten nicht neu geladen werden. Gespeicherter Speiseplan wird verwendet.';
     speak(warnMsg, true);
