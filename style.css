@@ -2377,3 +2377,38 @@ body.theme-high-contrast .canteen-day-btn.active {
 
 
 
+
+/* =============================================================================
+   SCHULSUCHE & MULTI-SCHUL-UNTERSTÜTZUNG
+   ============================================================================= */
+
+.school-search-item {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all var(--transition-fast);
+}
+
+.school-search-item:hover, .school-search-item:focus-visible {
+  background: var(--bg-surface-elevated);
+  border-color: var(--accent-primary);
+  outline: 2px solid var(--accent-primary);
+}
+
+body.theme-high-contrast .school-search-item {
+  background: #000000 !important;
+  border: 2px solid #ffffff !important;
+  color: #ffffff !important;
+}
+
+body.theme-high-contrast .school-search-item:hover,
+body.theme-high-contrast .school-search-item:focus-visible {
+  background: #ffff00 !important;
+  color: #000000 !important;
+}

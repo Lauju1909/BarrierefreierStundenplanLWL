@@ -54,7 +54,7 @@ namespace BarrierefreierStundenplan
             {
                 _trayIcon = new NotifyIcon();
                 _trayIcon.Icon = SystemIcons.Information;
-                _trayIcon.Text = "Barrierefreier Stundenplan LWL";
+                _trayIcon.Text = "Barrierefreies WebUntis";
                 _trayIcon.Visible = true;
             }
             catch { }
@@ -519,7 +519,7 @@ namespace BarrierefreierStundenplan
             // Windows Desktop Benachrichtigung (Toast / Tray Notification)
             if (rawUrl == "/api/notify")
             {
-                string title = "LWL Stundenplan";
+                string title = "Barrierefreies WebUntis";
                 string msg = "";
                 string q = req.Url != null ? req.Url.Query : "";
                 if (!string.IsNullOrEmpty(q))
@@ -710,6 +710,13 @@ namespace BarrierefreierStundenplan
             if (rawUrl == "/api/canteen")
             {
                 HandleCanteenApi(req, resp);
+                return;
+            }
+
+            // 3g. WebUntis Schulsuche API (Suche über mobile.webuntis.com/ms/schoolquery2)
+            if (rawUrl == "/api/school_search")
+            {
+                HandleSchoolSearchApi(req, resp);
                 return;
             }
 
@@ -1312,6 +1319,64 @@ namespace BarrierefreierStundenplan
             }
 
             return null;
+        }
+
+
+        // =========================================================================
+        // WEBUNTIS SCHULSUCHE API (JSON-RPC 2.0 an mobile.webuntis.com)
+        // =========================================================================
+        private static void HandleSchoolSearchApi(HttpListenerRequest req, HttpListenerResponse resp)
+        {
+            string query = req.QueryString["query"] ?? req.QueryString["q"] ?? "";
+            query = query.Trim();
+
+            resp.StatusCode = 200;
+            resp.ContentType = "application/json; charset=utf-8";
+
+            if (string.IsNullOrEmpty(query) || query.Length < 2)
+            {
+                byte[] emptyRes = Encoding.UTF8.GetBytes("{\"result\":{\"schools\":[]}}");
+                resp.OutputStream.Write(emptyRes, 0, emptyRes.Length);
+                resp.Close();
+                return;
+            }
+
+            try
+            {
+                string jsonReq = "{\"id\":\"1\",\"jsonrpc\":\"2.0\",\"method\":\"searchSchool\",\"params\":[{\"search\":\"" + query.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"}]}";
+                byte[] postBytes = Encoding.UTF8.GetBytes(jsonReq);
+
+                HttpWebRequest wReq = (HttpWebRequest)WebRequest.Create("https://mobile.webuntis.com/ms/schoolquery2");
+                wReq.Method = "POST";
+                wReq.ContentType = "application/json";
+                wReq.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) BarrierefreiesWebUntis";
+                wReq.Timeout = 7000;
+                wReq.ContentLength = postBytes.Length;
+
+                using (Stream os = wReq.GetRequestStream())
+                {
+                    os.Write(postBytes, 0, postBytes.Length);
+                }
+
+                string untisRes = "";
+                using (HttpWebResponse wResp = (HttpWebResponse)wReq.GetResponse())
+                using (StreamReader sr = new StreamReader(wResp.GetResponseStream(), Encoding.UTF8))
+                {
+                    untisRes = sr.ReadToEnd();
+                }
+
+                byte[] outData = Encoding.UTF8.GetBytes(untisRes);
+                resp.OutputStream.Write(outData, 0, outData.Length);
+                resp.Close();
+                return;
+            }
+            catch (Exception ex)
+            {
+                LogUntis("School search error for '" + query + "': " + ex.Message);
+                byte[] errData = Encoding.UTF8.GetBytes("{\"error\":true,\"message\":\"" + ex.Message.Replace("\"", "\\\"") + "\",\"result\":{\"schools\":[]}}");
+                resp.OutputStream.Write(errData, 0, errData.Length);
+                resp.Close();
+            }
         }
 
         private static void ProxyWebUntis(HttpListenerRequest req, HttpListenerResponse resp)

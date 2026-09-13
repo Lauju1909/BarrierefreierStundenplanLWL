@@ -126,6 +126,55 @@ let lastSyncTimestamp = null;
 let autoSyncIntervalTimer = null;
 let isSyncInProgress = false;
 
+
+// =============================================================================
+// SCHUL-KONFIGURATION & CAMPUS-ERKENNUNG
+// =============================================================================
+function isSoestCampusSchool(config) {
+  const cfg = config || (appData && appData.config) || {};
+  const s = `${cfg.schoolShort || ''} ${cfg.schoolName || ''} ${cfg.server || ''}`.toLowerCase();
+  return s.includes('bk-soest') || s.includes('berufskolleg soest') || s.includes('lwl-bk-soest') ||
+         s.includes('vincke') || s.includes('bbw-soest') || s.includes('bbw soest');
+}
+
+function updateNavigationForSchool() {
+  const isSoest = isSoestCampusSchool();
+  const canteenTabBtn = document.getElementById('tab-canteen');
+  const settingsKeyHint = document.getElementById('tab-settings-key-hint');
+  const skipLinkNav = document.getElementById('skip-link-nav');
+
+  if (canteenTabBtn) {
+    canteenTabBtn.style.display = isSoest ? 'inline-flex' : 'none';
+  }
+
+  if (settingsKeyHint) {
+    settingsKeyHint.textContent = isSoest ? '9' : '8';
+  }
+
+  if (skipLinkNav) {
+    skipLinkNav.textContent = isSoest
+      ? 'Zur Menüauswahl springen (Tasten 1-9)'
+      : 'Zur Menüauswahl springen (Tasten 1-8)';
+  }
+
+  const headerSchoolEl = document.getElementById('header-school-name');
+  if (headerSchoolEl) {
+    const sName = (appData && appData.config && appData.config.schoolName) || 'WebUntis';
+    headerSchoolEl.textContent = `${sName} • Live aus WebUntis`;
+  }
+
+  const loginSub = document.getElementById('login-subtitle-school');
+  if (loginSub) {
+    const sName = (appData && appData.config && appData.config.schoolName) || 'WebUntis Schule';
+    loginSub.textContent = `${sName}`;
+  }
+
+  // Falls Mensa-Tab aktiv war, aber Schule kein Soest-Campus ist:
+  if (!isSoest && typeof currentTab !== 'undefined' && currentTab === 'canteen') {
+    switchTab('overview');
+  }
+}
+
 function isNativeApp() {
   return typeof window !== 'undefined' && !!(
     (window.Capacitor && (window.Capacitor.isNativePlatform ? window.Capacitor.isNativePlatform() : window.Capacitor.getPlatform?.() !== 'web')) ||
@@ -276,9 +325,8 @@ function applyConfig() {
     body.classList.remove('text-only-mode');
   }
 
-  // Header School Name
-  const schoolEl = document.getElementById('header-school-name');
-  if (schoolEl) schoolEl.textContent = `${appData.config.schoolName} • Live aus WebUntis`;
+  // Navigation & Header School Name aktualisieren
+  updateNavigationForSchool();
 
   // Settings Felder aktualisieren
   const cfgTheme = document.getElementById('cfg-theme');
@@ -439,13 +487,173 @@ function switchTab(tabId) {
     announceSR('Reiter 8: Mensa und Speisepläne ausgewählt.', 'polite');
   } else if (tabId === 'settings') {
     loadFeedbackArchive();
-    announceSR('Reiter 9: Konto und Einstellungen ausgewählt.', 'polite');
+    const keyNum = isSoestCampusSchool() ? '9' : '8';
+    announceSR(`Reiter ${keyNum}: Konto und Einstellungen ausgewählt.`, 'polite');
   }
 }
 
 // =============================================================================
 // 5. ANMELDUNG & SITZUNGS-MANAGEMENT
 // =============================================================================
+
+// =============================================================================
+// SCHULAUSWAHL & SCHULSUCHE LOGIK (LOGIN)
+// =============================================================================
+function handleSchoolPresetChange(val) {
+  const searchBox = document.getElementById('login-school-search-box');
+  const manualFields = document.getElementById('login-school-manual-fields');
+  const displayEl = document.getElementById('login-selected-school-display');
+  const badgeEl = document.getElementById('login-canteen-availability-badge');
+
+  if (val === 'lwl-bk-soest') {
+    if (searchBox) searchBox.style.display = 'none';
+    if (manualFields) manualFields.style.display = 'none';
+    appData.config.schoolName = 'LWL-Berufskolleg Soest';
+    appData.config.schoolShort = 'lwl-bk-soest';
+    appData.config.server = 'lwl-bk-soest.webuntis.com';
+    appData.config.tenantId = '5238400';
+  } else if (val === 'von-vincke-schule') {
+    if (searchBox) searchBox.style.display = 'none';
+    if (manualFields) manualFields.style.display = 'none';
+    appData.config.schoolName = 'LWL-Von-Vincke-Schule Soest';
+    appData.config.schoolShort = 'von-vincke-schule';
+    appData.config.server = 'von-vincke-schule.webuntis.com';
+    appData.config.tenantId = '7209600';
+  } else if (val === 'bbw-soest') {
+    if (searchBox) searchBox.style.display = 'none';
+    if (manualFields) manualFields.style.display = 'none';
+    appData.config.schoolName = 'LWL-Berufsbildungswerk Soest (BBW)';
+    appData.config.schoolShort = 'bbw-soest';
+    appData.config.server = 'bbw-soest.webuntis.com';
+    appData.config.tenantId = '';
+  } else if (val === 'custom') {
+    if (searchBox) searchBox.style.display = 'block';
+    if (manualFields) manualFields.style.display = 'block';
+    const sInp = document.getElementById('school-search-query');
+    if (sInp) {
+      setTimeout(() => { sInp.focus(); }, 50);
+    }
+  }
+
+  saveAppData();
+  updateNavigationForSchool();
+
+  if (displayEl) displayEl.textContent = appData.config.schoolName || 'Benutzerdefiniert';
+
+  if (badgeEl) {
+    const isSoest = isSoestCampusSchool();
+    badgeEl.style.display = isSoest ? 'inline-block' : 'none';
+  }
+
+  announceSR(`Schule ${appData.config.schoolName} ausgewählt.`, 'polite');
+}
+
+async function executeSchoolSearch() {
+  const qInput = document.getElementById('school-search-query');
+  const resultsContainer = document.getElementById('school-search-results');
+  if (!qInput || !resultsContainer) return;
+
+  const q = qInput.value.trim();
+  if (q.length < 2) {
+    announceSR('Bitte mindestens 2 Buchstaben für die Schulsuche eingeben.', 'assertive');
+    resultsContainer.innerHTML = '<p style="color: var(--accent-urgent); font-size: 14px; margin-top: 6px;">Bitte mindestens 2 Buchstaben eingeben.</p>';
+    return;
+  }
+
+  resultsContainer.innerHTML = '<p style="font-size: 14px; color: var(--text-secondary); margin-top: 6px;"><span class="emoji-icon" aria-hidden="true">⏳ </span>Suche Schulen in WebUntis...</p>';
+  announceSR('Suche Schulen in WebUntis...', 'polite');
+
+  try {
+    const resp = await fetch(`/api/school_search?query=${encodeURIComponent(q)}`);
+    const data = await resp.json();
+    const schools = (data && data.result && data.result.schools) ? data.result.schools : [];
+
+    if (schools.length === 0) {
+      resultsContainer.innerHTML = '<p style="font-size: 14px; color: var(--text-secondary); margin-top: 6px;">Keine passende Schule in WebUntis gefunden. Du kannst das Kürzel unten manuell eingeben.</p>';
+      announceSR('Keine passende Schule gefunden.', 'polite');
+      return;
+    }
+
+    let html = `<p style="font-size: 13.5px; font-weight: bold; margin: 8px 0 6px 0;">Gefundene Schulen (${schools.length} Treffer - anklicken zum Auswählen):</p>`;
+    schools.forEach(s => {
+      const sName = s.displayName || s.name || s.loginName;
+      const sCity = s.address || '';
+      const sLogin = s.loginName;
+      const sServer = s.serverUrl ? new URL(s.serverUrl).hostname : `${s.loginName}.webuntis.com`;
+      const sTenant = String(s.schoolId || '');
+
+      const sDataStr = JSON.stringify({ name: sName, loginName: sLogin, server: sServer, tenantId: sTenant })
+        .replace(/"/g, '&quot;');
+
+      html += `
+        <div class="school-search-item" 
+             tabindex="0" 
+             role="button" 
+             onclick='selectSearchedSchool(${sDataStr})' 
+             onkeydown='if(event.key==="Enter"||event.key===" "){event.preventDefault();selectSearchedSchool(${sDataStr});}' 
+             aria-label="${escHtml(sName)}, ${escHtml(sCity)}">
+          <div>
+            <strong style="font-size: 14.5px; color: var(--text-primary);">${escHtml(sName)}</strong>
+            <div style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">
+              ${escHtml(sCity)} • Kürzel: <code>${escHtml(sLogin)}</code>
+            </div>
+          </div>
+          <button type="button" class="btn btn-secondary" style="padding: 4px 10px; font-size: 13px;">
+            Auswählen
+          </button>
+        </div>
+      `;
+    });
+
+    resultsContainer.innerHTML = html;
+    announceSR(`${schools.length} Schulen gefunden. Bitte mit Pfeiltasten oder Tab auswählen.`, 'assertive');
+  } catch (err) {
+    console.warn('School search error:', err);
+    resultsContainer.innerHTML = '<p style="color: var(--accent-urgent); font-size: 14px;">Fehler beim Abrufen der Schulen. Bitte Kürzel und Server manuell eintragen.</p>';
+  }
+}
+
+function selectSearchedSchool(sObj) {
+  if (!sObj) return;
+
+  appData.config.schoolName = sObj.name || sObj.loginName;
+  appData.config.schoolShort = sObj.loginName;
+  appData.config.server = sObj.server;
+  if (sObj.tenantId) appData.config.tenantId = sObj.tenantId;
+
+  saveAppData();
+  updateNavigationForSchool();
+
+  const displayEl = document.getElementById('login-selected-school-display');
+  if (displayEl) displayEl.textContent = appData.config.schoolName;
+
+  const shortInp = document.getElementById('login-school-short');
+  if (shortInp) shortInp.value = appData.config.schoolShort;
+
+  const serverInp = document.getElementById('login-school-server');
+  if (serverInp) serverInp.value = appData.config.server;
+
+  const badgeEl = document.getElementById('login-canteen-availability-badge');
+  if (badgeEl) {
+    const isSoest = isSoestCampusSchool();
+    badgeEl.style.display = isSoest ? 'inline-block' : 'none';
+  }
+
+  const resultsContainer = document.getElementById('school-search-results');
+  if (resultsContainer) {
+    resultsContainer.innerHTML = `<p style="color: var(--accent-ok); font-weight: bold; font-size: 14px; margin-top: 6px;"><span class="emoji-icon" aria-hidden="true">✅ </span>${escHtml(appData.config.schoolName)} erfolgreich ausgewählt!</p>`;
+  }
+
+  const userInp = document.getElementById('login-username');
+  if (userInp) {
+    userInp.focus();
+  }
+
+  const msg = `Schule ${appData.config.schoolName} ausgewählt. Bitte jetzt Benutzername eingeben.`;
+  speak(msg, true);
+  announceSR(msg, 'assertive');
+}
+
 function showLoginView() {
   const loginView = document.getElementById('view-login');
   const navTabs = document.getElementById('main-nav-tabs');
@@ -4859,10 +5067,16 @@ function initApp() {
       switchTab('grades');
     } else if (e.key === '8') {
       e.preventDefault();
-      switchTab('canteen');
+      if (isSoestCampusSchool()) {
+        switchTab('canteen');
+      } else {
+        switchTab('settings');
+      }
     } else if (e.key === '9') {
       e.preventDefault();
-      switchTab('settings');
+      if (isSoestCampusSchool()) {
+        switchTab('settings');
+      }
     } else if (e.key === 'h' || e.key === 'H') {
       e.preventDefault();
       setDayFilter('today');

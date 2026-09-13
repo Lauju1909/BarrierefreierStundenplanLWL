@@ -14,7 +14,7 @@
 
   <!-- Schnellsprunglinks für Tastaturbedienung -->
   <nav class="skip-links" aria-label="Schnellnavigation">
-    <a href="#main-nav-tabs" class="skip-link">Zur Menüauswahl springen (Tasten 1-9)</a>
+    <a href="#main-nav-tabs" class="skip-link" id="skip-link-nav">Zur Menüauswahl springen (Tasten 1-9)</a>
     <a href="#day-picker-bar" class="skip-link">Zur Tagesauswahl springen</a>
     <a href="#view-content-area" class="skip-link">Direkt zum Hauptinhalt springen</a>
   </nav>
@@ -27,7 +27,7 @@
       <div class="brand">
         <span class="app-icon emoji-icon" aria-hidden="true"><span class="emoji-icon" aria-hidden="true">🏫</span></span>
         <div class="brand-text">
-          <h1>Mein Stundenplan &amp; Prüfungen</h1>
+          <h1>Barrierefreies WebUntis</h1>
           <span class="school-tag" id="header-school-name">LWL-Berufskolleg Soest • Live aus WebUntis</span>
         </div>
       </div>
@@ -62,8 +62,8 @@
     <section class="section-card login-card" aria-labelledby="login-heading">
       <div style="text-align: center; margin-bottom: 20px;">
         <span class="emoji-icon" style="font-size: 48px;" aria-hidden="true">🔐</span>
-        <h2 id="login-heading" style="font-size: var(--font-size-xl); color: var(--text-primary); margin-top: 10px;">WebUntis Anmeldung</h2>
-        <p class="field-hint" style="font-size: var(--font-size-base); margin-top: 6px;">
+        <h2 id="login-heading" style="font-size: var(--font-size-xl); color: var(--text-primary); margin-top: 10px;">Barrierefreies WebUntis – Anmeldung</h2>
+        <p class="field-hint" style="font-size: var(--font-size-base); margin-top: 6px;" id="login-subtitle-school">
           LWL-Berufskolleg Soest (Förderschwerpunkt Sehen)
         </p>
       </div>
@@ -73,14 +73,65 @@
       </p>
 
       <form id="form-login" onsubmit="handleLoginSubmit(event)" class="accessible-form">
-        <div class="form-group">
-          <label for="login-username" class="field-label"><strong>Benutzername (WebUntis):</strong><span class="required-star">*</span></label>
-          <input type="text" id="login-username" class="large-input" placeholder="Benutzername oder Schüler-ID" required autocomplete="username" onfocus="this.select()">
-          <span class="field-hint">Dein offizieller Login am LWL-Berufskolleg Soest.</span>
+        <!-- 1. SCHULAUSWAHL AN ERSTER STELLE -->
+        <div class="form-group" style="background: var(--bg-surface-elevated); border: 2px solid var(--border-color); border-radius: var(--radius-md); padding: 16px; margin-bottom: 20px;">
+          <label for="login-school-preset" class="field-label" style="font-size: 16px; font-weight: bold; margin-bottom: 8px;">
+            <span class="emoji-icon" aria-hidden="true">🏫 </span><strong>1. Schule auswählen:</strong><span class="required-star">*</span>
+          </label>
+          <select id="login-school-preset" class="large-input" onchange="handleSchoolPresetChange(this.value)" style="font-size: 15px; font-weight: 600; margin-bottom: 10px;" aria-label="Schule aus Liste auswählen">
+            <option value="lwl-bk-soest">LWL-Berufskolleg Soest</option>
+            <option value="von-vincke-schule">LWL-Von-Vincke-Schule Soest</option>
+            <option value="bbw-soest">LWL-Berufsbildungswerk Soest (BBW)</option>
+            <option value="custom">Andere Schule in WebUntis suchen...</option>
+          </select>
+
+          <!-- Suchbereich für alle anderen WebUntis Schulen -->
+          <div id="login-school-search-box" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border-subtle);">
+            <label for="school-search-query" class="field-label" style="font-size: 14px;">
+              <strong>WebUntis Schulsuche (Name oder Ort):</strong>
+            </label>
+            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+              <input type="text" id="school-search-query" class="large-input" placeholder="z. B. Soest, Dortmund, Berufskolleg..." onkeydown="if(event.key==='Enter'){event.preventDefault();executeSchoolSearch();}">
+              <button type="button" class="btn btn-primary" onclick="executeSchoolSearch()" style="min-width: 110px;">
+                <span class="emoji-icon" aria-hidden="true">🔍 </span>Suchen
+              </button>
+            </div>
+            <div id="school-search-results" role="region" aria-live="polite" style="max-height: 220px; overflow-y: auto; margin-bottom: 10px;">
+              <!-- Dynamische Suchtreffer -->
+            </div>
+          </div>
+
+          <!-- Aktuell gewählte Schule & Mensa-Status -->
+          <div id="login-selected-school-box" style="margin-top: 10px; font-size: 14px; color: var(--text-secondary); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+            <span>Ausgewählt: <strong id="login-selected-school-display" style="color: var(--text-primary);">LWL-Berufskolleg Soest</strong></span>
+            <span id="login-canteen-availability-badge" class="badge-substitute" style="font-size: 12.5px; background: rgba(37,99,235,0.15); color: #1d4ed8; padding: 3px 8px; border-radius: 4px;">
+              <span class="emoji-icon" aria-hidden="true">🍽️ </span>Mensa verfügbar
+            </span>
+          </div>
+
+          <!-- Manuelle Eingabefelder für Server und Kürzel -->
+          <div id="login-school-manual-fields" style="display: none; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border-subtle);">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+              <div>
+                <label for="login-school-short" class="field-label" style="font-size: 13px;">Schul-Kürzel (LoginName):</label>
+                <input type="text" id="login-school-short" class="large-input" style="font-size: 13.5px; padding: 6px 10px;" placeholder="z. B. lwl-bk-soest">
+              </div>
+              <div>
+                <label for="login-school-server" class="field-label" style="font-size: 13px;">WebUntis-Server:</label>
+                <input type="text" id="login-school-server" class="large-input" style="font-size: 13.5px; padding: 6px 10px;" placeholder="z. B. lwl-bk-soest.webuntis.com">
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="form-group">
-          <label for="login-password" class="field-label"><strong>Passwort:</strong><span class="required-star">*</span></label>
+          <label for="login-username" class="field-label"><strong>2. Benutzername (WebUntis):</strong><span class="required-star">*</span></label>
+          <input type="text" id="login-username" class="large-input" placeholder="Benutzername oder Schüler-ID" required autocomplete="username" onfocus="this.select()">
+          <span class="field-hint">Dein offizieller WebUntis-Login an der ausgewählten Schule.</span>
+        </div>
+
+        <div class="form-group">
+          <label for="login-password" class="field-label"><strong>3. Passwort:</strong><span class="required-star">*</span></label>
           <input type="password" id="login-password" class="large-input" placeholder="WebUntis Passwort" required autocomplete="current-password" onfocus="this.select()">
           <span class="field-hint">Wird verschlüsselt nur lokal auf diesem Rechner verwendet.</span>
         </div>
@@ -151,7 +202,7 @@
         <span><span class="emoji-icon" aria-hidden="true">🍽️ </span><strong>Mensa &amp; Speisepläne</strong></span>
       </button>
       <button id="tab-settings" class="tab-btn" role="tab" aria-selected="false" aria-controls="view-settings" onclick="switchTab('settings')" tabindex="-1">
-        <span class="tab-key-hint" aria-hidden="true">9</span>
+        <span class="tab-key-hint" aria-hidden="true" id="tab-settings-key-hint">9</span>
         <span><span class="emoji-icon" aria-hidden="true">⚙️ </span><strong>Konto &amp; Einstellungen</strong></span>
       </button>
     </div>
@@ -744,7 +795,7 @@
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div>
               <p style="font-size: var(--font-size-base); margin-bottom: 4px;">
-                Installierte Version: <strong id="app-version-display">v1.9.7</strong>
+                Installierte Version: <strong id="app-version-display">v1.9.8</strong>
               </p>
               <p style="font-size: 14px; color: var(--text-muted);" id="update-status-detail">
                 Automatische Hintergrundaktualisierung über GitHub ist aktiv.
