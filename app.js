@@ -352,6 +352,10 @@ function escHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+function escapeHtml(str) {
+  return escHtml(str);
+}
+
 
 // =============================================================================
 // 4. NAVIGATION & REITER-WECHSEL (TASTEN 1 BIS 8)
@@ -2899,14 +2903,36 @@ function formatRoomDisplay(roomStr, teacherStr) {
   }
   if (teacherStr && typeof teacherStr === 'string') {
     const tLower = teacherStr.trim().toLowerCase();
-    const cleanNoRaum = lower.replace(/^raum\s+/i, '').trim();
+    const cleanNoRaum = lower.replace(/^(?:raum\s*)+/i, '').trim();
     if (tLower && (cleanNoRaum === tLower || tLower.includes(cleanNoRaum) || cleanNoRaum.includes(tLower))) {
       return 'Raum wird bekanntgegeben';
     }
   }
-  if (/^[0-9]+[a-zA-Z]?$/.test(clean)) return 'Raum ' + clean;
-  clean = clean.replace(/^raum\s+raum\s+/i, 'Raum ');
-  return clean;
+  clean = clean.replace(/^(?:raum\s*)+/i, '').trim();
+  if (!clean || clean.toLowerCase() === 'wird bekanntgegeben') {
+    return 'Raum wird bekanntgegeben';
+  }
+  return 'Raum ' + clean;
+}
+
+function formatRoomNameOnly(roomStr, teacherStr) {
+  const disp = formatRoomDisplay(roomStr, teacherStr);
+  if (!disp || disp.toLowerCase() === 'raum wird bekanntgegeben' || disp.toLowerCase() === 'wird bekanntgegeben') {
+    return 'wird bekanntgegeben';
+  }
+  let clean = disp.replace(/^(?:raum\s*)+/i, '').trim();
+  return clean || 'wird bekanntgegeben';
+}
+
+function cleanTeacherName(teacherStr) {
+  if (!teacherStr || typeof teacherStr !== 'string') return 'Lehrkraft';
+  let clean = teacherStr.trim();
+  const lower = clean.toLowerCase();
+  if (!clean || lower === 'lehrkraft' || lower === 'lehrer' || lower === 'null' || lower === 'undefined') {
+    return 'Lehrkraft';
+  }
+  clean = clean.replace(/^(?:lehrkraft|lehrer(?:in)?)\s+/i, '').trim();
+  return clean || 'Lehrkraft';
 }
 
 // =============================================================================
@@ -3280,10 +3306,11 @@ function renderTimetable() {
     }
 
     const dayPrefix = isWeekView ? `<strong>${getDayName(l.day)}:</strong> ` : '';
-    const roomDisplay = formatRoomDisplay(l.room, l.teacher);
+    const cleanRoom = formatRoomNameOnly(l.room, l.teacher);
+    const cleanTeacher = cleanTeacherName(l.teacher);
 
     html += `
-      <article class="lesson-card interactive-lesson ${statusClass}" role="listitem" tabindex="0" onclick="openLessonDetails('${l.id}')" onkeydown="handleLessonKeydown(event, '${l.id}')" title="Klicken oder Enter drücken für Lehrstoff, Hausaufgaben &amp; Details" aria-label="${dayPrefix}${l.period}. Stunde: ${l.subject}, ${roomDisplay}, Lehrkraft ${l.teacher}${l.klasse ? ', Klasse ' + l.klasse : ''}, Zeit: ${periodData.start} bis ${periodData.end} Uhr. Status: ${srStatus}. Klicken für Details, Lehrstoff und Hausaufgaben.">
+      <article class="lesson-card interactive-lesson ${statusClass}" role="listitem" tabindex="0" onclick="openLessonDetails('${l.id}')" onkeydown="handleLessonKeydown(event, '${l.id}')" title="Klicken oder Enter drücken für Lehrstoff, Hausaufgaben &amp; Details" aria-label="${dayPrefix}${l.period}. Stunde: ${l.subject}, Raum ${cleanRoom}, Lehrer ${cleanTeacher}${l.klasse ? ', Klasse ' + l.klasse : ''}, Zeit: ${periodData.start} bis ${periodData.end} Uhr. Status: ${srStatus}. Klicken für Details, Lehrstoff und Hausaufgaben.">
         <div class="lesson-time-box">
           <div class="lesson-period">${l.period}. Std.</div>
           <div class="lesson-clock">${periodData.start} - ${periodData.end}</div>
@@ -3292,9 +3319,9 @@ function renderTimetable() {
         <div class="lesson-main">
           <div class="lesson-subject-title">${l.subject}</div>
           <div class="lesson-details-row">
-            <span>🚪 <strong>Raum:</strong> ${roomDisplay}</span>
-            <span>👨‍🏫 <strong>Lehrer:</strong> ${l.teacher}</span>
-            ${l.klasse ? `<span>🏫 <strong>Klasse:</strong> ${l.klasse}</span>` : ''}
+            <span class="lesson-detail-item">🚪 <strong>Raum:</strong> ${cleanRoom}</span>
+            <span class="lesson-detail-item">👨‍🏫 <strong>Lehrer:</strong> ${cleanTeacher}</span>
+            ${l.klasse ? `<span class="lesson-detail-item">🏫 <strong>Klasse:</strong> ${escHtml(l.klasse)}</span>` : ''}
           </div>
           ${l.lstext ? `<div style="font-size: 13px; color: var(--accent-info); font-weight: 600; margin-top: 4px;">📖 <strong>Lehrstoff:</strong> ${escapeHTML(l.lstext)}</div>` : ''}
           ${l.homework ? `<div style="font-size: 13px; color: var(--accent-warn); font-weight: bold; margin-top: 2px;">📝 <strong>Hausaufgabe:</strong> ${escapeHTML(l.homework)}</div>` : ''}
@@ -3334,10 +3361,14 @@ function updateCurrentAndNextLesson() {
       <div class="status-meta">Am Montag geht die Schule wieder um 07:45 Uhr los.</div>
     `;
     const mondayFirst = currentWeekLessons.find(t => t.day === 1 && t.period === 1);
+    const monRoom = mondayFirst ? formatRoomNameOnly(mondayFirst.room, mondayFirst.teacher) : '';
+    const monTeach = mondayFirst ? cleanTeacherName(mondayFirst.teacher) : '';
     boxNext.innerHTML = `
       <div class="status-label">Nächste Stunde (Montag 1. Std.)</div>
       <div class="status-content-title">${mondayFirst ? mondayFirst.subject : 'Unterrichtsbeginn'}</div>
-      <div class="status-meta">${mondayFirst ? `Raum: ${formatRoomDisplay(mondayFirst.room, mondayFirst.teacher)} bei ${mondayFirst.teacher}` : '07:45 Uhr'}</div>
+      <div class="status-meta" style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
+        ${mondayFirst ? `<div>🚪 <strong>Raum:</strong> ${monRoom}</div><div>👨‍🏫 <strong>Lehrer:</strong> ${monTeach}</div>` : '<div>07:45 Uhr</div>'}
+      </div>
     `;
     return;
   }
@@ -3363,11 +3394,18 @@ function updateCurrentAndNextLesson() {
   }
 
   if (currentLesson) {
+    const curRoom = formatRoomNameOnly(currentLesson.room, currentLesson.teacher);
+    const curTeach = cleanTeacherName(currentLesson.teacher);
     boxNow.classList.add('active-now');
     boxNow.innerHTML = `
       <div class="status-label">🔴 Aktuell läuft (${currentLesson.periodData.start} - ${currentLesson.periodData.end})</div>
       <div class="status-content-title">${currentLesson.subject}</div>
-      <div class="status-meta">🚪 ${formatRoomDisplay(currentLesson.room, currentLesson.teacher)} | 👨‍🏫 ${currentLesson.teacher}${currentLesson.klasse ? ' | 🏫 ' + currentLesson.klasse : ''} ${currentLesson.status === 'cancelled' ? '<strong style="color: var(--accent-danger);">[ENTFALL]</strong>' : ''}</div>
+      <div class="status-meta" style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
+        <div>🚪 <strong>Raum:</strong> ${curRoom}</div>
+        <div>👨‍🏫 <strong>Lehrer:</strong> ${curTeach}</div>
+        ${currentLesson.klasse ? `<div>🏫 <strong>Klasse:</strong> ${escHtml(currentLesson.klasse)}</div>` : ''}
+        ${currentLesson.status === 'cancelled' ? '<div style="color: var(--accent-danger); font-weight: bold;">⚠️ [ENTFALL] Diese Stunde entfällt!</div>' : ''}
+      </div>
     `;
   } else {
     boxNow.classList.remove('active-now');
@@ -3379,10 +3417,16 @@ function updateCurrentAndNextLesson() {
   }
 
   if (nextLesson) {
+    const nxtRoom = formatRoomNameOnly(nextLesson.room, nextLesson.teacher);
+    const nxtTeach = cleanTeacherName(nextLesson.teacher);
     boxNext.innerHTML = `
       <div class="status-label">🔜 Nächste Stunde (${nextLesson.period}. Std. ab ${nextLesson.periodData.start} Uhr)</div>
       <div class="status-content-title">${nextLesson.subject}</div>
-      <div class="status-meta">🚪 ${formatRoomDisplay(nextLesson.room, nextLesson.teacher)} | 👨‍🏫 ${nextLesson.teacher}${nextLesson.klasse ? ' | 🏫 ' + nextLesson.klasse : ''}</div>
+      <div class="status-meta" style="display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
+        <div>🚪 <strong>Raum:</strong> ${nxtRoom}</div>
+        <div>👨‍🏫 <strong>Lehrer:</strong> ${nxtTeach}</div>
+        ${nextLesson.klasse ? `<div>🏫 <strong>Klasse:</strong> ${escHtml(nextLesson.klasse)}</div>` : ''}
+      </div>
     `;
   } else {
     boxNext.innerHTML = `

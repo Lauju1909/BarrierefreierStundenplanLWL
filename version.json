@@ -1,9 +1,11 @@
 {
-  "version": "1.8.7",
+  "version": "1.8.8",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-13",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
+    "Klar strukturierte Anzeige untereinander für Raum, Lehrer und Klasse ohne Zeilenüberlappung",
+    "Beseitigung von doppeltem 'Raum: Raum' und 'Lehrer: Lehrer' in allen Stundenplan- und Übersichtskarten",
     "Entfernung des Beispiel-Benutzernamens (SchneiLau) im Anmeldeformular und in Fehlermeldungen",
     "Volle Android- und Smartphone-Kompatibilität: Direkte WebUntis-Netzwerkverbindung für Android ohne Abhängigkeit vom lokalen Desktop-Proxy",
     "Unterstützung nativer CapacitorHttp-Anfragen zur sicheren Umgehung von CORS auf Mobilgeräten",

@@ -608,11 +608,20 @@ body.theme-high-contrast .lesson-card.status-substitute {
 
 .lesson-details-row {
   display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 4px;
   font-size: var(--font-size-base);
   color: var(--text-secondary);
+}
+
+.lesson-details-row .lesson-detail-item,
+.lesson-details-row span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.4;
 }
 
 .lesson-badge-wrap {
