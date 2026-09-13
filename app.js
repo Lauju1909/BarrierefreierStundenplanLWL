@@ -3328,13 +3328,13 @@ function renderTimetable() {
         <div class="lesson-main">
           <div class="lesson-subject-title">${l.subject}</div>
           <div style="margin-top: 6px; font-size: var(--font-size-base); color: var(--text-secondary);">
-            <div style="display: block; line-height: 1.8;">🚪 <strong>Raum:</strong> ${cleanRoom}</div>
-            <div style="display: block; line-height: 1.8;">👨‍🏫 <strong>Lehrer:</strong> ${cleanTeacher}</div>
-            ${l.klasse ? `<div style="display: block; line-height: 1.8;">🏫 <strong>Klasse:</strong> ${escHtml(l.klasse)}</div>` : ''}
+            <div style="display: block; line-height: 1.8;"><span class="emoji-icon" aria-hidden="true">🚪 </span><strong>Raum:</strong> ${cleanRoom}</div>
+            <div style="display: block; line-height: 1.8;"><span class="emoji-icon" aria-hidden="true">👨‍🏫 </span><strong>Lehrer:</strong> ${cleanTeacher}</div>
+            ${l.klasse ? `<div style="display: block; line-height: 1.8;"><span class="emoji-icon" aria-hidden="true">🏫 </span><strong>Klasse:</strong> ${escHtml(l.klasse)}</div>` : ''}
           </div>
-          ${l.lstext ? `<div style="display: block; font-size: 13px; color: var(--accent-info); font-weight: 600; margin-top: 6px;">📖 <strong>Lehrstoff:</strong> ${escapeHTML(l.lstext)}</div>` : ''}
-          ${l.homework ? `<div style="display: block; font-size: 13px; color: var(--accent-warn); font-weight: bold; margin-top: 4px;">📝 <strong>Hausaufgabe:</strong> ${escapeHTML(l.homework)}</div>` : ''}
-          ${l.notes && l.notes !== l.lstext ? `<div style="display: block; font-size: 13px; font-weight: bold; color: var(--accent-warn); margin-top: 4px;">ℹ️ ${escapeHTML(l.notes)}</div>` : ''}
+          ${l.lstext ? `<div style="display: block; font-size: 13px; color: var(--accent-info); font-weight: 600; margin-top: 6px;"><span class="emoji-icon" aria-hidden="true">📖 </span><strong>Lehrstoff:</strong> ${escapeHTML(l.lstext)}</div>` : ''}
+          ${l.homework ? `<div style="display: block; font-size: 13px; color: var(--accent-warn); font-weight: bold; margin-top: 4px;"><span class="emoji-icon" aria-hidden="true">📝 </span><strong>Hausaufgabe:</strong> ${escapeHTML(l.homework)}</div>` : ''}
+          ${l.notes && l.notes !== l.lstext ? `<div style="display: block; font-size: 13px; font-weight: bold; color: var(--accent-warn); margin-top: 4px;"><span class="emoji-icon" aria-hidden="true">ℹ️ </span>${escapeHTML(l.notes)}</div>` : ''}
         </div>
         <div class="lesson-badge-wrap">
           <div style="display: block;"><span class="status-badge ${badgeClass}">${badgeText}</span></div>
