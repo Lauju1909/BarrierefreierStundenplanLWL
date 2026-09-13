@@ -4530,7 +4530,7 @@ function renderUrgentNotificationBanner() {
     summaryParts.push(`<span class="emoji-icon" aria-hidden="true">📝 </span>Nächste Klausur: ${nextExam.subject || 'Klausur'} (${daysLabel})`);
   }
   if (summaryEl) {
-    summaryEl.textContent = summaryParts.join(' • ') || 'Aktuelle Fristenübersicht aus WebUntis.';
+    summaryEl.innerHTML = summaryParts.join(' • ') || 'Aktuelle Fristenübersicht aus WebUntis.';
   }
 
   // Grid-Karten aufbauen

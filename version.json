@@ -1,9 +1,10 @@
 {
-  "version": "1.9.1",
+  "version": "1.9.2",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-13",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
+    "Korrektur des Zusammenfassungs-Banners: Rohe HTML-Tags (<span class='emoji-icon'>...) werden nicht mehr als Text dargestellt, sondern sauber als Symbole gerendert (bzw. im Textmodus unsichtbar)",
     "Vollständiger Lehrstoff-Abruf aus WebUntis (/api/public/period/info): Eingetragener Unterrichtsstoff (z.B. Kennenlernen, Einführung...) wird jetzt live geladen und in Details sowie Stundenkarten angezeigt",
     "Korrektur der Zeit- und Raumformatierung im Stunden-Details-Modal (kein doppelter Doppelpunkt '07::45', saubere Raum- und Lehrernamen)",
     "Reiner Textmodus (0 Emojis für NVDA / Braillezeile): Sämtliche Emojis in der gesamten Benutzeroberfläche, Stundenkarten, Tab-Leisten, Hinweisen und Buttons werden vollständig ausgeblendet",
