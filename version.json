@@ -2,7 +2,8 @@
   "version": "1.9.8",
   "name": "Barrierefreies WebUntis",
   "buildDate": "2026-09-13",
-  "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
+  "repository": "https://github.com/Lauju1909/BarrierefreiesWebUntis",
+  "executable": "Barrierefreies_WebUntis.exe",
   "features": [
     "Barrierefreies WebUntis: Offizielle Umbenennung der gesamten Anwendung für alle Schulen.",
     "Schulauswahl an 1. Stelle bei der Anmeldung: Direkte Schnellauswahl der LWL-Schulen sowie integrierte Live-Schulsuche (über mobile.webuntis.com) für jede Schule in Deutschland, Österreich und der Schweiz.",

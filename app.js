@@ -802,7 +802,7 @@ async function handleLoginSubmit(e) {
       statusBox.style.display = 'block';
       const errMsg = isNativeApp()
         ? 'Verbindung zum WebUntis-Server fehlgeschlagen. Bitte prüfe deine Internetverbindung oder versuche es in Kürze erneut.'
-        : 'Die lokale WebUntis-Brücke ist nicht erreichbar. Bitte starte Stundenplan_LWL.exe neu.';
+        : 'Die lokale WebUntis-Brücke ist nicht erreichbar. Bitte starte Barrierefreies_WebUntis.exe neu.';
       statusBox.innerHTML = `
         <div style="background: rgba(185, 28, 28, 0.1); border: 2px solid var(--accent-danger); padding: 14px; border-radius: 8px;">
           <strong style="color: var(--accent-danger);"><span class="emoji-icon" aria-hidden="true">⚠️ </span>Verbindung nicht möglich</strong>
@@ -1266,7 +1266,7 @@ async function performWebUntisSync(userOverride, passOverride) {
     const authRes = await callWebUntisApi('authenticate', {
       user: username,
       password: password,
-      client: 'BarrierefreierStundenplanLWL'
+      client: 'BarrierefreiesWebUntis'
     });
 
     if (!authRes || authRes.error) {

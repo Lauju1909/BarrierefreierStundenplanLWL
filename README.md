@@ -1,6 +1,6 @@
-﻿# 🏫 Barrierefreier Stundenplan & Prüfungsmanager (LWL-Berufskolleg Soest)
+# 🏫 Barrierefreies WebUntis
 
-Eine 100 % barrierefreie Web-App für den **Stundenplan**, **Vertretungsplan**, **Prüfungskalender** und die **Schulterminübersicht**, speziell entwickelt und vorkonfiguriert für das **LWL-Berufskolleg Soest (Förderschwerpunkt Sehen)** und optimiert für **NVDA / JAWS-Screenreader** sowie Tastaturnavigation.
+Eine 100 % barrierefreie Web-App für den **Stundenplan**, **Vertretungsplan**, **Prüfungskalender**, **Notenübersicht**, **Klassenbucheinträge** und **Mensa-Speisepläne**, speziell entwickelt für sehbehinderte und blinde Schülerinnen und Schüler sowie optimiert für **NVDA / JAWS-Screenreader** und reine Tastaturnavigation.
 
 Mit integriertem **GitHub Auto-Updater**: Die Anwendung aktualisiert sich bei jedem Start und im Hintergrund vollautomatisch!
 
@@ -8,10 +8,10 @@ Mit integriertem **GitHub Auto-Updater**: Die Anwendung aktualisiert sich bei je
 
 ## ⚡ Schnellstart (Alles in einer einzigen .exe)
 
-1. Doppelklick auf die Datei **Stundenplan_LWL.exe**.
-2. Beim ersten Start meldest du dich mit deinen offiziellen **WebUntis-Zugangsdaten** an (Schuladresse ist bereits vorkonfiguriert).
+1. Doppelklick auf die Datei **Barrierefreies_WebUntis.exe**.
+2. Beim ersten Start wählst du deine Schule aus (oder suchst deine Schule direkt über die integrierte Live-Suche) und meldest dich mit deinen offiziellen **WebUntis-Zugangsdaten** an.
 3. Setze den Haken bei **„Zugangsdaten merken“**, um beim nächsten Start automatisch eingeloggt zu werden.
-4. Alle Stunden, Räume, Vertretungen, Prüfungen und Ferientermine des gesamten Schuljahres werden live von WebUntis geladen.
+4. Alle Stunden, Räume, Vertretungen, Prüfungen, Noten und Termine werden live von WebUntis geladen.
 
 ---
 
@@ -19,12 +19,18 @@ Mit integriertem **GitHub Auto-Updater**: Die Anwendung aktualisiert sich bei je
 
 | Taste | Funktion |
 | :---: | :--- |
-| **1** | Springe zu **Reiter 1: Stundenplan & Vertretungsplan** |
-| **2** | Springe zu **Reiter 2: Prüfungen & Termine (Ganzes Schuljahr)** |
-| **3** | Springe zu **Reiter 3: Konto, Updates & Einstellungen** |
+| **1** | Springe zu **Reiter 1: Übersicht & Tagesnachrichten** |
+| **2** | Springe zu **Reiter 2: Stundenplan & Vertretungsplan** |
+| **3** | Springe zu **Reiter 3: Prüfungen & Termine** |
+| **4** | Springe zu **Reiter 4: Hausaufgaben & Klassenbuch** |
+| **5** | Springe zu **Reiter 5: Fehlzeiten** |
+| **6** | Springe zu **Reiter 6: Tagesnachrichten & Mitteilungen** |
+| **7** | Springe zu **Reiter 7: Noten & Leistungen** |
+| **8** | Springe zu **Reiter 8: Mensa & Speisepläne** *(LWL-Campus Soest)* |
 | **H** | Stundenplan: Sofort zum heutigen Tag (**Heute**) springen |
+| **W** | Stundenplan: Sofort zur aktuellen Schulwoche zurückspringen |
 | **A** | **Aktualisieren:** Stundenplan jetzt sofort von WebUntis neu laden |
-| **V** | **Vorlesen:** Liest den Stundenplan oder Termine laut vor |
+| **V** | **Vorlesen:** Liest den aktuellen Bereich per Sprachausgabe laut vor |
 
 ---
 

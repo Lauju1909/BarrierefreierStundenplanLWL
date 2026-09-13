@@ -1,13 +1,19 @@
 @echo off
 chcp 65001 >nul
-title Barrierefreier Stundenplan - LWL-Berufskolleg Soest
+title Barrierefreies WebUntis
 echo ======================================================================
-echo  Barrierefreier Stundenplan ^& Pruefungen (LWL-Berufskolleg Soest)
+echo  Barrierefreies WebUntis
 echo  WCAG 2.2 AAA ^& NVDA-Optimiert
 echo ======================================================================
 echo.
 
 cd /d "%~dp0"
+
+if exist "Barrierefreies_WebUntis.exe" (
+    echo Starte Barrierefreies WebUntis mit integrierter API-Bridge...
+    start "" "%~dp0Barrierefreies_WebUntis.exe"
+    exit
+)
 
 if exist "Stundenplan_LWL.exe" (
     echo Starte Stundenplan mit integrierter WebUntis-API-Bridge...

@@ -29,7 +29,9 @@ namespace BarrierefreierStundenplan
         private const string DEFAULT_WEBUNTIS_URL = "https://lwl-bk-soest.webuntis.com/WebUntis/jsonrpc.do?school=lwl-bk-soest";
         
         // GitHub Auto-Updater Konfiguration
-        private const string GITHUB_REPO = "Lauju1909/BarrierefreierStundenplanLWL";
+        private const string GITHUB_REPO = "Lauju1909/BarrierefreiesWebUntis";
+        private const string APP_EXE_NAME = "Barrierefreies_WebUntis.exe";
+        private const string APP_DISPLAY_NAME = "Barrierefreies WebUntis";
         private const string GITHUB_RAW_BASE = "https://raw.githubusercontent.com/" + GITHUB_REPO + "/main";
         private const string VERSION_URL = GITHUB_RAW_BASE + "/version.json";
 
@@ -102,8 +104,10 @@ namespace BarrierefreierStundenplan
                 string exePath = Process.GetCurrentProcess().MainModule.FileName;
                 string oldPath = exePath + ".old";
                 if (File.Exists(oldPath)) File.Delete(oldPath);
-                string updPath = Path.Combine(_baseDir, "Stundenplan_LWL_Update.exe");
-                if (File.Exists(updPath)) File.Delete(updPath);
+                string updPath1 = Path.Combine(_baseDir, "Barrierefreies_WebUntis_Update.exe");
+                if (File.Exists(updPath1)) File.Delete(updPath1);
+                string updPath2 = Path.Combine(_baseDir, "Stundenplan_LWL_Update.exe");
+                if (File.Exists(updPath2)) File.Delete(updPath2);
             }
             catch { }
 
@@ -136,11 +140,14 @@ namespace BarrierefreierStundenplan
                     try
                     {
                         int currentPid = Process.GetCurrentProcess().Id;
-                        foreach (Process p in Process.GetProcessesByName("Stundenplan_LWL"))
+                        foreach (string pName in new string[] { "Barrierefreies_WebUntis", "Stundenplan_LWL" })
                         {
-                            if (p.Id != currentPid)
+                            foreach (Process p in Process.GetProcessesByName(pName))
                             {
-                                try { p.Kill(); p.WaitForExit(1000); } catch { }
+                                if (p.Id != currentPid)
+                                {
+                                    try { p.Kill(); p.WaitForExit(1000); } catch { }
+                                }
                             }
                         }
                     }
@@ -272,7 +279,20 @@ namespace BarrierefreierStundenplan
 
         public static string GetLocalVersion()
         {
-            // 1. Zuerst aus der eingebetteten Ressource der EXE lesen (autark)
+            // 1. Zuerst Datei auf Disk prüfen (Hot-Reload / Direkt-Update wie in FinanzApp)
+            string vPath = Path.Combine(_baseDir, "version.json");
+            if (File.Exists(vPath))
+            {
+                try
+                {
+                    string txt = File.ReadAllText(vPath, Encoding.UTF8);
+                    Match m = Regex.Match(txt, "\"version\"\\s*:\\s*\"v?([^\"]+)\"");
+                    if (m.Success) return m.Groups[1].Value.Trim();
+                }
+                catch { }
+            }
+
+            // 2. Fallback: Aus der eingebetteten Ressource der EXE lesen (autark)
             if (_assembly != null)
             {
                 try
@@ -298,20 +318,7 @@ namespace BarrierefreierStundenplan
                 }
                 catch { }
             }
-
-            // 2. Fallback: Datei auf Disk prüfen
-            string vPath = Path.Combine(_baseDir, "version.json");
-            if (File.Exists(vPath))
-            {
-                try
-                {
-                    string txt = File.ReadAllText(vPath, Encoding.UTF8);
-                    Match m = Regex.Match(txt, "\"version\"\\s*:\\s*\"v?([^\"]+)\"");
-                    if (m.Success) return m.Groups[1].Value.Trim();
-                }
-                catch { }
-            }
-            return "1.6.0";
+            return "1.9.8";
         }
 
         private static bool IsNewerVersion(string remote, string local)
@@ -353,13 +360,23 @@ namespace BarrierefreierStundenplan
                 long ticks = DateTime.UtcNow.Ticks;
                 string verUrl = VERSION_URL + "?t=" + ticks;
 
-                using (var client = new WebClient())
+                using (var client = new TimeoutWebClient(8000))
                 {
-                    client.Headers.Add("User-Agent", "StundenplanLWL-AutoUpdater");
+                    client.Headers.Add("User-Agent", "BarrierefreiesWebUntis-AutoUpdater");
                     client.Headers.Add("Cache-Control", "no-cache");
                     client.Headers.Add("Pragma", "no-cache");
 
-                    string remoteJson = client.DownloadString(verUrl);
+                    string remoteJson = "";
+                    try
+                    {
+                        remoteJson = client.DownloadString(verUrl);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUntis("AutoUpdater error fetching version: " + ex.Message);
+                        return false;
+                    }
+
                     Match m = Regex.Match(remoteJson, "\"version\"\\s*:\\s*\"v?([^\"]+)\"");
                     if (!m.Success) return false;
 
@@ -371,27 +388,71 @@ namespace BarrierefreierStundenplan
                     {
                         LogUntis("Starting automatic update download from GitHub...");
                         string currentExe = Process.GetCurrentProcess().MainModule.FileName;
-                        string tempExe = Path.Combine(_baseDir, "Stundenplan_LWL_Update.exe");
+                        string tempExe = Path.Combine(_baseDir, "Barrierefreies_WebUntis_Update.exe");
                         string oldExe = currentExe + ".old";
 
-                        string downloadUrl = "https://github.com/" + GITHUB_REPO + "/releases/latest/download/Stundenplan_LWL.exe";
-                        client.DownloadFile(downloadUrl, tempExe);
+                        // 1. Primäre Download-Quelle: Offizieller GitHub Release, danach Raw-Fallback
+                        string[] candidateUrls = new string[]
+                        {
+                            "https://github.com/" + GITHUB_REPO + "/releases/latest/download/Barrierefreies_WebUntis.exe",
+                            "https://raw.githubusercontent.com/" + GITHUB_REPO + "/main/Barrierefreies_WebUntis.exe?t=" + ticks,
+                            "https://github.com/" + GITHUB_REPO + "/releases/latest/download/Stundenplan_LWL.exe"
+                        };
 
-                        FileInfo fi = new FileInfo(tempExe);
-                        if (fi.Exists && fi.Length > 25000)
+                        bool exeDownloaded = false;
+                        foreach (string downloadUrl in candidateUrls)
+                        {
+                            try
+                            {
+                                if (File.Exists(tempExe)) File.Delete(tempExe);
+                                client.DownloadFile(downloadUrl, tempExe);
+                                FileInfo fi = new FileInfo(tempExe);
+                                if (fi.Exists && fi.Length > 25000)
+                                {
+                                    exeDownloaded = true;
+                                    LogUntis("Successfully downloaded updated executable from: " + downloadUrl);
+                                    break;
+                                }
+                            }
+                            catch (Exception dlEx)
+                            {
+                                LogUntis("Failed candidate URL " + downloadUrl + ": " + dlEx.Message);
+                            }
+                        }
+
+                        // 2. Web-Ressourcen auf Disk aktualisieren (ermöglicht sofortige UI-Updates wie in FinanzApp)
+                        bool webFilesUpdated = false;
+                        string[] webAssets = new string[] { "index.html", "app.js", "style.css", "version.json" };
+                        foreach (string asset in webAssets)
+                        {
+                            try
+                            {
+                                string assetUrl = GITHUB_RAW_BASE + "/" + asset + "?t=" + ticks;
+                                string targetPath = Path.Combine(_baseDir, asset);
+                                string tmpAssetPath = targetPath + ".tmp";
+                                client.DownloadFile(assetUrl, tmpAssetPath);
+                                if (File.Exists(tmpAssetPath) && new FileInfo(tmpAssetPath).Length > 100)
+                                {
+                                    File.Copy(tmpAssetPath, targetPath, true);
+                                    File.Delete(tmpAssetPath);
+                                    webFilesUpdated = true;
+                                }
+                            }
+                            catch { }
+                        }
+
+                        if (exeDownloaded)
                         {
                             if (File.Exists(oldExe))
                             {
                                 try { File.Delete(oldExe); } catch { }
                             }
 
-                            // 1. Laufende EXE umbenennen (unter Windows NTFS bei laufendem Prozess erlaubt)
+                            // Laufende EXE umbenennen und neue platzieren
                             File.Move(currentExe, oldExe);
-
-                            // 2. Neue EXE an die Originalstelle setzen
                             File.Move(tempExe, currentExe);
 
-                            // 3. Im Hintergrund nach kurzer Pause neu starten
+                            // Nach kurzer Pause neue Version starten
                             ThreadPool.QueueUserWorkItem((_) =>
                             {
                                 try
@@ -405,10 +466,18 @@ namespace BarrierefreierStundenplan
 
                             return true;
                         }
+                        else if (webFilesUpdated)
+                        {
+                            LogUntis("AutoUpdater: Web assets updated on disk.");
+                            return true;
+                        }
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                LogUntis("AutoUpdater general exception: " + ex.Message);
+            }
             return false;
         }
 
@@ -596,7 +665,7 @@ namespace BarrierefreierStundenplan
                 }
                 else
                 {
-                    vData = Encoding.UTF8.GetBytes(string.Format("{{\"version\":\"{0}\",\"name\":\"Barrierefreier Stundenplan LWL\"}}", GetLocalVersion()));
+                    vData = Encoding.UTF8.GetBytes(string.Format("{{\"version\":\"{0}\",\"name\":\"Barrierefreies WebUntis\"}}", GetLocalVersion()));
                 }
                 resp.OutputStream.Write(vData, 0, vData.Length);
                 resp.Close();
@@ -888,7 +957,22 @@ namespace BarrierefreierStundenplan
             else if (ext == ".json") contentType = "application/json; charset=utf-8";
             else if (ext == ".html") contentType = "text/html; charset=utf-8";
 
-            // 1. Direkt aus den internen Ressourcen der EXE laden (100% autark)
+            // 1. Zuerst Datei im Ordner prüfen (ermöglicht sofortige Updates & Hot-Patching wie in FinanzApp)
+            string diskPath = Path.Combine(_baseDir, filename);
+            if (File.Exists(diskPath))
+            {
+                try
+                {
+                    byte[] diskBytes = File.ReadAllBytes(diskPath);
+                    if (diskBytes != null && diskBytes.Length > 0)
+                    {
+                        return diskBytes;
+                    }
+                }
+                catch { }
+            }
+
+            // 2. Fallback: Direkt aus den internen Ressourcen der EXE laden (100% autark)
             if (_assembly != null)
             {
                 string resName = null;
@@ -915,17 +999,6 @@ namespace BarrierefreierStundenplan
                         }
                     }
                 }
-            }
-
-            // 2. Fallback: Datei im Ordner prüfen
-            string diskPath = Path.Combine(_baseDir, filename);
-            if (File.Exists(diskPath))
-            {
-                try
-                {
-                    return File.ReadAllBytes(diskPath);
-                }
-                catch { }
             }
 
             return null;
@@ -1665,6 +1738,28 @@ namespace BarrierefreierStundenplan
                     .Replace("\r", "\\r")
                     .Replace("\n", "\\n")
                     .Replace("\t", "\\t");
+        }
+    }
+
+    public class TimeoutWebClient : WebClient
+    {
+        private readonly int _timeoutMs;
+
+        public TimeoutWebClient(int timeoutMs = 8000)
+        {
+            _timeoutMs = timeoutMs;
+        }
+
+        protected override WebRequest GetWebRequest(Uri uri)
+        {
+            WebRequest w = base.GetWebRequest(uri);
+            w.Timeout = _timeoutMs;
+            HttpWebRequest hw = w as HttpWebRequest;
+            if (hw != null)
+            {
+                hw.ReadWriteTimeout = _timeoutMs;
+            }
+            return w;
         }
     }
 }
