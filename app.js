@@ -118,15 +118,25 @@ let lastSyncTimestamp = null;
 let autoSyncIntervalTimer = null;
 let isSyncInProgress = false;
 
+function isNativeApp() {
+  return typeof window !== 'undefined' && !!(
+    (window.Capacitor && (window.Capacitor.isNativePlatform ? window.Capacitor.isNativePlatform() : window.Capacitor.getPlatform?.() !== 'web')) ||
+    (window.location && (window.location.protocol === 'capacitor:' || (window.location.protocol === 'https:' && window.location.hostname === 'localhost')))
+  );
+}
+
 function logClient(msg, data) {
   try {
     const text = typeof msg === 'string' ? msg : JSON.stringify(msg);
     const extra = data ? ' ' + (typeof data === 'string' ? data : (data.stack || JSON.stringify(data))) : '';
-    fetch('/api/client_log', {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-      body: text + extra
-    }).catch(() => {});
+    console.log('[Stundenplan]', text + extra);
+    if (!isNativeApp()) {
+      fetch('/api/client_log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        body: text + extra
+      }).catch(() => {});
+    }
   } catch (e) {}
 }
 
@@ -555,14 +565,17 @@ async function handleLoginSubmit(e) {
     logClient('handleLoginSubmit caught exception: ' + (err ? (err.stack || err.message || err) : 'unknown'));
     if (statusBox) {
       statusBox.style.display = 'block';
+      const errMsg = isNativeApp()
+        ? 'Verbindung zum WebUntis-Server fehlgeschlagen. Bitte prüfe deine Internetverbindung oder versuche es in Kürze erneut.'
+        : 'Die lokale WebUntis-Brücke ist nicht erreichbar. Bitte starte Stundenplan_LWL.exe neu.';
       statusBox.innerHTML = `
         <div style="background: rgba(185, 28, 28, 0.1); border: 2px solid var(--accent-danger); padding: 14px; border-radius: 8px;">
           <strong style="color: var(--accent-danger);">⚠️ Verbindung nicht möglich</strong>
-          <p style="margin-top: 4px; font-size: 14px;">Die lokale WebUntis-Brücke ist nicht erreichbar. Bitte starte Stundenplan_LWL.exe neu.</p>
+          <p style="margin-top: 4px; font-size: 14px;">${escapeHtml(errMsg)}</p>
         </div>
       `;
     }
-    announceSR('Verbindungsfehler zur WebUntis-Brücke.', 'assertive');
+    announceSR('Verbindungsfehler zu WebUntis.', 'assertive');
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
@@ -720,27 +733,86 @@ async function callWebUntisApi(method, params = {}) {
     jsonrpc: '2.0'
   };
 
-  const endpoints = [];
-  if (window.location.origin && window.location.origin.startsWith('http')) {
-    endpoints.push(window.location.origin + '/api/webuntis');
+  const srv = (appData.config && appData.config.server) || 'lwl-bk-soest.webuntis.com';
+  const sch = (appData.config && appData.config.schoolShort) || 'lwl-bk-soest';
+  const isMobileMethod = /^(getHomeWork2017|getExams2017|getPeriodData2017|getUserData2017|getTimetable2017|getStudentAbsences2017|getOfficeHours2017|getMessagesOfDay2017)$/.test(method);
+
+  let directUrl = '';
+  if (isMobileMethod) {
+    directUrl = `https://${srv}/WebUntis/jsonrpc_intern.do?m=${method}&school=${sch}&v=a6.7.0&a=false&s=${srv}`;
+  } else if (webuntisSessionId) {
+    directUrl = `https://${srv}/WebUntis/jsonrpc.do;jsessionid=${webuntisSessionId}?school=${sch}`;
+  } else {
+    directUrl = `https://${srv}/WebUntis/jsonrpc.do?school=${sch}`;
   }
-  endpoints.push('http://127.0.0.1:48250/api/webuntis');
-  endpoints.push('http://localhost:48250/api/webuntis');
+
+  const endpoints = [];
+  const isNative = isNativeApp();
+
+  if (isNative) {
+    endpoints.push(directUrl);
+  } else {
+    if (window.location.origin && window.location.origin.startsWith('http') && !window.location.origin.includes('localhost:48250') && !window.location.origin.includes('127.0.0.1:48250')) {
+      endpoints.push(window.location.origin + '/api/webuntis');
+    }
+    endpoints.push('http://127.0.0.1:48250/api/webuntis');
+    endpoints.push('http://localhost:48250/api/webuntis');
+    endpoints.push(directUrl);
+  }
 
   let lastError = null;
   for (const ep of endpoints) {
     try {
+      const isDirect = ep.startsWith('https://' + srv);
       const headers = {
-        'Content-Type': 'application/json',
-        'X-School': appData.config.schoolShort || 'lwl-bk-soest',
-        'X-Server': appData.config.server || 'lwl-bk-soest.webuntis.com'
+        'Content-Type': 'application/json; charset=utf-8',
+        'User-Agent': 'WebUntis/Mobile (Android; de)'
       };
+
+      if (!isDirect) {
+        headers['X-School'] = sch;
+        headers['X-Server'] = srv;
+        if (isMobileMethod) {
+          headers['X-Endpoint'] = `/jsonrpc_intern.do?m=${method}`;
+        }
+      }
+
       if (webuntisSessionId) {
         headers['X-JSESSIONID'] = webuntisSessionId;
+        headers['Cookie'] = `JSESSIONID=${webuntisSessionId}`;
       }
-      if (appData.config.appSharedSecret) {
+      if (appData.config && appData.config.appSharedSecret) {
         headers['X-Untis-Secret'] = appData.config.appSharedSecret;
         headers['X-Untis-User'] = appData.config.username;
+      }
+
+      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp && isDirect) {
+        try {
+          const capRes = await window.Capacitor.Plugins.CapacitorHttp.request({
+            url: ep,
+            method: 'POST',
+            headers: headers,
+            data: payload
+          });
+          const capData = (typeof capRes.data === 'string') ? JSON.parse(capRes.data) : capRes.data;
+          if (capRes.headers) {
+            for (const hKey of Object.keys(capRes.headers)) {
+              if (hKey.toLowerCase() === 'set-cookie') {
+                const sc = capRes.headers[hKey];
+                if (sc && sc.includes('JSESSIONID=')) {
+                  const m = sc.match(/JSESSIONID=([^;]+)/);
+                  if (m) webuntisSessionId = m[1];
+                }
+              }
+            }
+          }
+          if (capData && capData.result && capData.result.sessionId) {
+            webuntisSessionId = capData.result.sessionId;
+          }
+          return capData;
+        } catch (capErr) {
+          console.warn('CapacitorHttp call error, falling back to fetch:', capErr);
+        }
       }
 
       const res = await fetch(ep, {
@@ -749,13 +821,18 @@ async function callWebUntisApi(method, params = {}) {
         body: JSON.stringify(payload)
       });
 
-      const setCookie = res.headers.get('X-Set-Cookie');
+      const setCookie = res.headers && typeof res.headers.get === 'function'
+        ? (res.headers.get('set-cookie') || res.headers.get('X-Set-Cookie'))
+        : null;
       if (setCookie && setCookie.includes('JSESSIONID=')) {
         const m = setCookie.match(/JSESSIONID=([^;]+)/);
         if (m) webuntisSessionId = m[1];
       }
 
       const data = await res.json();
+      if (data && data.result && data.result.sessionId) {
+        webuntisSessionId = data.result.sessionId;
+      }
       return data;
     } catch (e) {
       lastError = e;
@@ -766,33 +843,87 @@ async function callWebUntisApi(method, params = {}) {
 }
 
 async function callWebUntisRest(endpoint, token = null, method = 'GET', body = null) {
-  const endpoints = [];
-  if (window.location.origin && window.location.origin.startsWith('http')) {
-    endpoints.push(window.location.origin + '/api/webuntis');
-  }
-  endpoints.push('http://127.0.0.1:48250/api/webuntis');
-  endpoints.push('http://localhost:48250/api/webuntis');
+  const srv = (appData.config && appData.config.server) || 'lwl-bk-soest.webuntis.com';
+  const sch = (appData.config && appData.config.schoolShort) || 'lwl-bk-soest';
 
-  for (const ep of endpoints) {
+  let ep = endpoint.startsWith('/') ? endpoint : '/' + endpoint;
+  if (ep.startsWith('/WebUntis/')) {
+    ep = ep.substring(9);
+  }
+  if (!ep.includes('school=')) {
+    ep += (ep.includes('?') ? '&' : '?') + 'school=' + sch;
+  }
+  if (ep.includes('jsonrpc_intern.do')) {
+    if (!ep.includes('v=')) ep += '&v=a6.7.0';
+    if (!ep.includes('a=')) ep += '&a=false';
+    if (!ep.includes('s=')) ep += '&s=' + srv;
+  }
+  let directUrl = `https://${srv}/WebUntis${ep}`;
+  if (webuntisSessionId && !directUrl.includes('jsessionid=') && !directUrl.includes('/api/')) {
+    directUrl = directUrl.replace('/WebUntis/', `/WebUntis/;jsessionid=${webuntisSessionId}/`);
+  }
+
+  const endpoints = [];
+  const isNative = isNativeApp();
+
+  if (isNative) {
+    endpoints.push(directUrl);
+  } else {
+    if (window.location.origin && window.location.origin.startsWith('http') && !window.location.origin.includes('localhost:48250') && !window.location.origin.includes('127.0.0.1:48250')) {
+      endpoints.push(window.location.origin + '/api/webuntis');
+    }
+    endpoints.push('http://127.0.0.1:48250/api/webuntis');
+    endpoints.push('http://localhost:48250/api/webuntis');
+    endpoints.push(directUrl);
+  }
+
+  for (const epUrl of endpoints) {
     try {
+      const isDirect = epUrl.startsWith('https://' + srv);
       const headers = {
         'Content-Type': 'application/json',
-        'X-School': appData.config.schoolShort || 'lwl-bk-soest',
-        'X-Server': appData.config.server || 'lwl-bk-soest.webuntis.com',
-        'X-Endpoint': endpoint
+        'User-Agent': 'WebUntis/Mobile (Android; de)'
       };
+
+      if (!isDirect) {
+        headers['X-School'] = sch;
+        headers['X-Server'] = srv;
+        headers['X-Endpoint'] = endpoint;
+      }
+
       if (webuntisSessionId) {
         headers['X-JSESSIONID'] = webuntisSessionId;
+        headers['Cookie'] = `JSESSIONID=${webuntisSessionId}`;
       }
-      if (appData.config.appSharedSecret) {
+      if (appData.config && appData.config.appSharedSecret) {
         headers['X-Untis-Secret'] = appData.config.appSharedSecret;
         headers['X-Untis-User'] = appData.config.username;
       }
       if (token && typeof token === 'string' && token.startsWith('eyJ')) {
         headers['Authorization'] = `Bearer ${token.trim()}`;
       }
-      headers['tenant-id'] = appData.config.tenantId || '5238400';
+      headers['tenant-id'] = (appData.config && appData.config.tenantId) || '5238400';
       headers['x-webuntis-api-school-year-id'] = String((appData.schoolYear && appData.schoolYear.id) || 18);
+
+      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.CapacitorHttp && isDirect) {
+        try {
+          const reqData = body ? (typeof body === 'string' ? JSON.parse(body) : body) : undefined;
+          const capRes = await window.Capacitor.Plugins.CapacitorHttp.request({
+            url: epUrl,
+            method: method || 'GET',
+            headers: headers,
+            data: reqData
+          });
+          if (capRes.status >= 200 && capRes.status < 300) {
+            if (typeof capRes.data === 'string') {
+              try { return JSON.parse(capRes.data); } catch(e) { return capRes.data; }
+            }
+            return capRes.data;
+          }
+        } catch (capErr) {
+          console.warn('CapacitorHttp REST call error, falling back to fetch:', capErr);
+        }
+      }
 
       const fetchOpts = {
         method: method || 'GET',
@@ -802,7 +933,7 @@ async function callWebUntisRest(endpoint, token = null, method = 'GET', body = n
         fetchOpts.body = typeof body === 'string' ? body : JSON.stringify(body);
       }
 
-      const res = await fetch(ep, fetchOpts);
+      const res = await fetch(epUrl, fetchOpts);
 
       if (res.ok) {
         const textData = await res.text();
@@ -922,33 +1053,35 @@ async function performWebUntisSync(userOverride, passOverride) {
     let jwtToken = null;
     let mobilePersonId = null;
 
-    try {
-      const mobRes = await fetch('/api/untis/mobile_auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: username,
-          password: password,
-          school: appData.config.schoolShort || 'lwl-bk-soest',
-          server: appData.config.server || 'lwl-bk-soest.webuntis.com'
-        })
-      });
-      if (mobRes.ok) {
-        const mobData = await mobRes.json();
-        if (mobData.appSharedSecret) {
-          appSharedSecret = mobData.appSharedSecret;
-          appData.config.appSharedSecret = appSharedSecret;
-          saveAppData();
+    if (!isNativeApp()) {
+      try {
+        const mobRes = await fetch('/api/untis/mobile_auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: username,
+            password: password,
+            school: appData.config.schoolShort || 'lwl-bk-soest',
+            server: appData.config.server || 'lwl-bk-soest.webuntis.com'
+          })
+        });
+        if (mobRes.ok) {
+          const mobData = await mobRes.json();
+          if (mobData.appSharedSecret) {
+            appSharedSecret = mobData.appSharedSecret;
+            appData.config.appSharedSecret = appSharedSecret;
+            saveAppData();
+          }
+          if (mobData.jwtToken) {
+            jwtToken = mobData.jwtToken;
+          }
+          if (mobData.personId) {
+            mobilePersonId = mobData.personId;
+          }
         }
-        if (mobData.jwtToken) {
-          jwtToken = mobData.jwtToken;
-        }
-        if (mobData.personId) {
-          mobilePersonId = mobData.personId;
-        }
+      } catch (e) {
+        console.warn('Hinweis zu /api/untis/mobile_auth:', e);
       }
-    } catch (e) {
-      console.warn('Hinweis zu /api/untis/mobile_auth:', e);
     }
 
     // Client-seitiger Fallback falls nicht über Proxy authentifiziert

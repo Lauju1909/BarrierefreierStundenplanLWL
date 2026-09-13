@@ -1,9 +1,11 @@
 {
-  "version": "1.8.5",
+  "version": "1.8.6",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
-  "buildDate": "2026-09-12",
+  "buildDate": "2026-09-13",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
+    "Volle Android- und Smartphone-Kompatibilität: Direkte WebUntis-Netzwerkverbindung für Android ohne Abhängigkeit vom lokalen Desktop-Proxy",
+    "Unterstützung nativer CapacitorHttp-Anfragen zur sicheren Umgehung von CORS auf Mobilgeräten",
     "Behebung des ReferenceError bei extractRoomFromObj und isValidRoomCandidate im globalen Scope",
     "Stundenplan-Synchronisation und Wochenauswahl laufen wieder einwandfrei durch",
     "Sitzungs- und Fehlerentkopplung: Kein 'Falsche Anmeldedaten' mehr bei internen Verarbeitungsfehlern nach erfolgreicher Authentifizierung",
