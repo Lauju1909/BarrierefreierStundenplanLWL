@@ -3350,6 +3350,11 @@ function renderTimetable() {
   html += '</div>';
 
   container.innerHTML = html;
+
+  // Im Hintergrund Lehrstoff für nicht angereicherte Stunden dieser Ansicht nachladen
+  if (typeof enrichLessonsWithTopics === 'function') {
+    enrichLessonsWithTopics(lessons);
+  }
 }
 
 function updateCurrentAndNextLesson() {
@@ -3782,18 +3787,75 @@ function readAllExamsAndEvents() {
 }
 
 // =============================================================================
-// 9b. STUNDEN-DETAILS MODAL
+// 9b. STUNDEN-DETAILS MODAL & LEHRSTOFF-ABRUF
 // =============================================================================
+const _enrichedLessonIds = new Set();
+let _isEnriching = false;
+
+async function enrichLessonsWithTopics(lessons) {
+  if (!lessons || !Array.isArray(lessons) || _isEnriching) return;
+  const toFetch = lessons.filter(l => l && l.untisId && l.dateStr && !l.lstext && !_enrichedLessonIds.has(l.id));
+  if (toFetch.length === 0) return;
+
+  _isEnriching = true;
+  try {
+    for (let i = 0; i < toFetch.length; i += 4) {
+      const batch = toFetch.slice(i, i + 4);
+      let anyFound = false;
+      await Promise.all(batch.map(async l => {
+        _enrichedLessonIds.add(l.id);
+        try {
+          const infoRes = await callWebUntisRest(`/api/public/period/info?date=${l.dateStr}&periodId=${l.untisId}`, null, 'GET');
+          if (infoRes && infoRes.data && infoRes.data.blocks) {
+            for (const row of infoRes.data.blocks) {
+              for (const b of row) {
+                if (b.lessonTopic && b.lessonTopic.text) {
+                  l.lstext = b.lessonTopic.text.trim();
+                  anyFound = true;
+                }
+                if (b.periodInfo && b.periodInfo.text && !l.notes) {
+                  l.notes = b.periodInfo.text.trim();
+                }
+              }
+            }
+          }
+        } catch (e) {}
+      }));
+      if (anyFound) {
+        saveAppData();
+        // Leises Re-Rendering der Stundenkarten zur Anzeige des Lehrstoffs
+        const activeTab = document.querySelector('.tab-button.active');
+        if (activeTab && (activeTab.getAttribute('data-tab') === 'timetable' || activeTab.getAttribute('data-tab') === 'overview')) {
+          renderTimetable();
+        }
+      }
+    }
+  } finally {
+    _isEnriching = false;
+  }
+}
+
 function openLessonDetails(lessonId) {
-  const lesson = (appData.timetable || []).find(l => String(l.id) === String(lessonId));
+  let lesson = (appData.timetable || []).find(l => String(l.id) === String(lessonId));
+  if (!lesson && appData.timetableCache) {
+    for (const k in appData.timetableCache) {
+      const found = (appData.timetableCache[k] || []).find(l => String(l.id) === String(lessonId));
+      if (found) { lesson = found; break; }
+    }
+  }
   if (!lesson) return;
 
   const modal = document.getElementById('modal-lesson-details');
   if (!modal) return;
 
+  const cleanRoom = formatRoomNameOnly(lesson.room, lesson.teacher);
+  const cleanTeacher = cleanTeacherName(lesson.teacher);
+
   const fmtTime = t => {
     if (!t) return '–';
-    const s = String(t).padStart(4, '0');
+    let s = String(t).trim();
+    if (s.includes(':')) return s;
+    s = s.padStart(4, '0');
     return s.slice(0, 2) + ':' + s.slice(2);
   };
 
@@ -3803,9 +3865,9 @@ function openLessonDetails(lessonId) {
         : escHtml(String(lesson.homework)))
     : 'Keine Hausaufgaben eingetragen.';
 
-  const lstextText = lesson.lstext
+  const initialLsText = lesson.lstext
     ? escHtml(lesson.lstext)
-    : 'Kein Lehrstoff eingetragen.';
+    : '<span style="color: var(--text-muted); font-style: italic;">Wird aus WebUntis abgerufen...</span>';
 
   // Titel setzen
   const titleEl = modal.querySelector('.modal-title');
@@ -3830,15 +3892,15 @@ function openLessonDetails(lessonId) {
         </div>
         <div class="modal-detail-row">
           <dt class="modal-detail-label"><span class="emoji-icon" aria-hidden="true">🏫 </span>Raum</dt>
-          <dd class="modal-detail-content" data-key="room">${escHtml(lesson.room || '–')}</dd>
+          <dd class="modal-detail-content" data-key="room">${escHtml(cleanRoom)}</dd>
         </div>
         <div class="modal-detail-row">
           <dt class="modal-detail-label"><span class="emoji-icon" aria-hidden="true">👤 </span>Lehrer</dt>
-          <dd class="modal-detail-content" data-key="teacher">${escHtml(lesson.teacher || '–')}</dd>
+          <dd class="modal-detail-content" data-key="teacher">${escHtml(cleanTeacher)}</dd>
         </div>
         <div class="modal-detail-row">
           <dt class="modal-detail-label"><span class="emoji-icon" aria-hidden="true">📝 </span>Lehrstoff</dt>
-          <dd class="modal-detail-content" data-key="lstext">${lstextText}</dd>
+          <dd class="modal-detail-content" data-key="lstext" id="modal-lesson-lstext">${initialLsText}</dd>
         </div>
         <div class="modal-detail-row">
           <dt class="modal-detail-label"><span class="emoji-icon" aria-hidden="true">📚 </span>Hausaufgaben</dt>
@@ -3854,6 +3916,64 @@ function openLessonDetails(lessonId) {
   const closeBtn = modal.querySelector('.modal-close-btn');
   if (closeBtn) closeBtn.focus();
   else modal.setAttribute('tabindex', '-1'), modal.focus();
+
+  // WebUntis Live-Abruf für Lehrstoff & Unterrichtsinfos über /api/public/period/info
+  if (lesson.untisId && lesson.dateStr) {
+    const periodId = lesson.untisId;
+    const dateStr = lesson.dateStr;
+    callWebUntisRest(`/api/public/period/info?date=${dateStr}&periodId=${periodId}`, null, 'GET')
+      .then(infoRes => {
+        try {
+          let foundTopic = '';
+          let foundPeriodInfo = '';
+          if (infoRes && infoRes.data && infoRes.data.blocks) {
+            for (const row of infoRes.data.blocks) {
+              for (const b of row) {
+                if (b.lessonTopic && b.lessonTopic.text) {
+                  foundTopic = b.lessonTopic.text.trim();
+                }
+                if (b.periodInfo && b.periodInfo.text) {
+                  foundPeriodInfo = b.periodInfo.text.trim();
+                }
+                if (b.lessonInfo && !foundPeriodInfo) {
+                  foundPeriodInfo = b.lessonInfo.trim();
+                }
+              }
+            }
+          }
+
+          if (foundTopic) {
+            lesson.lstext = foundTopic;
+            if (appData.timetableCache) {
+              for (const k in appData.timetableCache) {
+                const match = (appData.timetableCache[k] || []).find(l => String(l.id) === String(lesson.id) || (l.untisId === lesson.untisId && l.dateStr === lesson.dateStr));
+                if (match) match.lstext = foundTopic;
+              }
+            }
+            saveAppData();
+            const lsEl = document.getElementById('modal-lesson-lstext');
+            if (lsEl) lsEl.textContent = foundTopic;
+            renderTimetable();
+          } else {
+            const lsEl = document.getElementById('modal-lesson-lstext');
+            if (lsEl && (!lesson.lstext || lsEl.textContent.includes('abgerufen'))) {
+              lsEl.textContent = 'Kein Lehrstoff eingetragen.';
+            }
+          }
+        } catch (err) {
+          const lsEl = document.getElementById('modal-lesson-lstext');
+          if (lsEl && (!lesson.lstext || lsEl.textContent.includes('abgerufen'))) {
+            lsEl.textContent = 'Kein Lehrstoff eingetragen.';
+          }
+        }
+      })
+      .catch(() => {
+        const lsEl = document.getElementById('modal-lesson-lstext');
+        if (lsEl && (!lesson.lstext || lsEl.textContent.includes('abgerufen'))) {
+          lsEl.textContent = 'Kein Lehrstoff eingetragen.';
+        }
+      });
+  }
 }
 
 function closeLessonDetails() {
@@ -3890,8 +4010,8 @@ function speakCurrentLessonDetails() {
   const subject  = getVal('subject');
   const date     = getVal('date');
   const time     = getVal('time');
-  const room     = getVal('room');
-  const teacher  = getVal('teacher');
+  const room     = formatRoomNameOnly(getVal('room'));
+  const teacher  = cleanTeacherName(getVal('teacher'));
   const lstext   = getVal('lstext');
   const homework = getVal('homework');
 
@@ -3900,8 +4020,8 @@ function speakCurrentLessonDetails() {
   if (time)     text += `Zeit: ${time}. `;
   if (room)     text += `Raum: ${room}. `;
   if (teacher)  text += `Lehrer: ${teacher}. `;
-  if (lstext)   text += `Lehrstoff: ${lstext}. `;
-  if (homework) text += `Hausaufgaben: ${homework}. `;
+  if (lstext && !lstext.includes('abgerufen'))   text += `Lehrstoff: ${lstext}. `;
+  if (homework && !homework.includes('Keine Hausaufgaben')) text += `Hausaufgaben: ${homework}. `;
 
   speak(text, true);
 }
