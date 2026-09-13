@@ -1,10 +1,11 @@
 {
-  "version": "1.9.10",
+  "version": "1.9.11",
   "name": "Barrierefreies WebUntis",
   "buildDate": "2026-09-13",
   "repository": "https://github.com/Lauju1909/BarrierefreiesWebUntis",
   "executable": "Barrierefreies_WebUntis.exe",
   "features": [
+    "100% dynamische WebUntis-Metadaten: Vollständige Beseitigung aller fest einprogrammierten Lehrer und Klassen. Fächer, Lehrer und Klassen werden vollkommen dynamisch aus WebUntis ermittelt. Saubere Trennung von Fach-Kürzel und Fachname für Screenreader (z. B. 'M: Mathematik' statt 'MMathematik').",
     "NVDA-Kombinationsfeld Notenspiegel: Optionstexte enthalten direkt Schuljahr, Notenanzahl und Gesamtschnitt. NVDA liest bei Pfeiltasten-Navigation jede Auswahl nativ, klar und ohne Abbruch vor.",
     "Beseitigung von Screenreader-Überflutung: aria-live='polite' vom Fächerkarten-Container entfernt und Live-Region auf polite umgestellt, damit NVDA beim Navigieren nicht unterbrochen oder stummgeschaltet wird.",
     "Korrekte Klassenbezeichnung pro Schuljahr: Bei Schuljahr 2025/2026 wird nun korrekt 'Klasse BFW1B' angezeigt (statt der aktuellen Klasse BFW2B) und bei 2024/2025 'Klasse AV'.",

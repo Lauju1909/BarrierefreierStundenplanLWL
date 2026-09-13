@@ -5903,39 +5903,90 @@ function getExamSchoolYear(exam) {
 }
 
 function getSubjectInfo(code, schoolYear = null) {
-  if (!code) return { code: 'Fach', name: 'Schulfach', teacher: 'Fachlehrkraft', klasse: 'BFW2B' };
+  if (!code) return { code: 'Fach', name: 'Schulfach', fullName: 'Schulfach', teacher: '', klasse: '' };
   const trimmed = code.trim();
-  let base = null;
-  if (KNOWN_LWL_SUBJECTS[trimmed]) {
-    base = { code: trimmed, ...KNOWN_LWL_SUBJECTS[trimmed] };
-  } else {
-    const matchOff = OFFICIAL_LWL_SUBJECTS.find(s => s.code.toUpperCase() === trimmed.toUpperCase());
-    if (matchOff) {
-      base = { ...matchOff };
-    } else {
-      base = { code: trimmed, name: trimmed, teacher: 'Fachlehrkraft', klasse: 'BFW2B' };
+  const meta = appData.metadata || {};
+  const subjectsMap = meta.subjectsMap || {};
+  const teachersMap = meta.teachersMap || {};
+  const klassenMap = meta.klassenMap || {};
+
+  // 1. Schulfach-Vollname dynamisch aus WebUntis-Metadaten ermitteln
+  let fullName = subjectsMap[trimmed] || '';
+  if (!fullName) {
+    for (const k in subjectsMap) {
+      if (k.toUpperCase() === trimmed.toUpperCase()) {
+        fullName = subjectsMap[k];
+        break;
+      }
     }
   }
 
-  // Klasse abhängig vom gewählten Schuljahr anpassen
-  let klasse = base.klasse || 'BFW2B';
-  let teacher = base.teacher || 'Fachlehrkraft';
-
-  if (schoolYear === '2025/2026') {
-    klasse = 'BFW1B';
-  } else if (schoolYear === '2024/2025') {
-    klasse = 'AV';
-  } else if (schoolYear === '2026/2027') {
-    klasse = 'BFW2B';
-  } else if (schoolYear === 'all') {
-    if (['FB LF 1', 'FB LF 2', 'FB LF 4', 'FB LF 5', 'FB LF 6', 'FB LF 7', 'FB LF 8', 'FB LF 9', 'FB NW'].includes(trimmed)) {
-      klasse = 'AV (2024/2025)';
-    } else {
-      klasse = 'BFW1B / BFW2B';
+  // 2. Suche passende Stunde im aktuellen WebUntis-Stundenplan für Fach, Lehrer und Klasse
+  let teacherFromUntis = '';
+  let klasseFromUntis = '';
+  const timetable = appData.timetable || [];
+  const matchingLesson = timetable.find(l => isMatchingSubject(l.subject || l.subjectCode, trimmed));
+  if (matchingLesson) {
+    if (!fullName && matchingLesson.subject) {
+      fullName = matchingLesson.subject;
+    }
+    if (matchingLesson.teacher) {
+      teacherFromUntis = matchingLesson.teacher;
+    }
+    if (matchingLesson.klasse) {
+      klasseFromUntis = matchingLesson.klasse;
     }
   }
 
-  return { ...base, klasse, teacher };
+  // 3. Suche in webuntisLessons (aus WebUntis REST /api/classreg/grade/grading/list)
+  if (Array.isArray(appData.webuntisLessons)) {
+    const wLesson = appData.webuntisLessons.find(l => {
+      const s = (l.subject && (l.subject.name || l.subject.longName)) || l.subjectName || '';
+      return isMatchingSubject(s, trimmed);
+    });
+    if (wLesson) {
+      if (!fullName && wLesson.subject) {
+        fullName = wLesson.subject.longName || wLesson.subject.name;
+      }
+      if (!teacherFromUntis && wLesson.teachers && wLesson.teachers[0]) {
+        const t = wLesson.teachers[0];
+        teacherFromUntis = t.displayName || t.longName || t.name || teachersMap[t.id] || '';
+      }
+      if (!klasseFromUntis && wLesson.classes && wLesson.classes[0]) {
+        const c = wLesson.classes[0];
+        klasseFromUntis = c.name || c.longName || klassenMap[c.id] || '';
+      }
+    }
+  }
+
+  // 4. Wenn Name immer noch nicht gefunden, Fallback auf bekannte Bezeichnungen
+  if (!fullName) {
+    if (KNOWN_LWL_SUBJECTS[trimmed] && KNOWN_LWL_SUBJECTS[trimmed].name) {
+      fullName = KNOWN_LWL_SUBJECTS[trimmed].name;
+    } else {
+      const matchOff = OFFICIAL_LWL_SUBJECTS.find(s => s.code.toUpperCase() === trimmed.toUpperCase());
+      if (matchOff && matchOff.name) {
+        fullName = matchOff.name;
+      } else {
+        fullName = trimmed;
+      }
+    }
+  }
+
+  // 5. WICHTIG: Lehrer und Klasse NUR für das laufende Schuljahr aus dem aktuellen Stundenplan übernehmen!
+  // Für vergangene Schuljahre (z.B. 2025/2026 oder 2024/2025) oder andere Schulen dürfen keine falschen
+  // Lehrer oder Klassen des heutigen Tages angezeigt werden, da sich Lehrer und Klassen jedes Jahr ändern.
+  const isCurrentSy = (schoolYear === '2026/2027' || schoolYear === (appData.schoolYear && appData.schoolYear.name));
+  const teacher = isCurrentSy ? teacherFromUntis : '';
+  const klasse = isCurrentSy ? (klasseFromUntis || appData.config.schoolClass || '') : '';
+
+  return {
+    code: trimmed,
+    name: fullName,
+    fullName: fullName,
+    teacher: teacher,
+    klasse: klasse
+  };
 }
 
 function setGradeSchoolYear(sy, fromSelect = false) {
@@ -6090,19 +6141,32 @@ function renderGradesView(fromSelect = false) {
   if (oralEl) oralEl.textContent = String(oralCount);
   if (gradedExamsEl) gradedExamsEl.textContent = `${writtenCount} KA / ${oralCount} SL`;
 
-  // Fächerliste ermitteln
+  // Fächerliste ermitteln (100% dynamisch aus WebUntis: Noten, Stundenplan, Lessons)
   let subjectCodes = [];
-  if (selectedSy === '2026/2027') {
-    subjectCodes = OFFICIAL_LWL_SUBJECTS.map(s => s.code);
+  const uniqueInGrades = [...new Set(activeGrades.map(g => g.subject).filter(Boolean))];
+
+  if (selectedSy === 'all' || selectedSy !== '2026/2027') {
+    // In vergangenen Schuljahren nur die Fächer anzeigen, für die in jenem Schuljahr tatsächlich Noten vorliegen
+    subjectCodes = uniqueInGrades;
   } else {
-    const uniqueInGrades = [...new Set(activeGrades.map(g => g.subject).filter(Boolean))];
-    const orderedCodes = ['M', 'D', 'E', 'PK', 'SP', 'PP', 'FB GPU1', 'FB GPU2', 'FB GWP', 'FB PBP', 'FB PBP (BWO)', 'FU BO', 'FU D'];
-    orderedCodes.forEach(c => {
-      if (uniqueInGrades.includes(c)) subjectCodes.push(c);
-    });
-    uniqueInGrades.forEach(c => {
-      if (!subjectCodes.includes(c)) subjectCodes.push(c);
-    });
+    // Im aktuellen Schuljahr: Alle Fächer aus WebUntis (Notenfächer + WebUntis-Stundenplan + webuntisLessons)
+    const liveSubjects = [];
+    if (Array.isArray(appData.webuntisLessons) && appData.webuntisLessons.length > 0) {
+      appData.webuntisLessons.forEach(l => {
+        const s = (l.subject && (l.subject.name || l.subject.longName)) || l.subjectName || '';
+        if (s && !liveSubjects.includes(s)) liveSubjects.push(s);
+      });
+    }
+    if (Array.isArray(appData.timetable) && appData.timetable.length > 0) {
+      appData.timetable.forEach(l => {
+        const s = l.subjectCode || l.subject || '';
+        if (s && !liveSubjects.includes(s)) liveSubjects.push(s);
+      });
+    }
+
+    const combined = [...new Set([...uniqueInGrades, ...liveSubjects])];
+    subjectCodes = combined.length > 0 ? combined : uniqueInGrades;
+
     if (subjectCodes.length === 0) {
       subjectCodes = OFFICIAL_LWL_SUBJECTS.map(s => s.code);
     }
@@ -6116,6 +6180,14 @@ function renderGradesView(fromSelect = false) {
   subjectCodes.forEach(code => {
     const subj = getSubjectInfo(code, selectedSy);
     const subjGrades = activeGrades.filter(g => isMatchingSubject(g.subject, subj.code));
+
+    // WebUntis Prüfungsarten aus den tatsächlichen Noten dieses Fachs sammeln
+    const examTypes = [...new Set(subjGrades.map(g => (g.grade && g.grade.examType && (g.grade.examType.longname || g.grade.examType.name)) || '').filter(Boolean))];
+    const examTypesStr = examTypes.join(', ');
+
+    const displayName = (subj.fullName && subj.fullName.toLowerCase().trim() !== subj.code.toLowerCase().trim())
+      ? subj.fullName
+      : '';
 
     const subjValid = subjGrades.filter(g => {
       const mk = g.grade && g.grade.mark;
@@ -6144,16 +6216,22 @@ function renderGradesView(fromSelect = false) {
     }
 
     html += `
-      <article class="grade-subject-card" role="article" aria-label="Fach ${escHtml(subj.name)}, ${subjAvg ? 'Notendurchschnitt ' + subjAvg.replace('.', ',') : 'Keine Noten'}">
+      <article class="grade-subject-card" role="article" aria-label="Fach ${escHtml(subj.fullName || subj.code)}, ${subjAvg ? 'Notendurchschnitt ' + subjAvg.replace('.', ',') : 'Keine Noten'}">
         <div class="grade-subject-header">
           <div>
             <h3 class="grade-subject-title">
               <span class="homework-subject">${escHtml(subj.code)}</span>
-              <span class="grade-subject-name">${escHtml(subj.name)}</span>
+              ${displayName ? `<span class="sr-only">: </span><span class="grade-subject-name">${escHtml(displayName)}</span>` : ''}
             </h3>
-            <span class="field-hint">
-              <span class="emoji-icon" aria-hidden="true">👨‍🏫 </span>${escHtml(subj.teacher)} • <span class="emoji-icon" aria-hidden="true">🏫 </span>Klasse ${escHtml(subj.klasse || 'BFW2B')}
-            </span>
+            <div class="field-hint" style="margin-top: 4px;">
+              ${subj.teacher ? `<span class="meta-item"><span class="emoji-icon" aria-hidden="true">👨‍🏫 </span>${escHtml(subj.teacher)}</span>` : ''}
+              ${subj.teacher && subj.klasse ? ' • ' : ''}
+              ${subj.klasse ? `<span class="meta-item"><span class="emoji-icon" aria-hidden="true">🏫 </span>Klasse ${escHtml(subj.klasse)}</span>` : ''}
+              ${!subj.teacher && !subj.klasse ? `
+                <span class="meta-item"><span class="emoji-icon" aria-hidden="true">📅 </span>Schuljahr ${escHtml(selectedSy === 'all' ? 'Gesamthistorie' : selectedSy)}</span>
+                ${examTypesStr ? ` • <span class="meta-item"><span class="emoji-icon" aria-hidden="true">📋 </span>${escHtml(examTypesStr)}</span>` : ''}
+              ` : ''}
+            </div>
           </div>
           <div>
             ${officialMarkDisplay ? `
