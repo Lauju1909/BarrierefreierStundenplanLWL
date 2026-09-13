@@ -3318,18 +3318,18 @@ function renderTimetable() {
         </div>
         <div class="lesson-main">
           <div class="lesson-subject-title">${l.subject}</div>
-          <div class="lesson-details-row">
-            <span class="lesson-detail-item">🚪 <strong>Raum:</strong> ${cleanRoom}</span>
-            <span class="lesson-detail-item">👨‍🏫 <strong>Lehrer:</strong> ${cleanTeacher}</span>
-            ${l.klasse ? `<span class="lesson-detail-item">🏫 <strong>Klasse:</strong> ${escHtml(l.klasse)}</span>` : ''}
+          <div style="margin-top: 6px; font-size: var(--font-size-base); color: var(--text-secondary);">
+            <div style="display: block; line-height: 1.8;">🚪 <strong>Raum:</strong> ${cleanRoom}</div>
+            <div style="display: block; line-height: 1.8;">👨‍🏫 <strong>Lehrer:</strong> ${cleanTeacher}</div>
+            ${l.klasse ? `<div style="display: block; line-height: 1.8;">🏫 <strong>Klasse:</strong> ${escHtml(l.klasse)}</div>` : ''}
           </div>
-          ${l.lstext ? `<div style="font-size: 13px; color: var(--accent-info); font-weight: 600; margin-top: 4px;">📖 <strong>Lehrstoff:</strong> ${escapeHTML(l.lstext)}</div>` : ''}
-          ${l.homework ? `<div style="font-size: 13px; color: var(--accent-warn); font-weight: bold; margin-top: 2px;">📝 <strong>Hausaufgabe:</strong> ${escapeHTML(l.homework)}</div>` : ''}
-          ${l.notes && l.notes !== l.lstext ? `<div style="font-size: 13px; font-weight: bold; color: var(--accent-warn); margin-top: 2px;">ℹ️ ${escapeHTML(l.notes)}</div>` : ''}
+          ${l.lstext ? `<div style="display: block; font-size: 13px; color: var(--accent-info); font-weight: 600; margin-top: 6px;">📖 <strong>Lehrstoff:</strong> ${escapeHTML(l.lstext)}</div>` : ''}
+          ${l.homework ? `<div style="display: block; font-size: 13px; color: var(--accent-warn); font-weight: bold; margin-top: 4px;">📝 <strong>Hausaufgabe:</strong> ${escapeHTML(l.homework)}</div>` : ''}
+          ${l.notes && l.notes !== l.lstext ? `<div style="display: block; font-size: 13px; font-weight: bold; color: var(--accent-warn); margin-top: 4px;">ℹ️ ${escapeHTML(l.notes)}</div>` : ''}
         </div>
         <div class="lesson-badge-wrap">
           <span class="status-badge ${badgeClass}">${badgeText}</span>
-          <span style="font-size: 12px; color: var(--text-muted); font-weight: bold; margin-top: 4px; display: inline-block;">Details ↗</span>
+          <span style="font-size: 12px; color: var(--text-muted); font-weight: bold; margin-top: 4px; display: block; text-align: right;">Details ↗</span>
         </div>
       </article>
     `;
