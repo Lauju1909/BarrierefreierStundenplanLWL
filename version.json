@@ -1,9 +1,14 @@
 {
-  "version": "1.9.4",
+  "version": "1.9.5",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-13",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
+    "Echte WebUntis-Noten & Leistungsübersicht: Vollständige Integration aller 168+ offiziellen Noten aus WebUntis (Klassenarbeiten, Klausuren, Tests, Portfolios, Sonstige Leistungen und laufende Mitarbeit)",
+    "Schuljahr-Auswahl im Notenspiegel: Schnelles Umschalten zwischen Schuljahr 2026/2027 (Aktuell), Schuljahr 2025/2026 (65 Noten), 2024/2025 (103 Noten) und Gesamthistorie",
+    "Detaillierte Fächer-Notenspiegel: Automatische Berechnung von Gesamtschnitt und Fachdurchschnitt, Anzeige von Notenwert (z.B. 2.0 / Gut, 1.3 / Sehr Gut -), Datum, Prüfungsbezeichnung und Bemerkungen der Lehrkräfte",
+    "Strikte Fach-Zuordnung ohne Buchstabensalat: Kein fehlerhaftes Zuordnen mehr von Deutsch- oder Mathearbeiten zu Englisch",
+    "Barrierefreie Sprachausgabe für Noten (Taste V): Detaillierte Ansage von Gesamtdurchschnitt, Notenanzahl und Fachnoten",
     "Vollständige, lückenlose Überschriftenstruktur (H1–H5) in allen Reitern: Optimiert für schnelle Screenreader-Navigation (Taste H, 1, 2, 3, 4) in NVDA und JAWS",
     "Tagesüberschriften (H3) in der Wochenansicht des Stundenplans: Mit Taste 3 direkt zwischen Montag, Dienstag, Mittwoch, Donnerstag und Freitag springen",
     "Überschriften für Einzelkarten (H4): Jede Unterrichtsstunde, jede Frist/Warnung, jeder Klassenbucheintrag, jede Hausaufgabe, jede Fehlzeit und jede Mitteilung besitzt eine eigene H4-Überschrift",

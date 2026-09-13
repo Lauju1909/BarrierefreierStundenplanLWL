@@ -2060,4 +2060,87 @@ body.theme-high-contrast .grade-badge-value {
   display: inline-block;
 }
 
+/* WEBUNTIS NOTEN: SCHULJAHR-FILTER & ERWEITERTE STYLES */
+.grade-schoolyear-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: var(--bg-surface-elevated);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.grade-sy-btn {
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.grade-sy-btn:hover, .grade-sy-btn:focus-visible {
+  color: var(--text-primary);
+  border-color: var(--accent-primary);
+  outline: 2px solid var(--accent-primary);
+}
+
+.grade-sy-btn.active {
+  background: var(--accent-primary);
+  color: #ffffff;
+  border-color: var(--accent-primary);
+  font-weight: 700;
+}
+
+.grade-subject-name {
+  color: var(--text-primary);
+  font-size: 17px;
+  font-weight: bold;
+}
+
+.grade-teacher-note {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  padding: 4px 8px;
+  background: var(--bg-surface);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+}
+
+.grade-mark-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 90px;
+}
+
+body.theme-high-contrast .grade-sy-btn {
+  background: #000000 !important;
+  color: #ffffff !important;
+  border: 2px solid #ffffff !important;
+}
+
+body.theme-high-contrast .grade-sy-btn.active {
+  background: #ffff00 !important;
+  color: #000000 !important;
+  border: 2px solid #ffffff !important;
+}
+
+body.theme-high-contrast .grade-teacher-note {
+  background: #000000 !important;
+  color: #ffffff !important;
+  border-left: 3px solid #ffff00 !important;
+}
+
+body.theme-high-contrast .grade-mark-text {
+  color: #ffffff !important;
+}
+
+
 

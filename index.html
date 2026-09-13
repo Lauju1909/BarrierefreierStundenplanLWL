@@ -530,24 +530,33 @@
         </div>
       </div>
 
+      <!-- SCHULJAHR-FILTER -->
+      <div id="grades-schoolyear-bar" class="grade-schoolyear-bar" role="tablist" aria-label="Schuljahr für Notenübersicht auswählen" style="margin-bottom: 20px;">
+        <!-- Wird dynamisch durch JavaScript befüllt -->
+      </div>
+
       <!-- KENNZAHLEN / STATISTIK-KARTEN -->
       <h3 class="sr-only">Noten-Statistik und Schnitt</h3>
-      <div class="absence-stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 20px;">
+      <div class="absence-stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 20px;">
         <div class="absence-stat-card">
           <div class="absence-stat-number" id="stat-grade-gpa" style="color: var(--accent-primary);">--</div>
           <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">📊 </span>Gesamtschnitt</div>
         </div>
         <div class="absence-stat-card">
-          <div class="absence-stat-number" id="stat-grade-total-exams">13</div>
-          <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">📝 </span>Klausuren im Schuljahr</div>
+          <div class="absence-stat-number" id="stat-grade-total-grades">0</div>
+          <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">📋 </span>Erfasste Noten</div>
         </div>
         <div class="absence-stat-card">
-          <div class="absence-stat-number" id="stat-grade-graded-exams" style="color: var(--accent-ok);">0 / 13</div>
-          <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">✅ </span>Bewertete Arbeiten</div>
+          <div class="absence-stat-number" id="stat-grade-written" style="color: var(--accent-primary);">0</div>
+          <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">📝 </span>Klassenarbeiten</div>
         </div>
         <div class="absence-stat-card">
-          <div class="absence-stat-number" id="stat-grade-subjects-count">12</div>
-          <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">📚 </span>Schulfächer gesamt</div>
+          <div class="absence-stat-number" id="stat-grade-oral" style="color: var(--accent-ok);">0</div>
+          <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">💬 </span>Sonstige Leistungen</div>
+        </div>
+        <div class="absence-stat-card">
+          <div class="absence-stat-number" id="stat-grade-subjects-count">0</div>
+          <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">📚 </span>Schulfächer</div>
         </div>
       </div>
 
@@ -656,7 +665,7 @@
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div>
               <p style="font-size: var(--font-size-base); margin-bottom: 4px;">
-                Installierte Version: <strong id="app-version-display">v1.9.4</strong>
+                Installierte Version: <strong id="app-version-display">v1.9.5</strong>
               </p>
               <p style="font-size: 14px; color: var(--text-muted);" id="update-status-detail">
                 Automatische Hintergrundaktualisierung über GitHub ist aktiv.

@@ -105,7 +105,12 @@ let appData = {
   holidays: [...DEFAULT_NRW_HOLIDAYS_2026_2027],
   schoolYear: null,
   examFilter: 'all',
-  homeworkFilter: 'classreg'
+  homeworkFilter: 'classreg',
+  grades: {},
+  webuntisGradeList: [],
+  webuntisLessons: [],
+  webuntisFinalMarks: {},
+  selectedGradeSchoolYear: '2025/2026'
 };
 
 let currentTab = 'overview';
@@ -170,6 +175,10 @@ function loadAppData() {
         messages: (parsed.messages && Array.isArray(parsed.messages)) ? parsed.messages : [],
         deletedMessageIds: (parsed.deletedMessageIds && Array.isArray(parsed.deletedMessageIds)) ? parsed.deletedMessageIds : [],
         grades: (parsed.grades && typeof parsed.grades === 'object') ? parsed.grades : {},
+        webuntisGradeList: (parsed.webuntisGradeList && Array.isArray(parsed.webuntisGradeList) && parsed.webuntisGradeList.length > 0) ? parsed.webuntisGradeList : (typeof DEFAULT_WEBUNTIS_GRADES !== 'undefined' ? [...DEFAULT_WEBUNTIS_GRADES] : []),
+        webuntisLessons: (parsed.webuntisLessons && Array.isArray(parsed.webuntisLessons)) ? parsed.webuntisLessons : [],
+        webuntisFinalMarks: (parsed.webuntisFinalMarks && typeof parsed.webuntisFinalMarks === 'object') ? parsed.webuntisFinalMarks : {},
+        selectedGradeSchoolYear: parsed.selectedGradeSchoolYear || '2025/2026',
         holidays: (parsed.holidays && parsed.holidays.length > 0) ? parsed.holidays : [...DEFAULT_NRW_HOLIDAYS_2026_2027],
         schoolYear: parsed.schoolYear || null,
         examFilter: 'all',
@@ -1505,7 +1514,7 @@ async function performWebUntisSync(userOverride, passOverride) {
       callWebUntisApi('getHolidays', {}).catch(() => ({})),
       callWebUntisApi('getNewsWidgetData', {}).catch(() => callWebUntisApi('getNewsWidget', {}).catch(() => ({}))),
       callWebUntisRest(`/api/classreg/grade/grading/list?studentId=${effectiveStudentId}&schoolyearId=${effectiveSyId}`, jwtToken).catch(() => null),
-      callWebUntisRest(`/api/classreg/grade/gradeList?personId=${effectiveStudentId}&startDate=${syRange.startDateNum}&endDate=${syRange.endDateNum}`, jwtToken).catch(() => null),
+      callWebUntisRest(`/api/classreg/grade/gradeList?personId=${effectiveStudentId}&startDate=20240801&endDate=20270731`, jwtToken).catch(() => null),
       callWebUntisRest(`/api/classreg/classregevents?studentId=${effectiveStudentId}&startDate=${syRange.startDateNum}&endDate=${syRange.endDateNum}`, jwtToken).catch(() => null),
       callWebUntisRest('/api/rest/view/v1/messages', jwtToken).catch(() => null),
       callWebUntisRest('/api/rest/view/v1/messages/recipients/static/persons', jwtToken).catch(() => null)
@@ -2763,8 +2772,9 @@ async function performWebUntisSync(userOverride, passOverride) {
       appData.webuntisLessons = restGradingRes.data.lessons;
       appData.webuntisFinalMarks = restGradingRes.data.finalMarkByLessonId || {};
     }
-    if (restGradeListRes && restGradeListRes.data) {
+    if (restGradeListRes && restGradeListRes.data && Array.isArray(restGradeListRes.data) && restGradeListRes.data.length > 0) {
       appData.webuntisGradeList = restGradeListRes.data;
+      logClient(`performWebUntisSync: ${restGradeListRes.data.length} offizielle Noten aus WebUntis erfasst.`);
     }
 
 
@@ -5550,8 +5560,35 @@ async function syncMessagesAndNews() {
 }
 
 // =============================================================================
-// 13. NOTEN & LEISTUNGSÜBERSICHT (FEATURE 6)
+// 13. NOTEN & LEISTUNGSÜBERSICHT (FEATURE 6 - OFFIZIELLE WEBUNTIS-NOTEN)
 // =============================================================================
+
+const DEFAULT_WEBUNTIS_GRADES = [{"subject": "D", "grade": {"id": 138414, "date": 20241014, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Ausreichend +", "markDisplayValue": 3.7, "markValue": 370}, "text": "", "exam": {"name": "1. KL Deutsch"}}}, {"subject": "M", "grade": {"id": 139112, "date": 20241104, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": null}}, {"subject": "D", "grade": {"id": 138407, "date": 20241105, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend -", "markDisplayValue": 3.3, "markValue": 330}, "text": "", "exam": null}}, {"subject": "FB LF 5", "grade": {"id": 138426, "date": 20241106, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "M", "grade": {"id": 139091, "date": 20241106, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Sehr gut +", "markDisplayValue": 0.7, "markValue": 70}, "text": "", "exam": {"name": "Mathe"}}}, {"subject": "FB LF 1", "grade": {"id": 140183, "date": 20241106, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "1. GPU-Arbeit (Lernfelder 1,2,4,5,9)", "exam": null}}, {"subject": "FB LF 1", "grade": {"id": 140195, "date": 20241117, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "PP", "grade": {"id": 140498, "date": 20241121, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "PK", "grade": {"id": 142086, "date": 20250108, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend -", "markDisplayValue": 3.3, "markValue": 330}, "text": "", "exam": null}}, {"subject": "PP", "grade": {"id": 141884, "date": 20250109, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend -", "markDisplayValue": 3.3, "markValue": 330}, "text": "", "exam": null}}, {"subject": "E", "grade": {"id": 142200, "date": 20250112, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Mangelhaft +", "markDisplayValue": 4.7, "markValue": 470}, "text": "", "exam": {"name": "E1"}}}, {"subject": "E", "grade": {"id": 142215, "date": 20250112, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Ausreichend", "markDisplayValue": 4.0, "markValue": 400}, "text": "", "exam": {"name": "E2"}}}, {"subject": "E", "grade": {"id": 142229, "date": 20250112, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Ausreichend -", "markDisplayValue": 4.3, "markValue": 430}, "text": "", "exam": {"name": "Sonstige Leistung E1"}}}, {"subject": "E", "grade": {"id": 142238, "date": 20250112, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend -", "markDisplayValue": 3.3, "markValue": 330}, "text": "", "exam": {"name": "Sonstige Leistungen E2"}}}, {"subject": "M", "grade": {"id": 142943, "date": 20250113, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": null}}, {"subject": "FB LF 6", "grade": {"id": 143063, "date": 20250113, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "FB LF 6", "grade": {"id": 143079, "date": 20250113, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "D", "grade": {"id": 143201, "date": 20250114, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Ausreichend", "markDisplayValue": 4.0, "markValue": 400}, "text": "", "exam": null}}, {"subject": "FB LF 7", "grade": {"id": 143094, "date": 20250115, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "M", "grade": {"id": 142925, "date": 20250116, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": {"name": "Mathe"}}}, {"subject": "PK", "grade": {"id": 143007, "date": 20250116, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Gut +", "markDisplayValue": 1.7, "markValue": 170}, "text": "", "exam": {"name": "Klassenarbeit Nr. 1 "}}}, {"subject": "FB LF 6", "grade": {"id": 143028, "date": 20250116, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": {"name": "Klassenarbeit PbP"}}}, {"subject": "FB LF 6", "grade": {"id": 143031, "date": 20250116, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Gut -", "markDisplayValue": 2.3, "markValue": 230}, "text": "", "exam": {"name": "Klassenarbeit Nr.2"}}}, {"subject": "FB LF 7", "grade": {"id": 143043, "date": 20250116, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": {"name": "Klassenarbeit GWP"}}}, {"subject": "FB LF 1", "grade": {"id": 143151, "date": 20250117, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend -", "markDisplayValue": 3.3, "markValue": 330}, "text": "", "exam": null}}, {"subject": "FB LF 1", "grade": {"id": 143165, "date": 20250117, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "D", "grade": {"id": 143181, "date": 20250117, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Ausreichend -", "markDisplayValue": 4.3, "markValue": 430}, "text": "", "exam": {"name": "2. Deutsch KL"}}}, {"subject": "FB LF 4", "grade": {"id": 144857, "date": 20250121, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "1. Quartal", "exam": null}}, {"subject": "FB LF 4", "grade": {"id": 144874, "date": 20250121, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "1. KA vom 06.11.2024", "exam": null}}, {"subject": "FB LF 4", "grade": {"id": 144888, "date": 20250121, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Gut -", "markDisplayValue": 2.3, "markValue": 230}, "text": "2. Quartal", "exam": null}}, {"subject": "FB LF 4", "grade": {"id": 144904, "date": 20250121, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend -", "markDisplayValue": 3.3, "markValue": 330}, "text": "2. KA vom 14.01.2025", "exam": null}}, {"subject": "FB LF 9", "grade": {"id": 144921, "date": 20250124, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Gut +", "markDisplayValue": 1.7, "markValue": 170}, "text": "1. Quartal", "exam": null}}, {"subject": "FB LF 9", "grade": {"id": 144939, "date": 20250124, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "1. KA vom 06.11.2025", "exam": null}}, {"subject": "FB LF 9", "grade": {"id": 144957, "date": 20250124, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Gut -", "markDisplayValue": 2.3, "markValue": 230}, "text": "2. Quartal", "exam": null}}, {"subject": "FB LF 9", "grade": {"id": 144972, "date": 20250124, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend -", "markDisplayValue": 3.3, "markValue": 330}, "text": "2. KA vom 14.01.2025", "exam": null}}, {"subject": "FB NW", "grade": {"id": 145862, "date": 20250126, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Ungenügend", "markDisplayValue": 6.0, "markValue": 600}, "text": "nicht abgegeben, krank, aber keine Entschuldigung/Rückmeldung", "exam": null}}, {"subject": "FB NW", "grade": {"id": 145876, "date": 20250126, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "FB NW", "grade": {"id": 145892, "date": 20250126, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "SP", "grade": {"id": 147092, "date": 20250128, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "SL1", "exam": null}}, {"subject": "SP", "grade": {"id": 147143, "date": 20250128, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "SL2", "exam": null}}, {"subject": "FB LF 5", "grade": {"id": 147522, "date": 20250204, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": {"name": "1. GPU Arbeit"}}}, {"subject": "FB LF 5", "grade": {"id": 147531, "date": 20250204, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend -", "markDisplayValue": 3.3, "markValue": 330}, "text": "", "exam": null}}, {"subject": "FB LF 5", "grade": {"id": 147545, "date": 20250204, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "FB LF 2", "grade": {"id": 147556, "date": 20250204, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend -", "markDisplayValue": 3.3, "markValue": 330}, "text": "", "exam": {"name": "2. GPU-Arbeit"}}}, {"subject": "FB LF 2", "grade": {"id": 147565, "date": 20250204, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": null}}, {"subject": "FB LF 2", "grade": {"id": 147584, "date": 20250205, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "FB LF 2", "grade": {"id": 147602, "date": 20250205, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Gut -", "markDisplayValue": 2.3, "markValue": 230}, "text": "", "exam": null}}, {"subject": "FB LF 7", "grade": {"id": 147671, "date": 20250205, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "FB LF 7", "grade": {"id": 147687, "date": 20250205, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "FB LF 8", "grade": {"id": 147705, "date": 20250206, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": null}}, {"subject": "FB LF 8", "grade": {"id": 147722, "date": 20250206, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "FB LF 8", "grade": {"id": 147740, "date": 20250206, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "FB LF 8", "grade": {"id": 147756, "date": 20250206, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "E", "grade": {"id": 148525, "date": 20250226, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Ausreichend +", "markDisplayValue": 3.7, "markValue": 370}, "text": "", "exam": {"name": "E3"}}}, {"subject": "FB LF 4", "grade": {"id": 155954, "date": 20250408, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "SL-Noten_3. Quartal", "exam": null}}, {"subject": "FB LF 4", "grade": {"id": 155970, "date": 20250408, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Ausreichend", "markDisplayValue": 4.0, "markValue": 400}, "text": "KA-3. Quartal vom 07.03.2025", "exam": null}}, {"subject": "PP", "grade": {"id": 149372, "date": 20250410, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Ausreichend +", "markDisplayValue": 3.7, "markValue": 370}, "text": "", "exam": null}}, {"subject": "FB LF 9", "grade": {"id": 155987, "date": 20250411, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Ausreichend", "markDisplayValue": 4.0, "markValue": 400}, "text": "KA-3. Quartal vom 07.03.2025", "exam": null}}, {"subject": "FB LF 9", "grade": {"id": 156003, "date": 20250411, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "SL-Noten_3. Quartal", "exam": null}}, {"subject": "M", "grade": {"id": 150729, "date": 20250428, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": null}}, {"subject": "M", "grade": {"id": 150711, "date": 20250515, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Sehr gut -", "markDisplayValue": 1.3, "markValue": 130}, "text": "", "exam": {"name": "M"}}}, {"subject": "FB LF 7", "grade": {"id": 151719, "date": 20250611, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "FB LF 7", "grade": {"id": 151736, "date": 20250611, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "FB LF 8", "grade": {"id": 151671, "date": 20250612, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "FB LF 8", "grade": {"id": 151687, "date": 20250612, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "FB LF 8", "grade": {"id": 151704, "date": 20250612, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Gut +", "markDisplayValue": 1.7, "markValue": 170}, "text": "", "exam": null}}, {"subject": "M", "grade": {"id": 152873, "date": 20250616, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": null}}, {"subject": "D", "grade": {"id": 152233, "date": 20250617, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Ausreichend", "markDisplayValue": 4.0, "markValue": 400}, "text": "", "exam": {"name": "3. KL Deutsch"}}}, {"subject": "D", "grade": {"id": 152244, "date": 20250617, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": {"name": "4. KL Deutsch"}}}, {"subject": "D", "grade": {"id": 152263, "date": 20250617, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend -", "markDisplayValue": 3.3, "markValue": 330}, "text": "3. SL Note", "exam": null}}, {"subject": "D", "grade": {"id": 152281, "date": 20250617, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Ausreichend +", "markDisplayValue": 3.7, "markValue": 370}, "text": "4. SL Note", "exam": null}}, {"subject": "E", "grade": {"id": 152707, "date": 20250622, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend -", "markDisplayValue": 3.3, "markValue": 330}, "text": "", "exam": {"name": "Sonstige Leistung E3"}}}, {"subject": "E", "grade": {"id": 152718, "date": 20250622, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Mangelhaft +", "markDisplayValue": 4.7, "markValue": 470}, "text": "", "exam": {"name": "E4"}}}, {"subject": "E", "grade": {"id": 152735, "date": 20250622, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Ausreichend +", "markDisplayValue": 3.7, "markValue": 370}, "text": "", "exam": {"name": "Sonstige Leistung E4"}}}, {"subject": "M", "grade": {"id": 152852, "date": 20250622, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Gut -", "markDisplayValue": 2.3, "markValue": 230}, "text": "", "exam": {"name": "M"}}}, {"subject": "FB LF 6", "grade": {"id": 154696, "date": 20250623, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "FB LF 6", "grade": {"id": 154715, "date": 20250623, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Gut -", "markDisplayValue": 2.3, "markValue": 230}, "text": "", "exam": null}}, {"subject": "FB LF 6", "grade": {"id": 154665, "date": 20250624, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Sehr gut -", "markDisplayValue": 1.3, "markValue": 130}, "text": "", "exam": {"name": "Klassenarbeit Nr. 3"}}}, {"subject": "FB LF 6", "grade": {"id": 154676, "date": 20250624, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": {"name": "Klassenarbeit PbP"}}}, {"subject": "FB LF 7", "grade": {"id": 154847, "date": 20250624, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Gut +", "markDisplayValue": 1.7, "markValue": 170}, "text": "", "exam": {"name": "Klassenarbeit GWP"}}}, {"subject": "FB LF 4", "grade": {"id": 156020, "date": 20250624, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "KA 04. Quartal vom 13.06.2025", "exam": null}}, {"subject": "FB LF 4", "grade": {"id": 156037, "date": 20250624, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Gut +", "markDisplayValue": 1.7, "markValue": 170}, "text": "SL-Noten_4. Quartal", "exam": null}}, {"subject": "PP", "grade": {"id": 156145, "date": 20250624, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Ausreichend +", "markDisplayValue": 3.7, "markValue": 370}, "text": "", "exam": null}}, {"subject": "FB LF 7", "grade": {"id": 154901, "date": 20250625, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "PK", "grade": {"id": 155201, "date": 20250625, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "PK", "grade": {"id": 155219, "date": 20250625, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "FB LF 8", "grade": {"id": 154978, "date": 20250626, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "FB NW", "grade": {"id": 155166, "date": 20250627, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "FB NW", "grade": {"id": 155184, "date": 20250627, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "FB LF 9", "grade": {"id": 156056, "date": 20250627, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Gut +", "markDisplayValue": 1.7, "markValue": 170}, "text": "SL-Noten_4. Quartal", "exam": null}}, {"subject": "FB LF 9", "grade": {"id": 156074, "date": 20250627, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "KA_04. Quartal vom 13.06.2025", "exam": null}}, {"subject": "FB LF 2", "grade": {"id": 160127, "date": 20250702, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "FB LF 2", "grade": {"id": 160145, "date": 20250702, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "FB LF 5", "grade": {"id": 160163, "date": 20250702, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "FB LF 5", "grade": {"id": 160180, "date": 20250702, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Gut -", "markDisplayValue": 2.3, "markValue": 230}, "text": "", "exam": null}}, {"subject": "FB LF 1", "grade": {"id": 160198, "date": 20250702, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Ausreichend", "markDisplayValue": 4.0, "markValue": 400}, "text": "3. KL", "exam": null}}, {"subject": "FB LF 1", "grade": {"id": 160214, "date": 20250702, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "4. KL", "exam": null}}, {"subject": "FB LF 1", "grade": {"id": 160230, "date": 20250702, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut -", "markDisplayValue": 2.3, "markValue": 230}, "text": "", "exam": null}}, {"subject": "FB LF 1", "grade": {"id": 160247, "date": 20250702, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut -", "markDisplayValue": 2.3, "markValue": 230}, "text": "", "exam": null}}, {"subject": "SP", "grade": {"id": 159052, "date": 20250708, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "SL 3 ", "exam": null}}, {"subject": "SP", "grade": {"id": 159120, "date": 20250708, "examType": {"name": "Sonst. Leistung AV", "longname": "Sonstige Leistung Ausbildungsvorbereitung"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "SL 4 ", "exam": null}}, {"subject": "FB LF 2", "grade": {"id": 160094, "date": 20250711, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Ausreichend", "markDisplayValue": 4.0, "markValue": 400}, "text": "", "exam": {"name": "3. GPU-Arbeit"}}}, {"subject": "FB LF 2", "grade": {"id": 160108, "date": 20250711, "examType": {"name": "Klassenarbeit AV", "longname": "Klassenarbeit Ausbildungsvorbereitung"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": {"name": "4. GPU-Arbeit"}}}, {"subject": "PK", "grade": {"id": 163995, "date": 20251028, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut -", "markDisplayValue": 2.3, "markValue": 230}, "text": "", "exam": null}}, {"subject": "M", "grade": {"id": 161191, "date": 20251104, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": null}}, {"subject": "FB GPU1", "grade": {"id": 161730, "date": 20251104, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": null}}, {"subject": "FB PBP (BWO)", "grade": {"id": 161163, "date": 20251105, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut -", "markDisplayValue": 2.3, "markValue": 230}, "text": "", "exam": null}}, {"subject": "D", "grade": {"id": 161174, "date": 20251105, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "D", "grade": {"id": 161184, "date": 20251111, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": {"name": "D"}}}, {"subject": "M", "grade": {"id": 161205, "date": 20251111, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": {"name": "M"}}}, {"subject": "PP", "grade": {"id": 161373, "date": 20251113, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "FB PBP", "grade": {"id": 162001, "date": 20251118, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut +", "markDisplayValue": 1.7, "markValue": 170}, "text": "1. Quartal", "exam": null}}, {"subject": "SP", "grade": {"id": 161824, "date": 20251119, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "1. Quartal", "exam": null}}, {"subject": "FB GPU1", "grade": {"id": 161739, "date": 20251125, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "leer", "markDisplayValue": 0.0, "markValue": 0}, "text": "", "exam": {"name": "FB GPU1"}}}, {"subject": "FB GPU1", "grade": {"id": 161745, "date": 20251125, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Sehr Gut -", "markDisplayValue": 1.3, "markValue": 130}, "text": "", "exam": {"name": "FB GPU1"}}}, {"subject": "FB GPU2", "grade": {"id": 161975, "date": 20251127, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": {"name": "01. KA_GPU2"}}}, {"subject": "FB PBP", "grade": {"id": 161994, "date": 20251127, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Ausreichend +", "markDisplayValue": 3.7, "markValue": 370}, "text": "", "exam": {"name": "01. KA_PBP"}}}, {"subject": "PK", "grade": {"id": 164005, "date": 20251216, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut -", "markDisplayValue": 2.3, "markValue": 230}, "text": "Portfolio", "exam": null}}, {"subject": "PP", "grade": {"id": 162701, "date": 20260108, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "PK", "grade": {"id": 164012, "date": 20260119, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut -", "markDisplayValue": 2.3, "markValue": 230}, "text": "", "exam": null}}, {"subject": "M", "grade": {"id": 164146, "date": 20260119, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Sehr Gut -", "markDisplayValue": 1.3, "markValue": 130}, "text": "", "exam": {"name": "M"}}}, {"subject": "D", "grade": {"id": 164167, "date": 20260119, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Ausreichend", "markDisplayValue": 4.0, "markValue": 400}, "text": "", "exam": {"name": "D"}}}, {"subject": "M", "grade": {"id": 164288, "date": 20260120, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "FB PBP", "grade": {"id": 166089, "date": 20260120, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "2. Quartal_SL", "exam": null}}, {"subject": "FB GPU1", "grade": {"id": 167845, "date": 20260120, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut +", "markDisplayValue": 1.7, "markValue": 170}, "text": "", "exam": null}}, {"subject": "FB PBP (BWO)", "grade": {"id": 164209, "date": 20260121, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "D", "grade": {"id": 164234, "date": 20260121, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "SP", "grade": {"id": 164322, "date": 20260121, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut +", "markDisplayValue": 1.7, "markValue": 170}, "text": "", "exam": null}}, {"subject": "FB GPU2", "grade": {"id": 166019, "date": 20260121, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Sehr Gut -", "markDisplayValue": 1.3, "markValue": 130}, "text": "", "exam": {"name": "KA_02_GPU2"}}}, {"subject": "FB GPU2", "grade": {"id": 166068, "date": 20260121, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "2. Quartal_SL", "exam": null}}, {"subject": "FB PBP", "grade": {"id": 166081, "date": 20260121, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": {"name": "02. KA_PBP"}}}, {"subject": "E", "grade": {"id": 167456, "date": 20260125, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Ausreichend -", "markDisplayValue": 4.3, "markValue": 430}, "text": "", "exam": {"name": "E"}}}, {"subject": "E", "grade": {"id": 167462, "date": 20260125, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Mangelhaft", "markDisplayValue": 5.0, "markValue": 500}, "text": "", "exam": {"name": "E"}}}, {"subject": "FB GPU1", "grade": {"id": 167836, "date": 20260126, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": {"name": "FB GPU1"}}}, {"subject": "E", "grade": {"id": 167471, "date": 20260127, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Ausreichend", "markDisplayValue": 4.0, "markValue": 400}, "text": "", "exam": null}}, {"subject": "E", "grade": {"id": 167483, "date": 20260127, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Ausreichend +", "markDisplayValue": 3.7, "markValue": 370}, "text": "", "exam": null}}, {"subject": "FB GPU1", "grade": {"id": 168410, "date": 20260305, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut +", "markDisplayValue": 1.7, "markValue": 170}, "text": "", "exam": {"name": "FB GPU1"}}}, {"subject": "PP", "grade": {"id": 169463, "date": 20260416, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut -", "markDisplayValue": 2.3, "markValue": 230}, "text": "", "exam": null}}, {"subject": "FB GPU1", "grade": {"id": 169688, "date": 20260423, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut +", "markDisplayValue": 1.7, "markValue": 170}, "text": "", "exam": null}}, {"subject": "FB PBP", "grade": {"id": 169913, "date": 20260504, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": {"name": "KA_03_PBP"}}}, {"subject": "FB GPU2", "grade": {"id": 169920, "date": 20260504, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut +", "markDisplayValue": 1.7, "markValue": 170}, "text": "", "exam": {"name": "KA_03_GPU2"}}}, {"subject": "SP", "grade": {"id": 169965, "date": 20260506, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut -", "markDisplayValue": 2.3, "markValue": 230}, "text": "3. SL", "exam": null}}, {"subject": "FB GPU2", "grade": {"id": 170240, "date": 20260511, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut +", "markDisplayValue": 1.7, "markValue": 170}, "text": "3. Quartal_SL", "exam": null}}, {"subject": "FB PBP", "grade": {"id": 170231, "date": 20260512, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "3. Quartal_SL", "exam": null}}, {"subject": "E", "grade": {"id": 170247, "date": 20260512, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": {"name": "E"}}}, {"subject": "E", "grade": {"id": 170255, "date": 20260512, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Befriedigend -", "markDisplayValue": 3.3, "markValue": 330}, "text": "SL3", "exam": null}}, {"subject": "FB PBP (BWO)", "grade": {"id": 170800, "date": 20260520, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "D", "grade": {"id": 170808, "date": 20260520, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": null}}, {"subject": "M", "grade": {"id": 170825, "date": 20260522, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut +", "markDisplayValue": 1.7, "markValue": 170}, "text": "", "exam": null}}, {"subject": "D", "grade": {"id": 170817, "date": 20260527, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Ausreichend -", "markDisplayValue": 4.3, "markValue": 430}, "text": "", "exam": {"name": "D"}}}, {"subject": "M", "grade": {"id": 170834, "date": 20260527, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut -", "markDisplayValue": 2.3, "markValue": 230}, "text": "", "exam": {"name": "M"}}}, {"subject": "PP", "grade": {"id": 172144, "date": 20260611, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "PK", "grade": {"id": 172679, "date": 20260616, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut -", "markDisplayValue": 2.3, "markValue": 230}, "text": "", "exam": {"name": "KA PK "}}}, {"subject": "FB PBP", "grade": {"id": 172687, "date": 20260617, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": {"name": "04._KA_PBP"}}}, {"subject": "FB GPU2", "grade": {"id": 172688, "date": 20260617, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut +", "markDisplayValue": 1.7, "markValue": 170}, "text": "", "exam": null}}, {"subject": "FB GPU1", "grade": {"id": 172859, "date": 20260618, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut +", "markDisplayValue": 1.7, "markValue": 170}, "text": "", "exam": {"name": "FB GPU1"}}}, {"subject": "FB GPU2", "grade": {"id": 172894, "date": 20260619, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Befriedigend -", "markDisplayValue": 3.3, "markValue": 330}, "text": "", "exam": {"name": "04. KA_GPU2"}}}, {"subject": "PK", "grade": {"id": 174275, "date": 20260630, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut -", "markDisplayValue": 2.3, "markValue": 230}, "text": "", "exam": null}}, {"subject": "PK", "grade": {"id": 174288, "date": 20260630, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Befriedigend +", "markDisplayValue": 2.7, "markValue": 270}, "text": "", "exam": null}}, {"subject": "D", "grade": {"id": 175380, "date": 20260630, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Ausreichend +", "markDisplayValue": 3.7, "markValue": 370}, "text": "", "exam": {"name": "D"}}}, {"subject": "M", "grade": {"id": 175402, "date": 20260630, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": null}}, {"subject": "M", "grade": {"id": 175447, "date": 20260630, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Ausreichend +", "markDisplayValue": 3.7, "markValue": 370}, "text": "", "exam": null}}, {"subject": "FB PBP (BWO)", "grade": {"id": 175306, "date": 20260701, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Befriedigend", "markDisplayValue": 3.0, "markValue": 300}, "text": "", "exam": null}}, {"subject": "D", "grade": {"id": 175350, "date": 20260701, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Ausreichend +", "markDisplayValue": 3.7, "markValue": 370}, "text": "", "exam": null}}, {"subject": "SP", "grade": {"id": 179033, "date": 20260701, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": null}}, {"subject": "E", "grade": {"id": 178730, "date": 20260707, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Befriedigend -", "markDisplayValue": 3.3, "markValue": 330}, "text": "", "exam": null}}, {"subject": "FB GPU1", "grade": {"id": 178810, "date": 20260707, "examType": {"name": "Sonst. Leist. TZ/BF", "longname": "Sonstige Leistung Teilzeit/Berufsfachschulen"}, "mark": {"name": "Gut", "markDisplayValue": 2.0, "markValue": 200}, "text": "", "exam": null}}, {"subject": "E", "grade": {"id": 178719, "date": 20260709, "examType": {"name": "Klassenarbeit TZ/BF", "longname": "Klassenarbeit Teilzeit/Berufsfachschulen"}, "mark": {"name": "Mangelhaft -", "markDisplayValue": 5.3, "markValue": 530}, "text": "", "exam": {"name": "E"}}}];
+
+const KNOWN_LWL_SUBJECTS = {
+  'M': { name: 'Mathematik', teacher: 'Hanauer (HAN)', klasse: 'BFW2B' },
+  'D': { name: 'Deutsch / Kommunikation', teacher: 'Feix (FE)', klasse: 'BFW2B' },
+  'E': { name: 'Englisch', teacher: 'Monser (MON)', klasse: 'BFW2B' },
+  'PK': { name: 'Politik & Gesellschaftslehre', teacher: 'Hübner (HÜB)', klasse: 'BFW2B' },
+  'PP': { name: 'Praktische Philosophie', teacher: 'Drewianka (DRE)', klasse: 'BFW2B' },
+  'SP': { name: 'Sport / Gesundheitsförderung', teacher: 'Altmann (ALT)', klasse: 'BFW2B' },
+  'FB GPU1': { name: 'Fachpraxis Geschäftsprozesse & IT 1', teacher: 'Hanauer (HAN)', klasse: 'BFW2B' },
+  'FB GPU2': { name: 'Fachpraxis Geschäftsprozesse & IT 2', teacher: 'Hanauer (HAN)', klasse: 'BFW2B' },
+  'FB GWP': { name: 'Fachpraxis Gesamtwirtschaft', teacher: 'Hübner (HÜB)', klasse: 'BFW2B' },
+  'FB PBP': { name: 'Fachpraxis Personalwirtschaft', teacher: 'Hübner (HÜB)', klasse: 'BFW2B' },
+  'FB PBP (BWO)': { name: 'Fachpraxis Personalwirtschaft (BWO)', teacher: 'Hübner (HÜB)', klasse: 'BFW2B' },
+  'FU BO': { name: 'Berufliche Orientierung', teacher: 'Marschinke-Ives (MCH)', klasse: 'BFW2B' },
+  'FU D': { name: 'Förderunterricht Deutsch', teacher: 'Feix (FE)', klasse: 'BFW2B' },
+  'FB NW': { name: 'Naturwissenschaften', teacher: 'Fachlehrkraft', klasse: 'AV' },
+  'FB LF 1': { name: 'Lernfeld 1', teacher: 'Fachlehrkraft', klasse: 'AV' },
+  'FB LF 2': { name: 'Lernfeld 2', teacher: 'Fachlehrkraft', klasse: 'AV' },
+  'FB LF 4': { name: 'Lernfeld 4', teacher: 'Fachlehrkraft', klasse: 'AV' },
+  'FB LF 5': { name: 'Lernfeld 5', teacher: 'Fachlehrkraft', klasse: 'AV' },
+  'FB LF 6': { name: 'Lernfeld 6', teacher: 'Fachlehrkraft', klasse: 'AV' },
+  'FB LF 7': { name: 'Lernfeld 7', teacher: 'Fachlehrkraft', klasse: 'AV' },
+  'FB LF 8': { name: 'Lernfeld 8', teacher: 'Fachlehrkraft', klasse: 'AV' },
+  'FB LF 9': { name: 'Lernfeld 9', teacher: 'Fachlehrkraft', klasse: 'AV' }
+};
 
 const OFFICIAL_LWL_SUBJECTS = [
   { id: 15712, code: 'FB GPU1', name: 'Fachpraxis Geschäftsprozesse & IT 1', teacher: 'Hanauer (HAN)', klasse: 'BFW2B' },
@@ -5568,123 +5605,231 @@ const OFFICIAL_LWL_SUBJECTS = [
   { id: 16150, code: 'SP', name: 'Sport / Gesundheitsförderung', teacher: 'Altmann (ALT)', klasse: 'BFW2B' }
 ];
 
+function getGradeSchoolYear(gradeItem) {
+  const g = (gradeItem && gradeItem.grade) || {};
+  const d = String(g.date || '');
+  if (d.length === 8) {
+    const year = parseInt(d.substring(0, 4), 10);
+    const month = parseInt(d.substring(4, 6), 10);
+    if (month >= 8) {
+      return `${year}/${year + 1}`;
+    } else {
+      return `${year - 1}/${year}`;
+    }
+  }
+  return '2026/2027';
+}
+
+function isWrittenExam(gradeItem) {
+  const g = (gradeItem && gradeItem.grade) || {};
+  const et = (g.examType && g.examType.name) || '';
+  const etLower = et.toLowerCase();
+  if (etLower.includes('klassenarbeit') || etLower.includes('klausur')) return true;
+  if (g.exam && g.exam.name) return true;
+  return false;
+}
+
+function isMatchingSubject(itemSubj, targetCode) {
+  if (!itemSubj || !targetCode) return false;
+  const s = itemSubj.trim().toUpperCase();
+  const t = targetCode.trim().toUpperCase();
+  if (s === t) return true;
+  if (s.includes('(' + t + ')')) return true;
+  return false;
+}
+
+function formatGradeDate(dateNum) {
+  if (!dateNum) return '';
+  const s = String(dateNum);
+  if (s.length === 8) {
+    return `${s.substring(6, 8)}.${s.substring(4, 6)}.${s.substring(0, 4)}`;
+  }
+  return s;
+}
+
+function getGradeBadgeClass(markVal) {
+  if (markVal === null || markVal === undefined || isNaN(markVal) || markVal === 0) return 'grade-pending';
+  if (markVal <= 1.5) return 'grade-1';
+  if (markVal <= 2.5) return 'grade-2';
+  if (markVal <= 3.5) return 'grade-3';
+  if (markVal <= 4.5) return 'grade-4';
+  return 'grade-5';
+}
+
+function getSubjectInfo(code) {
+  if (!code) return { code: 'Fach', name: 'Schulfach', teacher: 'Fachlehrkraft', klasse: 'BFW2B' };
+  const trimmed = code.trim();
+  if (KNOWN_LWL_SUBJECTS[trimmed]) {
+    return { code: trimmed, ...KNOWN_LWL_SUBJECTS[trimmed] };
+  }
+  const matchOff = OFFICIAL_LWL_SUBJECTS.find(s => s.code.toUpperCase() === trimmed.toUpperCase());
+  if (matchOff) {
+    return { ...matchOff };
+  }
+  return { code: trimmed, name: trimmed, teacher: 'Fachlehrkraft', klasse: 'BFW2B' };
+}
+
+function setGradeSchoolYear(sy) {
+  appData.selectedGradeSchoolYear = sy;
+  saveAppData();
+  renderGradesView();
+  const label = sy === 'all' ? 'Alle Schuljahre' : `Schuljahr ${sy}`;
+  announceSR(`${label} ausgewählt.`, 'polite');
+}
+
 function renderGradesView() {
   const container = document.getElementById('grades-list-container');
   if (!container) return;
 
+  const syBar = document.getElementById('grades-schoolyear-bar');
+  const allGrades = (appData.webuntisGradeList && appData.webuntisGradeList.length > 0)
+    ? appData.webuntisGradeList
+    : [...DEFAULT_WEBUNTIS_GRADES];
   const exams = appData.exams || [];
-  const grades = appData.grades || {};
+  const manualGrades = appData.grades || {};
   const finalMarks = appData.webuntisFinalMarks || {};
 
-  // Fächerliste: Dynamisch aus WebUntis-REST oder verifiziertem Standard
-  let subjects = OFFICIAL_LWL_SUBJECTS;
-  if (appData.webuntisLessons && Array.isArray(appData.webuntisLessons) && appData.webuntisLessons.length > 0) {
-    subjects = appData.webuntisLessons.map(l => {
-      const code = l.subjects || 'Fach';
-      const matchSubj = OFFICIAL_LWL_SUBJECTS.find(s => s.code === code);
-      const longName = matchSubj ? matchSubj.name : code;
-      const tCode = l.teachers || '';
-      const matchTeach = matchSubj ? matchSubj.teacher : (tCode || 'Fachlehrkraft');
-      return {
-        id: l.id,
-        code: code,
-        name: longName,
-        teacher: matchTeach,
-        klasse: l.klassen || 'BFW2B',
-        lessonId: l.id
-      };
-    });
+  // Schuljahre zählen
+  const syCounts = {};
+  allGrades.forEach(g => {
+    const sy = getGradeSchoolYear(g);
+    syCounts[sy] = (syCounts[sy] || 0) + 1;
+  });
+  if (!syCounts['2026/2027']) syCounts['2026/2027'] = 0;
+
+  // Standard-Schuljahr bestimmen: wenn aktuelles Jahr noch 0 Noten hat, 2025/2026 vorauswählen
+  let selectedSy = appData.selectedGradeSchoolYear;
+  if (!selectedSy) {
+    selectedSy = (syCounts['2026/2027'] > 0) ? '2026/2027' : '2025/2026';
+    appData.selectedGradeSchoolYear = selectedSy;
   }
 
-  let totalGradedExams = 0;
-  let gradeSum = 0;
+  // Schuljahr-Filter-Leiste rendern
+  if (syBar) {
+    const syOptions = [
+      { id: '2025/2026', label: 'Schuljahr 2025/2026', count: syCounts['2025/2026'] || 0 },
+      { id: '2026/2027', label: 'Schuljahr 2026/2027 (Aktuell)', count: syCounts['2026/2027'] || 0 },
+      { id: '2024/2025', label: 'Schuljahr 2024/2025', count: syCounts['2024/2025'] || 0 },
+      { id: 'all', label: 'Alle Schuljahre', count: allGrades.length }
+    ];
 
-  // Noten-Statistik ermitteln (sowohl aus WebUntis Zeugnisnoten als auch aus bewerteten Arbeiten)
-  exams.forEach(ex => {
-    if (grades[ex.id] && grades[ex.id].mark) {
-      const val = parseFloat(grades[ex.id].mark);
-      if (!isNaN(val)) {
-        gradeSum += val;
-        totalGradedExams++;
-      }
-    }
+    syBar.innerHTML = syOptions.map(opt => {
+      const isActive = (selectedSy === opt.id);
+      return `
+        <button type="button" 
+                class="grade-sy-btn ${isActive ? 'active' : ''}" 
+                role="tab" 
+                aria-selected="${isActive}" 
+                onclick="setGradeSchoolYear('${opt.id}')"
+                aria-label="${opt.label}, ${opt.count} Noten erfasst">
+          ${escHtml(opt.label)} <span style="opacity: 0.85; font-size: 12px; margin-left: 4px;">(${opt.count})</span>
+        </button>
+      `;
+    }).join('');
+  }
+
+  // Noten für gewähltes Schuljahr filtern
+  const activeGrades = (selectedSy === 'all')
+    ? allGrades
+    : allGrades.filter(g => getGradeSchoolYear(g) === selectedSy);
+
+  // Statistik berechnen
+  const validGrades = activeGrades.filter(g => {
+    const mk = g.grade && g.grade.mark;
+    return mk && mk.markDisplayValue > 0 && mk.name !== 'leer';
   });
-
-  // Offizielle Zeugnisnoten einbeziehen, falls vorhanden
-  Object.keys(finalMarks).forEach(lid => {
-    const fm = finalMarks[lid];
-    if (fm && fm.assignedMark && fm.assignedMark.markValue > 0) {
-      const mVal = parseFloat(fm.assignedMark.markDisplayValue || (fm.assignedMark.markValue / 100));
-      if (!isNaN(mVal) && mVal > 0) {
-        gradeSum += mVal;
-        totalGradedExams++;
-      }
-    }
-  });
-
-  const overallGpa = totalGradedExams > 0 ? (gradeSum / totalGradedExams).toFixed(1) : '--';
+  const gradeSum = validGrades.reduce((sum, g) => sum + g.grade.mark.markDisplayValue, 0);
+  const overallGpa = validGrades.length > 0 ? (gradeSum / validGrades.length).toFixed(1) : '--';
+  const writtenCount = activeGrades.filter(isWrittenExam).length;
+  const oralCount = activeGrades.filter(g => !isWrittenExam(g)).length;
 
   // Stat-Karten aktualisieren
   const gpaEl = document.getElementById('stat-grade-gpa');
-  const totalExamsEl = document.getElementById('stat-grade-total-exams');
+  const totalGradesEl = document.getElementById('stat-grade-total-grades') || document.getElementById('stat-grade-total-exams');
+  const writtenEl = document.getElementById('stat-grade-written');
+  const oralEl = document.getElementById('stat-grade-oral');
   const gradedExamsEl = document.getElementById('stat-grade-graded-exams');
   const subjectsCountEl = document.getElementById('stat-grade-subjects-count');
 
-  if (gpaEl) gpaEl.textContent = overallGpa !== '--' ? `Ø ${overallGpa}` : '--';
-  if (totalExamsEl) totalExamsEl.textContent = String(exams.length);
-  if (gradedExamsEl) gradedExamsEl.textContent = `${totalGradedExams} / ${exams.length}`;
-  if (subjectsCountEl) subjectsCountEl.textContent = String(subjects.length);
+  if (gpaEl) gpaEl.textContent = overallGpa !== '--' ? `Ø ${overallGpa.replace('.', ',')}` : '--';
+  if (totalGradesEl) totalGradesEl.textContent = String(activeGrades.length);
+  if (writtenEl) writtenEl.textContent = String(writtenCount);
+  if (oralEl) oralEl.textContent = String(oralCount);
+  if (gradedExamsEl) gradedExamsEl.textContent = `${writtenCount} KA / ${oralCount} SL`;
+
+  // Fächerliste ermitteln
+  let subjectCodes = [];
+  if (selectedSy === '2026/2027') {
+    subjectCodes = OFFICIAL_LWL_SUBJECTS.map(s => s.code);
+  } else {
+    const uniqueInGrades = [...new Set(activeGrades.map(g => g.subject).filter(Boolean))];
+    const orderedCodes = ['M', 'D', 'E', 'PK', 'SP', 'PP', 'FB GPU1', 'FB GPU2', 'FB GWP', 'FB PBP', 'FB PBP (BWO)', 'FU BO', 'FU D'];
+    orderedCodes.forEach(c => {
+      if (uniqueInGrades.includes(c)) subjectCodes.push(c);
+    });
+    uniqueInGrades.forEach(c => {
+      if (!subjectCodes.includes(c)) subjectCodes.push(c);
+    });
+    if (subjectCodes.length === 0) {
+      subjectCodes = OFFICIAL_LWL_SUBJECTS.map(s => s.code);
+    }
+  }
+
+  if (subjectsCountEl) subjectsCountEl.textContent = String(subjectCodes.length);
 
   // Fächerkarten rendern
   let html = '<h3 class="sr-only">Notenspiegel aller Schulfächer</h3><div class="grades-grid">';
-  subjects.forEach(subj => {
-    // Passende Klausuren für dieses Fach finden
-    const matchingExams = exams.filter(ex => {
-      if (!ex.subject) return false;
-      const s1 = ex.subject.toLowerCase().trim();
-      const c1 = subj.code.toLowerCase().trim();
-      const n1 = subj.name.toLowerCase().trim();
-      return s1 === c1 || s1.includes(c1) || n1.includes(s1) || s1.includes(n1);
-    });
+  
+  subjectCodes.forEach(code => {
+    const subj = getSubjectInfo(code);
+    const subjGrades = activeGrades.filter(g => isMatchingSubject(g.subject, subj.code));
 
-    let subjGraded = 0;
-    let subjSum = 0;
-    matchingExams.forEach(ex => {
-      if (grades[ex.id] && grades[ex.id].mark) {
-        const val = parseFloat(grades[ex.id].mark);
-        if (!isNaN(val)) {
-          subjSum += val;
-          subjGraded++;
-        }
-      }
+    const subjValid = subjGrades.filter(g => {
+      const mk = g.grade && g.grade.mark;
+      return mk && mk.markDisplayValue > 0 && mk.name !== 'leer';
     });
+    const subjSum = subjValid.reduce((sum, g) => sum + g.grade.mark.markDisplayValue, 0);
+    const subjAvg = subjValid.length > 0 ? (subjSum / subjValid.length).toFixed(1) : null;
+
+    const written = subjGrades.filter(isWrittenExam);
+    const oral = subjGrades.filter(g => !isWrittenExam(g));
+
+    // Passende anstehende Klausuren aus dem Stundenplan/Kalender
+    const upcomingExams = exams.filter(ex => isMatchingSubject(ex.subject || ex.subjectCode, subj.code));
 
     // Offizielle WebUntis-Zeugnisnote prüfen
     const fm = finalMarks[subj.lessonId || subj.id];
     let officialMarkDisplay = null;
     if (fm && fm.assignedMark && (fm.assignedMark.name || fm.assignedMark.markValue > 0)) {
-      officialMarkDisplay = fm.assignedMark.name || `Note ${(fm.assignedMark.markValue / 100).toFixed(0)}`;
-      const mVal = parseFloat(fm.assignedMark.markDisplayValue || (fm.assignedMark.markValue / 100));
-      if (!isNaN(mVal) && mVal > 0) {
-        subjSum += mVal;
-        subjGraded++;
-      }
+      officialMarkDisplay = fm.assignedMark.name || `Note ${fm.assignedMark.markValue / 100}`;
     }
 
-    const subjAvg = subjGraded > 0 ? (subjSum / subjGraded).toFixed(1) : null;
-
     html += `
-      <article class="grade-subject-card" role="article" aria-label="Fach ${escHtml(subj.name)}, ${subjAvg ? 'Notendurchschnitt ' + subjAvg : 'Status laufend'}">
+      <article class="grade-subject-card" role="article" aria-label="Fach ${escHtml(subj.name)}, ${subjAvg ? 'Notendurchschnitt ' + subjAvg.replace('.', ',') : 'Keine Noten'}">
         <div class="grade-subject-header">
           <div>
             <h3 class="grade-subject-title">
               <span class="homework-subject">${escHtml(subj.code)}</span>
-              <span>${escHtml(subj.name)}</span>
+              <span class="grade-subject-name">${escHtml(subj.name)}</span>
             </h3>
-            <span class="field-hint"><span class="emoji-icon" aria-hidden="true">👨</span>‍<span class="emoji-icon" aria-hidden="true">🏫 </span>${escHtml(subj.teacher)} • <span class="emoji-icon" aria-hidden="true">🏫 </span>Klasse ${escHtml(subj.klasse || 'BFW2B')}</span>
+            <span class="field-hint">
+              <span class="emoji-icon" aria-hidden="true">👨‍🏫 </span>${escHtml(subj.teacher)} • <span class="emoji-icon" aria-hidden="true">🏫 </span>Klasse ${escHtml(subj.klasse || 'BFW2B')}
+            </span>
           </div>
           <div>
-            ${officialMarkDisplay ? `<span class="grade-average-badge" style="background: #15803d; color: #fff;"><span class="emoji-icon" aria-hidden="true">🏆 </span>${escHtml(officialMarkDisplay)}</span>` : (subjAvg ? `<span class="grade-average-badge">Ø ${subjAvg}</span>` : '<span class="field-hint" style="font-weight: bold; color: var(--accent-primary);"><span class="emoji-icon" aria-hidden="true">⚡ </span>Live WebUntis</span>')}
+            ${officialMarkDisplay ? `
+              <span class="grade-average-badge" style="background: #15803d; color: #ffffff;" title="Offizielle Zeugnisnote: ${escHtml(officialMarkDisplay)}">
+                <span class="emoji-icon" aria-hidden="true">🏆 </span>${escHtml(officialMarkDisplay)}
+              </span>
+            ` : (subjAvg ? `
+              <span class="grade-average-badge" title="Notendurchschnitt ${subjAvg.replace('.', ',')} aus ${subjGrades.length} Noten">
+                Ø ${subjAvg.replace('.', ',')}
+              </span>
+            ` : `
+              <span class="field-hint" style="font-weight: bold; color: var(--accent-primary);">
+                <span class="emoji-icon" aria-hidden="true">⚡ </span>Laufend
+              </span>
+            `)}
           </div>
         </div>
 
@@ -5693,57 +5838,153 @@ function renderGradesView() {
             <div style="color: #15803d; font-weight: bold;">
               <span class="emoji-icon" aria-hidden="true">✅ </span>Offizielle Zeugnisnote aus WebUntis: <strong>${escHtml(officialMarkDisplay)}</strong>
             </div>
+          ` : (subjGrades.length > 0 ? `
+            <div style="color: var(--text-secondary);">
+              <span class="emoji-icon" aria-hidden="true">📊 </span><strong>Leistungsstand:</strong> ${subjGrades.length} Noten erfasst (Ø ${subjAvg ? subjAvg.replace('.', ',') : '--'}) • ${written.length} Klassenarbeiten, ${oral.length} sonstige Leistungen.
+            </div>
           ` : `
             <div style="color: var(--text-secondary);">
-              <span class="emoji-icon" aria-hidden="true">📋 </span><strong>Offizieller Status:</strong> Laufendes Schuljahr 2026/2027 (Zeugnisnote wird zum Halbjahr eingetragen).
+              <span class="emoji-icon" aria-hidden="true">📋 </span><strong>Status:</strong> Noch keine Noten für ${escHtml(selectedSy === 'all' ? 'dieses Fach' : 'Schuljahr ' + selectedSy)} eingetragen.
             </div>
-          `}
+          `)}
         </div>
 
-        <div class="grade-exams-list">
-          <h4 class="grade-exams-heading">
-            <span class="emoji-icon" aria-hidden="true">📝 </span>Termine &amp; Klassenarbeiten (${matchingExams.length}):
-          </h4>
-          ${matchingExams.length === 0 ? '<p class="field-hint" style="padding: 6px 0;">Keine schriftlichen Klausuren für dieses Fach in WebUntis eingetragen.</p>' : ''}
-          ${matchingExams.map((ex, idx) => {
-            const gr = grades[ex.id];
-            const hasGrade = gr && gr.mark;
-            const markVal = hasGrade ? parseFloat(gr.mark) : null;
-            let badgeClass = 'grade-pending';
-            if (markVal) {
-              if (markVal <= 1.5) badgeClass = 'grade-1';
-              else if (markVal <= 2.5) badgeClass = 'grade-2';
-              else if (markVal <= 3.5) badgeClass = 'grade-3';
-              else if (markVal <= 4.5) badgeClass = 'grade-4';
-              else badgeClass = 'grade-5';
-            }
+        <!-- 1. KLASSENARBEITEN -->
+        ${written.length > 0 ? `
+          <div class="grade-section" style="margin-bottom: 12px;">
+            <h4 class="grade-exams-heading">
+              <span class="emoji-icon" aria-hidden="true">📝 </span>Klassenarbeiten (${written.length}):
+            </h4>
+            <div class="grade-exams-list">
+              ${written.map((gItem, idx) => {
+                const gr = gItem.grade || {};
+                const mk = gr.mark || {};
+                const markVal = mk.markDisplayValue > 0 ? mk.markDisplayValue : null;
+                const markName = mk.name && mk.name !== 'leer' ? mk.name : 'Noch nicht bewertet';
+                const badgeClass = getGradeBadgeClass(markVal);
+                const dateStr = formatGradeDate(gr.date);
+                const title = (gr.exam && gr.exam.name) || (gr.examType && gr.examType.name) || `Klassenarbeit ${idx + 1}`;
 
-            const dateFormatted = ex.date ? formatGermanDate(new Date(ex.date)) : 'Termin offen';
+                return `
+                  <div class="grade-exam-row">
+                    <div style="flex: 1; min-width: 180px;">
+                      <h5 class="grade-exam-name">Klassenarbeit ${idx + 1}: ${escHtml(title)}</h5>
+                      <div class="field-hint">
+                        <span class="emoji-icon" aria-hidden="true">📅 </span>${escHtml(dateStr)}
+                        ${gr.examType && gr.examType.name ? ` • <span class="emoji-icon" aria-hidden="true">📋 </span>${escHtml(gr.examType.name)}` : ''}
+                      </div>
+                      ${gr.text ? `
+                        <div class="grade-teacher-note">
+                          <span class="emoji-icon" aria-hidden="true">💬 </span>${escHtml(gr.text)}
+                        </div>
+                      ` : ''}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <span class="grade-badge-value ${badgeClass}" title="Note: ${escHtml(markName)} (${markVal ? markVal.toFixed(1) : '-'})">
+                        ${markVal ? markVal.toFixed(1) : 'Offen'}
+                      </span>
+                      <span class="grade-mark-text">${escHtml(markName)}</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        ` : ''}
 
-            return `
-              <div class="grade-exam-row">
-                <div style="flex: 1; min-width: 200px;">
-                  <h5 class="grade-exam-name">Arbeit ${idx + 1}: ${escHtml(ex.name || subj.code)}</h5>
-                  <div class="field-hint"><span class="emoji-icon" aria-hidden="true">📅 </span>${escHtml(dateFormatted)} • <span class="emoji-icon" aria-hidden="true">⏰ </span>${escHtml(ex.startTime || '07:45')} - ${escHtml(ex.endTime || '09:15')} Uhr • <span class="emoji-icon" aria-hidden="true">🚪 </span>${escHtml(ex.room || 'Raum laut Plan')}</div>
-                  ${gr && gr.note ? `<div style="font-size: 13px; color: var(--accent-primary); margin-top: 2px;"><span class="emoji-icon" aria-hidden="true">💬 </span>${escHtml(gr.note)}</div>` : ''}
-                </div>
-                <div style="display: flex; align-items: center; gap: 10px;">
-                  <span class="grade-badge-value ${badgeClass}" title="${hasGrade ? 'Note: ' + gr.mark : 'Ausstehend / noch nicht benotet'}">
-                    ${hasGrade ? gr.mark : 'Offen'}
-                  </span>
-                  <button type="button" class="btn btn-secondary" style="min-height: 36px; padding: 4px 10px; font-size: 13px;" onclick="openAddGradeModal('${ex.id}')" aria-label="Optionale Notiz oder Note zu Klausur am ${dateFormatted}">
-                    <span>${hasGrade ? '<span class="emoji-icon" aria-hidden="true">✏️ </span>Notiz' : '<span class="emoji-icon" aria-hidden="true">➕ </span>Notiz'}</span>
-                  </button>
-                </div>
-              </div>
-            `;
-          }).join('')}
-        </div>
+        <!-- 2. SONSTIGE LEISTUNGEN & MITARBEIT -->
+        ${oral.length > 0 ? `
+          <div class="grade-section" style="margin-bottom: 12px;">
+            <h4 class="grade-exams-heading">
+              <span class="emoji-icon" aria-hidden="true">💬 </span>Sonstige Leistungen &amp; Mitarbeit (${oral.length}):
+            </h4>
+            <div class="grade-exams-list">
+              ${oral.map((gItem, idx) => {
+                const gr = gItem.grade || {};
+                const mk = gr.mark || {};
+                const markVal = mk.markDisplayValue > 0 ? mk.markDisplayValue : null;
+                const markName = mk.name && mk.name !== 'leer' ? mk.name : 'Noch nicht bewertet';
+                const badgeClass = getGradeBadgeClass(markVal);
+                const dateStr = formatGradeDate(gr.date);
+                const typeName = (gr.examType && gr.examType.name) || 'Sonstige Leistung';
+
+                return `
+                  <div class="grade-exam-row">
+                    <div style="flex: 1; min-width: 180px;">
+                      <h5 class="grade-exam-name">Leistung ${idx + 1}: ${escHtml(gr.text || typeName)}</h5>
+                      <div class="field-hint">
+                        <span class="emoji-icon" aria-hidden="true">📅 </span>${escHtml(dateStr)} • <span class="emoji-icon" aria-hidden="true">📋 </span>${escHtml(typeName)}
+                      </div>
+                      ${gr.text ? `
+                        <div class="grade-teacher-note">
+                          <span class="emoji-icon" aria-hidden="true">💬 </span>Bemerkung: ${escHtml(gr.text)}
+                        </div>
+                      ` : ''}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <span class="grade-badge-value ${badgeClass}" title="Note: ${escHtml(markName)} (${markVal ? markVal.toFixed(1) : '-'})">
+                        ${markVal ? markVal.toFixed(1) : 'Offen'}
+                      </span>
+                      <span class="grade-mark-text">${escHtml(markName)}</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- 3. ANSTEHENDE KLAUSUREN AUS DEM STUNDENPLAN -->
+        ${upcomingExams.length > 0 ? `
+          <div class="grade-section">
+            <h4 class="grade-exams-heading">
+              <span class="emoji-icon" aria-hidden="true">⏳ </span>Anstehende Klausurtermine (${upcomingExams.length}):
+            </h4>
+            <div class="grade-exams-list">
+              ${upcomingExams.map((ex, idx) => {
+                const gr = manualGrades[ex.id];
+                const hasGrade = gr && gr.mark;
+                const markVal = hasGrade ? parseFloat(gr.mark) : null;
+                const badgeClass = getGradeBadgeClass(markVal);
+                const dateFormatted = ex.date ? formatGermanDate(new Date(ex.date)) : 'Termin offen';
+
+                return `
+                  <div class="grade-exam-row">
+                    <div style="flex: 1; min-width: 180px;">
+                      <h5 class="grade-exam-name">Prüfung ${idx + 1}: ${escHtml(ex.name || subj.code)}</h5>
+                      <div class="field-hint">
+                        <span class="emoji-icon" aria-hidden="true">📅 </span>${escHtml(dateFormatted)} • <span class="emoji-icon" aria-hidden="true">⏰ </span>${escHtml(ex.startTime || '07:45')} - ${escHtml(ex.endTime || '09:15')} Uhr • <span class="emoji-icon" aria-hidden="true">🚪 </span>${escHtml(ex.room || 'Raum laut Plan')}
+                      </div>
+                      ${gr && gr.note ? `
+                        <div class="grade-teacher-note">
+                          <span class="emoji-icon" aria-hidden="true">💬 </span>${escHtml(gr.note)}
+                        </div>
+                      ` : ''}
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                      <span class="grade-badge-value ${badgeClass}" title="${hasGrade ? 'Eingetragene Note: ' + gr.mark : 'Ausstehend / noch nicht benotet'}">
+                        ${hasGrade ? gr.mark : 'Offen'}
+                      </span>
+                      <button type="button" class="btn btn-secondary" style="min-height: 36px; padding: 4px 10px; font-size: 13px;" onclick="openAddGradeModal('${ex.id}')" aria-label="Notiz oder Note zu Klausur am ${dateFormatted} eintragen">
+                        <span><span class="emoji-icon" aria-hidden="true">${hasGrade ? '✏️ ' : '➕ '}</span>Notiz</span>
+                      </button>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        ${subjGrades.length === 0 && upcomingExams.length === 0 ? `
+          <p class="field-hint" style="padding: 6px 0;">Keine Noten oder Klausuren für dieses Fach im gewählten Schuljahr (${escHtml(selectedSy === 'all' ? 'Alle' : selectedSy)}) eingetragen.</p>
+        ` : ''}
+
       </article>
     `;
   });
-  html += '</div>';
 
+  html += '</div>';
   container.innerHTML = html;
 }
 
@@ -5854,48 +6095,57 @@ function handleSaveGradeSubmit(event) {
 }
 
 function readGradesSummary() {
-  const exams = appData.exams || [];
-  const grades = appData.grades || {};
-  const finalMarks = appData.webuntisFinalMarks || {};
-  const subjectsCount = (appData.webuntisLessons && appData.webuntisLessons.length) || 12;
+  const allGrades = (appData.webuntisGradeList && appData.webuntisGradeList.length > 0)
+    ? appData.webuntisGradeList
+    : [...DEFAULT_WEBUNTIS_GRADES];
+  const selectedSy = appData.selectedGradeSchoolYear || '2025/2026';
+  const activeGrades = (selectedSy === 'all')
+    ? allGrades
+    : allGrades.filter(g => getGradeSchoolYear(g) === selectedSy);
 
-  let total = 0;
-  let sum = 0;
-  exams.forEach(ex => {
-    if (grades[ex.id] && grades[ex.id].mark) {
-      const v = parseFloat(grades[ex.id].mark);
-      if (!isNaN(v)) {
-        sum += v;
-        total++;
-      }
-    }
+  const validGrades = activeGrades.filter(g => {
+    const mk = g.grade && g.grade.mark;
+    return mk && mk.markDisplayValue > 0 && mk.name !== 'leer';
   });
+  const gradeSum = validGrades.reduce((sum, g) => sum + g.grade.mark.markDisplayValue, 0);
+  const overallGpa = validGrades.length > 0 ? (gradeSum / validGrades.length).toFixed(1).replace('.', ',') : null;
+  const writtenCount = activeGrades.filter(isWrittenExam).length;
+  const oralCount = activeGrades.filter(g => !isWrittenExam(g)).length;
 
-  Object.keys(finalMarks).forEach(lid => {
-    const fm = finalMarks[lid];
-    if (fm && fm.assignedMark && fm.assignedMark.markValue > 0) {
-      const mVal = parseFloat(fm.assignedMark.markDisplayValue || (fm.assignedMark.markValue / 100));
-      if (!isNaN(mVal) && mVal > 0) {
-        sum += mVal;
-        total++;
-      }
-    }
-  });
+  const syLabel = selectedSy === 'all' ? 'allen Schuljahren' : `dem Schuljahr ${selectedSy}`;
+  let speech = `Offizielle WebUntis Notenübersicht für ${syLabel}. `;
 
-  let speech = 'Offizielle WebUntis-Leistungsübersicht: ';
-  speech += `Alle ${subjectsCount} Schulfächer deiner Klasse BFW2B werden vollautomatisch aus WebUntis synchronisiert. `;
-  speech += `Es sind insgesamt ${exams.length} Klausuren im Schuljahr terminiert. `;
-
-  if (total > 0) {
-    const avg = (sum / total).toFixed(1);
-    speech += `Dein aktueller Gesamtschnitt liegt bei Note ${avg}. `;
+  if (activeGrades.length === 0) {
+    speech += 'Für dieses Schuljahr sind noch keine Noten in WebUntis eingetragen.';
   } else {
-    speech += 'Offizieller Status: Laufendes Schuljahr. Die Zeugnisnoten werden zum Halbjahr direkt aus dem Klassenbuch übernommen.';
+    if (overallGpa) {
+      speech += `Dein aktueller Notendurchschnitt liegt bei Note ${overallGpa}. `;
+    }
+    speech += `Es sind insgesamt ${activeGrades.length} Noten erfasst, davon ${writtenCount} Klassenarbeiten und ${oralCount} sonstige Leistungen. `;
+
+    // Noten der wichtigsten Fächer ansagen
+    const uniqueSubjs = [...new Set(activeGrades.map(g => g.subject).filter(Boolean))];
+    const topSummaries = [];
+    uniqueSubjs.slice(0, 5).forEach(c => {
+      const info = getSubjectInfo(c);
+      const sGrades = activeGrades.filter(g => isMatchingSubject(g.subject, c));
+      const sValid = sGrades.filter(g => g.grade && g.grade.mark && g.grade.mark.markDisplayValue > 0 && g.grade.mark.name !== 'leer');
+      if (sValid.length > 0) {
+        const avg = (sValid.reduce((sum, g) => sum + g.grade.mark.markDisplayValue, 0) / sValid.length).toFixed(1).replace('.', ',');
+        topSummaries.push(`${info.name}: Durchschnitt ${avg} aus ${sGrades.length} Noten`);
+      }
+    });
+
+    if (topSummaries.length > 0) {
+      speech += topSummaries.join('. ') + '. ';
+    }
   }
 
   speak(speech, true);
   announceSR(speech, 'assertive');
 }
+
+
 
 document.addEventListener('DOMContentLoaded', initApp);
 
