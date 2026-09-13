@@ -1,9 +1,10 @@
 {
-  "version": "1.8.8",
+  "version": "1.8.9",
   "name": "Barrierefreier Stundenplan & Prüfungsmanager LWL-Berufskolleg Soest",
   "buildDate": "2026-09-13",
   "repository": "https://github.com/Lauju1909/BarrierefreierStundenplanLWL",
   "features": [
+    "Korrekte Untereinander-Anzeige von Raum, Lehrer und Klasse in den Stundenkarten (CSS-Layoutfix)",
     "Klar strukturierte Anzeige untereinander für Raum, Lehrer und Klasse ohne Zeilenüberlappung",
     "Beseitigung von doppeltem 'Raum: Raum' und 'Lehrer: Lehrer' in allen Stundenplan- und Übersichtskarten",
     "Entfernung des Beispiel-Benutzernamens (SchneiLau) im Anmeldeformular und in Fehlermeldungen",
