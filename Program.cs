@@ -279,20 +279,7 @@ namespace BarrierefreierStundenplan
 
         public static string GetLocalVersion()
         {
-            // 1. Zuerst Datei auf Disk prüfen (Hot-Reload / Direkt-Update wie in FinanzApp)
-            string vPath = Path.Combine(_baseDir, "version.json");
-            if (File.Exists(vPath))
-            {
-                try
-                {
-                    string txt = File.ReadAllText(vPath, Encoding.UTF8);
-                    Match m = Regex.Match(txt, "\"version\"\\s*:\\s*\"v?([^\"]+)\"");
-                    if (m.Success) return m.Groups[1].Value.Trim();
-                }
-                catch { }
-            }
-
-            // 2. Fallback: Aus der eingebetteten Ressource der EXE lesen (autark)
+            // 1. Zuerst aus der eingebetteten Ressource der EXE lesen (100% autarke Single-EXE)
             if (_assembly != null)
             {
                 try
@@ -318,7 +305,20 @@ namespace BarrierefreierStundenplan
                 }
                 catch { }
             }
-            return "1.9.8";
+
+            // 2. Fallback: Datei auf Disk prüfen
+            string vPath = Path.Combine(_baseDir, "version.json");
+            if (File.Exists(vPath))
+            {
+                try
+                {
+                    string txt = File.ReadAllText(vPath, Encoding.UTF8);
+                    Match m = Regex.Match(txt, "\"version\"\\s*:\\s*\"v?([^\"]+)\"");
+                    if (m.Success) return m.Groups[1].Value.Trim();
+                }
+                catch { }
+            }
+            return "1.9.9";
         }
 
         private static bool IsNewerVersion(string remote, string local)
@@ -420,27 +420,6 @@ namespace BarrierefreierStundenplan
                             }
                         }
 
-                        // 2. Web-Ressourcen auf Disk aktualisieren (ermöglicht sofortige UI-Updates wie in FinanzApp)
-                        bool webFilesUpdated = false;
-                        string[] webAssets = new string[] { "index.html", "app.js", "style.css", "version.json" };
-                        foreach (string asset in webAssets)
-                        {
-                            try
-                            {
-                                string assetUrl = GITHUB_RAW_BASE + "/" + asset + "?t=" + ticks;
-                                string targetPath = Path.Combine(_baseDir, asset);
-                                string tmpAssetPath = targetPath + ".tmp";
-                                client.DownloadFile(assetUrl, tmpAssetPath);
-                                if (File.Exists(tmpAssetPath) && new FileInfo(tmpAssetPath).Length > 100)
-                                {
-                                    File.Copy(tmpAssetPath, targetPath, true);
-                                    File.Delete(tmpAssetPath);
-                                    webFilesUpdated = true;
-                                }
-                            }
-                            catch { }
-                        }
-
                         if (exeDownloaded)
                         {
                             if (File.Exists(oldExe))
@@ -464,11 +443,6 @@ namespace BarrierefreierStundenplan
                                 catch { }
                             });
 
-                            return true;
-                        }
-                        else if (webFilesUpdated)
-                        {
-                            LogUntis("AutoUpdater: Web assets updated on disk.");
                             return true;
                         }
                     }
@@ -957,22 +931,7 @@ namespace BarrierefreierStundenplan
             else if (ext == ".json") contentType = "application/json; charset=utf-8";
             else if (ext == ".html") contentType = "text/html; charset=utf-8";
 
-            // 1. Zuerst Datei im Ordner prüfen (ermöglicht sofortige Updates & Hot-Patching wie in FinanzApp)
-            string diskPath = Path.Combine(_baseDir, filename);
-            if (File.Exists(diskPath))
-            {
-                try
-                {
-                    byte[] diskBytes = File.ReadAllBytes(diskPath);
-                    if (diskBytes != null && diskBytes.Length > 0)
-                    {
-                        return diskBytes;
-                    }
-                }
-                catch { }
-            }
-
-            // 2. Fallback: Direkt aus den internen Ressourcen der EXE laden (100% autark)
+            // 1. Zuerst direkt aus den internen Ressourcen der EXE laden (100% autarke Standalone-EXE)
             if (_assembly != null)
             {
                 string resName = null;
@@ -999,6 +958,21 @@ namespace BarrierefreierStundenplan
                         }
                     }
                 }
+            }
+
+            // 2. Fallback: Datei im Ordner prüfen (falls externe Datei vorliegt)
+            string diskPath = Path.Combine(_baseDir, filename);
+            if (File.Exists(diskPath))
+            {
+                try
+                {
+                    byte[] diskBytes = File.ReadAllBytes(diskPath);
+                    if (diskBytes != null && diskBytes.Length > 0)
+                    {
+                        return diskBytes;
+                    }
+                }
+                catch { }
             }
 
             return null;
