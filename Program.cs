@@ -318,7 +318,7 @@ namespace BarrierefreierStundenplan
                 }
                 catch { }
             }
-            return "1.9.9";
+            return "1.9.10";
         }
 
         private static bool IsNewerVersion(string remote, string local)

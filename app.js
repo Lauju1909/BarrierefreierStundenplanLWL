@@ -5890,17 +5890,52 @@ function getGradeBadgeClass(markVal) {
   return 'grade-5';
 }
 
-function getSubjectInfo(code) {
+function getExamSchoolYear(exam) {
+  if (!exam || !exam.date) return '2026/2027';
+  const d = String(exam.date).replace(/-/g, '');
+  if (d.length >= 8) {
+    const y = parseInt(d.substring(0, 4), 10);
+    const m = parseInt(d.substring(4, 6), 10);
+    if (m >= 8) return `${y}/${y + 1}`;
+    return `${y - 1}/${y}`;
+  }
+  return '2026/2027';
+}
+
+function getSubjectInfo(code, schoolYear = null) {
   if (!code) return { code: 'Fach', name: 'Schulfach', teacher: 'Fachlehrkraft', klasse: 'BFW2B' };
   const trimmed = code.trim();
+  let base = null;
   if (KNOWN_LWL_SUBJECTS[trimmed]) {
-    return { code: trimmed, ...KNOWN_LWL_SUBJECTS[trimmed] };
+    base = { code: trimmed, ...KNOWN_LWL_SUBJECTS[trimmed] };
+  } else {
+    const matchOff = OFFICIAL_LWL_SUBJECTS.find(s => s.code.toUpperCase() === trimmed.toUpperCase());
+    if (matchOff) {
+      base = { ...matchOff };
+    } else {
+      base = { code: trimmed, name: trimmed, teacher: 'Fachlehrkraft', klasse: 'BFW2B' };
+    }
   }
-  const matchOff = OFFICIAL_LWL_SUBJECTS.find(s => s.code.toUpperCase() === trimmed.toUpperCase());
-  if (matchOff) {
-    return { ...matchOff };
+
+  // Klasse abhängig vom gewählten Schuljahr anpassen
+  let klasse = base.klasse || 'BFW2B';
+  let teacher = base.teacher || 'Fachlehrkraft';
+
+  if (schoolYear === '2025/2026') {
+    klasse = 'BFW1B';
+  } else if (schoolYear === '2024/2025') {
+    klasse = 'AV';
+  } else if (schoolYear === '2026/2027') {
+    klasse = 'BFW2B';
+  } else if (schoolYear === 'all') {
+    if (['FB LF 1', 'FB LF 2', 'FB LF 4', 'FB LF 5', 'FB LF 6', 'FB LF 7', 'FB LF 8', 'FB LF 9', 'FB NW'].includes(trimmed)) {
+      klasse = 'AV (2024/2025)';
+    } else {
+      klasse = 'BFW1B / BFW2B';
+    }
   }
-  return { code: trimmed, name: trimmed, teacher: 'Fachlehrkraft', klasse: 'BFW2B' };
+
+  return { ...base, klasse, teacher };
 }
 
 function setGradeSchoolYear(sy, fromSelect = false) {
@@ -5933,17 +5968,16 @@ function announceGradeSchoolYearChange(sy) {
 
   const speechText = `${label} ausgewählt. ${countText}. ${schnittText}.`;
 
-  // 1. Lokales aria-live Feedback-Element
+  // 1. Lokales aria-live Feedback-Element (polite: lässt NVDA die Option ungestört vorlesen)
   const feedbackEl = document.getElementById('grade-schoolyear-feedback');
   if (feedbackEl) {
     feedbackEl.textContent = '';
-    setTimeout(() => { feedbackEl.textContent = speechText; }, 30);
+    setTimeout(() => { feedbackEl.textContent = speechText; }, 100);
+  } else {
+    announceSR(speechText, 'polite');
   }
 
-  // 2. Globales Screenreader-Live-Region (assertive)
-  announceSR(speechText, 'assertive');
-
-  // 3. Sprachausgabe (TTS) laut sprechen
+  // 2. Sprachausgabe (TTS) laut sprechen
   speak(speechText, true);
 }
 
@@ -5958,11 +5992,20 @@ function renderGradesView(fromSelect = false) {
   const manualGrades = appData.grades || {};
   const finalMarks = appData.webuntisFinalMarks || {};
 
-  // Schuljahre dynamisch aus allen Noten zählen
+  // Schuljahre dynamisch aus allen Noten zählen und Durchschnitte ermitteln
   const syCounts = {};
+  const sySums = {};
+  const syValidCounts = {};
   allGrades.forEach(g => {
     const sy = getGradeSchoolYear(g);
-    if (sy) syCounts[sy] = (syCounts[sy] || 0) + 1;
+    if (sy) {
+      syCounts[sy] = (syCounts[sy] || 0) + 1;
+      const mk = g.grade && g.grade.mark;
+      if (mk && mk.markDisplayValue > 0 && mk.name !== 'leer') {
+        sySums[sy] = (sySums[sy] || 0) + mk.markDisplayValue;
+        syValidCounts[sy] = (syValidCounts[sy] || 0) + 1;
+      }
+    }
   });
   if (!syCounts['2026/2027']) syCounts['2026/2027'] = 0;
 
@@ -5975,25 +6018,34 @@ function renderGradesView(fromSelect = false) {
 
   // Alle Schuljahre mit Noten dynamisch auflisten + aktuelles Schuljahr
   const yearKeys = Object.keys(syCounts).sort().reverse();
-  const syOptions = yearKeys.map(sy => ({
-    id: sy,
-    label: (sy === '2026/2027') ? `Schuljahr ${sy} (Aktuell)` : `Schuljahr ${sy}`,
-    count: syCounts[sy] || 0
-  }));
+  const syOptions = yearKeys.map(sy => {
+    const cnt = syCounts[sy] || 0;
+    const vCnt = syValidCounts[sy] || 0;
+    const gpa = vCnt > 0 ? (sySums[sy] / vCnt).toFixed(1).replace('.', ',') : null;
+    let label = (sy === '2026/2027') ? `Schuljahr ${sy} (Aktuell)` : `Schuljahr ${sy}`;
+    let desc = `${cnt} ${cnt === 1 ? 'Note erfasst' : 'Noten erfasst'}`;
+    if (gpa) desc += `, Schnitt Ø ${gpa}`;
+    else if (cnt === 0) desc += ', noch kein Schnitt';
+    return { id: sy, label, desc };
+  });
+
+  const allValidCnt = allGrades.filter(g => g.grade && g.grade.mark && g.grade.mark.markDisplayValue > 0 && g.grade.mark.name !== 'leer');
+  const allSum = allValidCnt.reduce((s, g) => s + g.grade.mark.markDisplayValue, 0);
+  const allGpa = allValidCnt.length > 0 ? (allSum / allValidCnt.length).toFixed(1).replace('.', ',') : null;
   syOptions.push({
     id: 'all',
     label: 'Alle Schuljahre',
-    count: allGrades.length
+    desc: `${allGrades.length} Noten erfasst${allGpa ? ', Schnitt Ø ' + allGpa : ''}`
   });
 
   // Oberes Schuljahr-Auswahlmenü (Kombinationsfeld) synchronisieren
+  // Wichtig für NVDA: Wenn fromSelect true ist, auf keinen Fall innerHTML anfassen, damit der Screenreader-Fokus nicht abbricht!
   const gradeSySelect = document.getElementById('grade-schoolyear-select');
   if (gradeSySelect) {
-    const currentOptCount = gradeSySelect.options ? gradeSySelect.options.length : 0;
-    if (currentOptCount !== syOptions.length) {
+    if (!fromSelect) {
       gradeSySelect.innerHTML = syOptions.map(opt => `
         <option value="${escHtml(opt.id)}" ${opt.id === selectedSy ? 'selected' : ''}>
-          ${escHtml(opt.label)} – ${opt.count} ${opt.count === 1 ? 'Note erfasst' : 'Noten erfasst'}
+          ${escHtml(opt.label)} – ${escHtml(opt.desc)}
         </option>
       `).join('');
     }
@@ -6062,7 +6114,7 @@ function renderGradesView(fromSelect = false) {
   let html = '<h3 class="sr-only">Notenspiegel aller Schulfächer</h3><div class="grades-grid">';
   
   subjectCodes.forEach(code => {
-    const subj = getSubjectInfo(code);
+    const subj = getSubjectInfo(code, selectedSy);
     const subjGrades = activeGrades.filter(g => isMatchingSubject(g.subject, subj.code));
 
     const subjValid = subjGrades.filter(g => {
@@ -6075,14 +6127,20 @@ function renderGradesView(fromSelect = false) {
     const written = subjGrades.filter(isWrittenExam);
     const oral = subjGrades.filter(g => !isWrittenExam(g));
 
-    // Passende anstehende Klausuren aus dem Stundenplan/Kalender
-    const upcomingExams = exams.filter(ex => isMatchingSubject(ex.subject || ex.subjectCode, subj.code));
+    // Passende anstehende Klausuren aus dem Stundenplan/Kalender (strikt nach gewähltem Schuljahr filtern!)
+    const upcomingExams = exams.filter(ex => {
+      if (!isMatchingSubject(ex.subject || ex.subjectCode, subj.code)) return false;
+      if (selectedSy === 'all') return true;
+      return getExamSchoolYear(ex) === selectedSy;
+    });
 
-    // Offizielle WebUntis-Zeugnisnote prüfen
-    const fm = finalMarks[subj.lessonId || subj.id];
+    // Offizielle WebUntis-Zeugnisnote prüfen (nur im aktuellen Schuljahr oder 'all')
     let officialMarkDisplay = null;
-    if (fm && fm.assignedMark && (fm.assignedMark.name || fm.assignedMark.markValue > 0)) {
-      officialMarkDisplay = fm.assignedMark.name || `Note ${fm.assignedMark.markValue / 100}`;
+    if (selectedSy === '2026/2027' || selectedSy === 'all') {
+      const fm = finalMarks[subj.lessonId || subj.id];
+      if (fm && fm.assignedMark && (fm.assignedMark.name || fm.assignedMark.markValue > 0)) {
+        officialMarkDisplay = fm.assignedMark.name || `Note ${fm.assignedMark.markValue / 100}`;
+      }
     }
 
     html += `

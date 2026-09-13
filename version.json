@@ -1,10 +1,14 @@
 {
-  "version": "1.9.9",
+  "version": "1.9.10",
   "name": "Barrierefreies WebUntis",
   "buildDate": "2026-09-13",
   "repository": "https://github.com/Lauju1909/BarrierefreiesWebUntis",
   "executable": "Barrierefreies_WebUntis.exe",
   "features": [
+    "NVDA-Kombinationsfeld Notenspiegel: Optionstexte enthalten direkt Schuljahr, Notenanzahl und Gesamtschnitt. NVDA liest bei Pfeiltasten-Navigation jede Auswahl nativ, klar und ohne Abbruch vor.",
+    "Beseitigung von Screenreader-Überflutung: aria-live='polite' vom Fächerkarten-Container entfernt und Live-Region auf polite umgestellt, damit NVDA beim Navigieren nicht unterbrochen oder stummgeschaltet wird.",
+    "Korrekte Klassenbezeichnung pro Schuljahr: Bei Schuljahr 2025/2026 wird nun korrekt 'Klasse BFW1B' angezeigt (statt der aktuellen Klasse BFW2B) und bei 2024/2025 'Klasse AV'.",
+    "Striktes Klausurtermin-Filter nach Schuljahr: Anstehende Klausurtermine und offene Prüfungen aus dem aktuellen Schuljahr 2026/2027 werden in vergangenen Schuljahren (2025/2026, 2024/2025) nicht mehr fälschlicherweise eingeblendet.",
     "Notenspiegel-Schuljahr ausschließlich oben im Dropdown auswählbar: Die redundanten Buttons unter dem Menü wurden komplett entfernt.",
     "Sofortiges barrierefreies Hören bei Schuljahr-Auswahl: Beim Wechseln oder Navigieren mit Pfeiltasten wird das ausgewählte Schuljahr, die Notenzahl und der Gesamtschnitt sofort laut vorgelesen und an den Screenreader übertragen.",
     "Fehlerfreies Screenreader-Vorlesen von Noten: Saubere Satzzeichen-Trennung zwischen Note und Folgetext verhindert das Zusammenziehen von Wörtern (z.B. 'Gut. Klassenarbeit 2' statt 'GutKlassenarbeit 2').",
