@@ -1,12 +1,14 @@
 {
-  "version": "1.9.13",
+  "version": "1.9.14",
   "name": "Barrierefreies WebUntis",
   "buildDate": "2026-09-14",
   "repository": "https://github.com/Lauju1909/BarrierefreiesWebUntis",
   "executable": "Barrierefreies_WebUntis.exe",
   "features": [
+    "Internet-Cloud-Synchronisation für Klasse & Handy: Hausaufgaben werden vollautomatisch über das Internet synchronisiert. Keine manuelle Dateiübertragung mehr nötig.",
+    "Dynamische Bereiche für neue Klassen & Schuljahre: Trägt ein Schüler eine Hausaufgabe ein, wird automatisch online ein neuer Bereich für die jeweilige Schule, das Schuljahr und die Klasse angelegt.",
+    "Benutzer-Kopplung für persönliche Aufgaben & Erledigt-Status: Private Hausaufgaben und 'Erledigt'-Häkchen sind direkt an das persönliche Benutzerkonto gekoppelt und wandern live zwischen PC und Smartphone mit.",
     "Eigene Hausaufgaben hinzufügen (N): Eigene Aufgaben anlegen mit Schulfach, Fälligkeitsdatum (inkl. Schnellauswahl Morgen, Übermorgen, In 1 Woche), Aufgabenbeschreibung und Wahl zwischen 'Nur für mich (Privat)' oder 'Für meine Klasse'.",
-    "Persistente Erledigt-Status & WebUntis-Sync: Erledigt-Status bleibt bei allen WebUntis-Synchronisationen dauerhaft erhalten und wird mit der Android-App und dem Backend synchronisiert.",
     "Behebung doppelter Stunden-Ansage: Kein doppeltes Vorlesen der Stunde mehr für Blinde (z. B. '2. Std.' und danach '2. Stunde: ...'). Zeitbox ist für Screenreader sauber ausgeblendet, Inhalt wird direkt und ohne Redundanz in der Überschrift vorgelesen.",
     "Vollständige Schulfach-Namen im Stundenplan: Erste Stunde und alle weiteren Stunden zeigen jetzt stets den vollständigen Schulfachnamen an (z. B. 'Deutsch / Kommunikation (D)' statt nur 'D').",
     "100% dynamische Fächer & Noten: Vollständige Entfernung aller fest einprogrammierten Fächerlisten und Standardfächer.",

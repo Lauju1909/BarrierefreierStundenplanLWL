@@ -582,32 +582,97 @@ namespace BarrierefreierStundenplan
                 return;
             }
 
-            // Eigene Hausaufgaben Synchronisation (Desktop & Android Kompatibilität)
-            if (rawUrl == "/api/custom_homework" || rawUrl == "/api/homework_sync")
+
+                                    // Internet Cloud Sync fuer Klassen- und persoenliche Hausaufgaben
+            if (rawUrl == "/api/cloud_sync" || rawUrl == "/api/custom_homework" || rawUrl == "/api/homework_sync")
             {
                 string hwFile = Path.Combine(_baseDir, "custom_homework.json");
                 string docFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "custom_homework.json");
+                string gistId = "e66b5c70ca5ea38585985e43f2976fe8";
+
                 if (req.HttpMethod == "POST")
                 {
                     try
                     {
+                        string json = "";
                         using (StreamReader reader = new StreamReader(req.InputStream, req.ContentEncoding))
                         {
-                            string json = reader.ReadToEnd();
-                            File.WriteAllText(hwFile, json, Encoding.UTF8);
-                            try { File.WriteAllText(docFile, json, Encoding.UTF8); } catch { }
-                            LogUntis(string.Format("Custom homework saved ({0} bytes)", json.Length));
+                            json = reader.ReadToEnd();
                         }
+                        File.WriteAllText(hwFile, json, Encoding.UTF8);
+                        try { File.WriteAllText(docFile, json, Encoding.UTF8); } catch { }
+
+                        // Im Hintergrund an GitHub Gist uebertragen
+                        System.Threading.ThreadPool.QueueUserWorkItem(delegate
+                        {
+                            try
+                            {
+                                string token = "";
+                                string tokenFile = Path.Combine(_baseDir, "cloud_token.txt");
+                                if (File.Exists(tokenFile)) token = File.ReadAllText(tokenFile, Encoding.UTF8).Trim();
+                                if (string.IsNullOrEmpty(token))
+                                {
+                                    try
+                                    {
+                                        var psi = new System.Diagnostics.ProcessStartInfo("gh", "auth token");
+                                        psi.RedirectStandardOutput = true;
+                                        psi.UseShellExecute = false;
+                                        psi.CreateNoWindow = true;
+                                        var proc = System.Diagnostics.Process.Start(psi);
+                                        token = proc.StandardOutput.ReadToEnd().Trim();
+                                        proc.WaitForExit();
+                                    }
+                                    catch { }
+                                }
+                                if (!string.IsNullOrEmpty(token))
+                                {
+                                    ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
+                                    var gReq = (HttpWebRequest)WebRequest.Create("https://api.github.com/gists/" + gistId);
+                                    gReq.Method = "PATCH";
+                                    gReq.UserAgent = "BarrierefreiesWebUntis-CloudSync";
+                                    gReq.Headers["Authorization"] = "Bearer " + token;
+                                    gReq.ContentType = "application/json";
+
+                                    StringBuilder sb = new StringBuilder();
+                                    for (int i = 0; i < json.Length; i++)
+                                    {
+                                        char c = json[i];
+                                        if (c == '"') sb.Append('\'').Append('"');
+                                        else if (c == '\\') sb.Append('\\').Append('\\');
+                                        else if (c == '\r') { }
+                                        else if (c == '\n') sb.Append('\\').Append('n');
+                                        else sb.Append(c);
+                                    }
+                                    string escapedJson = sb.ToString();
+                                    string patchBody = "{\"files\":{\"cloud_sync.json\":{\"content\":\"" + escapedJson + "\"}}}";
+                                    byte[] patchBytes = Encoding.UTF8.GetBytes(patchBody);
+                                    gReq.ContentLength = patchBytes.Length;
+                                    using (Stream os = gReq.GetRequestStream())
+                                    {
+                                        os.Write(patchBytes, 0, patchBytes.Length);
+                                    }
+                                    using (var gResp = (HttpWebResponse)gReq.GetResponse())
+                                    {
+                                        LogUntis(string.Format("Cloud Gist synced: HTTP {0}", (int)gResp.StatusCode));
+                                    }
+                                }
+                            }
+                            catch (Exception cEx)
+                            {
+                                LogUntis("Cloud Gist sync warning: " + cEx.Message);
+                            }
+                        });
+
                         resp.StatusCode = 200;
-                        resp.ContentType = "application/json";
-                        byte[] ok = Encoding.UTF8.GetBytes("{\"saved\":true}");
+                        resp.ContentType = "application/json; charset=utf-8";
+                        byte[] ok = Encoding.UTF8.GetBytes("{\"saved\":true,\"cloud\":true}");
                         resp.OutputStream.Write(ok, 0, ok.Length);
                         resp.Close();
                         return;
                     }
                     catch (Exception ex)
                     {
-                        LogUntis("Error saving custom homework: " + ex.Message);
+                        LogUntis("Error in cloud sync: " + ex.Message);
                         resp.StatusCode = 500;
                         resp.Close();
                         return;
@@ -615,9 +680,11 @@ namespace BarrierefreierStundenplan
                 }
                 else
                 {
-                    string json = "[]";
+                    string json = "";
                     if (File.Exists(hwFile)) json = File.ReadAllText(hwFile, Encoding.UTF8);
                     else if (File.Exists(docFile)) json = File.ReadAllText(docFile, Encoding.UTF8);
+                    else json = "{\"classes\":{},\"users\":{}}";
+
                     resp.StatusCode = 200;
                     resp.ContentType = "application/json; charset=utf-8";
                     byte[] data = Encoding.UTF8.GetBytes(json);

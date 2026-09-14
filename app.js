@@ -4849,7 +4849,8 @@ function handleSaveHomeworkSubmit(event) {
   appData.homework.push(newHw);
 
   saveAppData();
-  syncCustomHomeworkToBackend();
+  pushCloudHomeworkUpdate();
+  syncCloudHomework();
 
   closeAddHomeworkModal();
   renderHomework();
@@ -4875,7 +4876,8 @@ function deleteCustomHomework(hwId) {
   }
 
   saveAppData();
-  syncCustomHomeworkToBackend();
+  pushCloudHomeworkUpdate();
+  syncCloudHomework();
 
   renderHomework();
   renderUrgentNotificationBanner();
@@ -4973,7 +4975,8 @@ function importHomeworkJson(event) {
         });
       }
       saveAppData();
-      syncCustomHomeworkToBackend();
+      pushCloudHomeworkUpdate();
+  syncCloudHomework();
       renderHomework();
       speak(`${count} Hausaufgabe(n) erfolgreich importiert.`, true);
       alert(`${count} Hausaufgabe(n) erfolgreich importiert.`);
@@ -4982,6 +4985,217 @@ function importHomeworkJson(event) {
     }
   };
   reader.readAsText(file);
+}
+
+
+// =============================================================================
+// INTERNET CLOUD SYNC (KLASSE & PERSÖNLICHE HAUSAUFGABEN + ERLEDIGT-STATUS)
+// =============================================================================
+const CLOUD_GIST_ID = 'e66b5c70ca5ea38585985e43f2976fe8';
+let lastCloudSyncTime = null;
+let isCloudSyncing = false;
+
+function getCloudKeys() {
+  const school = (appData.config.schoolShort || 'lwl-bk-soest').toLowerCase().replace(/[^a-z0-9]/g, '-');
+
+  // Schuljahr dynamisch ermitteln (z.B. "2026/2027" -> "2026-2027")
+  let sy = '2026-2027';
+  if (appData.schoolYear && appData.schoolYear.name) {
+    sy = String(appData.schoolYear.name).replace(/\//g, '-').trim();
+  } else if (appData.selectedGradeSchoolYear) {
+    sy = String(appData.selectedGradeSchoolYear).replace(/\//g, '-').trim();
+  }
+
+  // Klasse dynamisch ermitteln (z.B. "BFW2B")
+  let kl = 'allgemein';
+  if (appData.config.klasse) {
+    kl = String(appData.config.klasse).trim().replace(/[^a-zA-Z0-9]/g, '');
+  } else if (appData.timetable && appData.timetable.length > 0 && appData.timetable[0].klasse) {
+    kl = String(appData.timetable[0].klasse).trim().replace(/[^a-zA-Z0-9]/g, '');
+  }
+
+  // Benutzername für persönliche Aufgaben und persönliche Erledigt-Haken
+  const user = (appData.config.username || 'schueler').toLowerCase().replace(/[^a-z0-9]/g, '_');
+
+  const classKey = `${school}_${sy}_${kl}`;
+  const userKey = `${school}_${user}`;
+
+  return { school, sy, kl, user, classKey, userKey };
+}
+
+function syncCloudHomework(showNotification = false) {
+  if (isCloudSyncing) return;
+  isCloudSyncing = true;
+
+  const keys = getCloudKeys();
+
+  // 1. Zuerst aus Cloud abrufen
+  fetch(`https://api.github.com/gists/${CLOUD_GIST_ID}`, {
+    headers: { 'Accept': 'application/vnd.github.v3+json' }
+  })
+    .then(r => r.json())
+    .then(data => {
+      let cloudContent = { classes: {}, users: {} };
+      if (data && data.files && data.files['cloud_sync.json'] && data.files['cloud_sync.json'].content) {
+        try {
+          cloudContent = JSON.parse(data.files['cloud_sync.json'].content);
+        } catch (e) {}
+      }
+
+      if (!cloudContent.classes) cloudContent.classes = {};
+      if (!cloudContent.users) cloudContent.users = {};
+
+      // A. Prüfen ob Klassenbereich bereits existiert - WENN NICHT: NEU ANLEGEN!
+      if (!cloudContent.classes[keys.classKey]) {
+        cloudContent.classes[keys.classKey] = {
+          school: keys.school,
+          schoolYear: keys.sy,
+          class: keys.kl,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          homework: []
+        };
+      }
+
+      // B. Prüfen ob Benutzerbereich existiert - WENN NICHT: NEU ANLEGEN!
+      if (!cloudContent.users[keys.userKey]) {
+        cloudContent.users[keys.userKey] = {
+          school: keys.school,
+          user: keys.user,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          homework: [],
+          completedHomeworkIds: []
+        };
+      }
+
+      // C. Lokale Daten mit Cloud-Daten zusammenführen
+      const classHw = cloudContent.classes[keys.classKey].homework || [];
+      const userHw = cloudContent.users[keys.userKey].homework || [];
+      const completedIds = new Set(cloudContent.users[keys.userKey].completedHomeworkIds || []);
+
+      if (!Array.isArray(appData.customHomework)) appData.customHomework = [];
+      if (!Array.isArray(appData.homework)) appData.homework = [];
+
+      // Lokale erledigte Aufgaben in die Cloud-Menge aufnehmen
+      appData.homework.forEach(h => {
+        if (h.completed) completedIds.add(h.id);
+      });
+      cloudContent.users[keys.userKey].completedHomeworkIds = Array.from(completedIds);
+
+      // Klassen-Hausaufgaben synchronisieren
+      classHw.forEach(ch => {
+        const isDone = completedIds.has(ch.id);
+        const existingCustom = appData.customHomework.find(c => c.id === ch.id);
+        if (existingCustom) {
+          existingCustom.completed = isDone;
+        } else {
+          appData.customHomework.push({ ...ch, completed: isDone, isCustom: true, scope: 'class' });
+        }
+
+        const existingHw = appData.homework.find(h => h.id === ch.id);
+        if (existingHw) {
+          existingHw.completed = isDone;
+        } else {
+          appData.homework.push({ ...ch, completed: isDone, isCustom: true, scope: 'class' });
+        }
+      });
+
+      // Persönliche Hausaufgaben synchronisieren
+      userHw.forEach(uh => {
+        const isDone = completedIds.has(uh.id);
+        const existingCustom = appData.customHomework.find(c => c.id === uh.id);
+        if (existingCustom) {
+          existingCustom.completed = isDone;
+        } else {
+          appData.customHomework.push({ ...uh, completed: isDone, isCustom: true, scope: 'private' });
+        }
+
+        const existingHw = appData.homework.find(h => h.id === uh.id);
+        if (existingHw) {
+          existingHw.completed = isDone;
+        } else {
+          appData.homework.push({ ...uh, completed: isDone, isCustom: true, scope: 'private' });
+        }
+      });
+
+      // Eigene noch nicht in der Cloud vorhandene Aufgaben hochladen
+      let cloudDirty = false;
+      appData.customHomework.forEach(localHw => {
+        if (localHw.scope === 'class') {
+          if (!cloudContent.classes[keys.classKey].homework.some(c => c.id === localHw.id)) {
+            cloudContent.classes[keys.classKey].homework.push(localHw);
+            cloudDirty = true;
+          }
+        } else {
+          if (!cloudContent.users[keys.userKey].homework.some(u => u.id === localHw.id)) {
+            cloudContent.users[keys.userKey].homework.push(localHw);
+            cloudDirty = true;
+          }
+        }
+      });
+
+      saveAppData();
+      renderHomework();
+      lastCloudSyncTime = new Date();
+
+      // Wenn Änderungen vorhanden sind, im Backend sichern
+      pushCloudHomeworkUpdate(cloudContent);
+
+      if (showNotification) {
+        speak('Hausaufgaben erfolgreich mit der Internet-Cloud synchronisiert.', true);
+        announceSR('Hausaufgaben mit Internet synchronisiert.', 'polite');
+      }
+    })
+    .catch(err => {
+      console.warn('Cloud sync offline or error:', err);
+    })
+    .finally(() => {
+      isCloudSyncing = false;
+    });
+}
+
+function pushCloudHomeworkUpdate(cloudContent) {
+  const payload = cloudContent || buildFullCloudPayload();
+
+  // Desktop C# Backend aufrufen
+  fetch('/api/cloud_sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).catch(() => {});
+}
+
+function buildFullCloudPayload() {
+  const keys = getCloudKeys();
+  const classHw = (appData.customHomework || []).filter(h => h.scope === 'class');
+  const userHw = (appData.customHomework || []).filter(h => h.scope === 'private');
+  const completedIds = (appData.homework || []).filter(h => h.completed).map(h => h.id);
+
+  const payload = {
+    version: '1.0',
+    updatedAt: new Date().toISOString(),
+    classes: {},
+    users: {}
+  };
+
+  payload.classes[keys.classKey] = {
+    school: keys.school,
+    schoolYear: keys.sy,
+    class: keys.kl,
+    updatedAt: new Date().toISOString(),
+    homework: classHw
+  };
+
+  payload.users[keys.userKey] = {
+    school: keys.school,
+    user: keys.user,
+    updatedAt: new Date().toISOString(),
+    homework: userHw,
+    completedHomeworkIds: completedIds
+  };
+
+  return payload;
 }
 
 function toggleHomeworkCompleted(hwId) {
@@ -4996,7 +5210,8 @@ function toggleHomeworkCompleted(hwId) {
   }
 
   saveAppData();
-  syncCustomHomeworkToBackend();
+  pushCloudHomeworkUpdate();
+  syncCloudHomework();
   renderHomework();
   renderUrgentNotificationBanner();
   speak(hw.completed ? 'Als erledigt markiert.' : 'Als nicht erledigt markiert.', false);
@@ -5494,7 +5709,8 @@ function triggerDesktopNotification() {
 // =============================================================================
 function initApp() {
   loadAppData();
-  loadCustomHomeworkFromBackend();
+  syncCloudHomework();
+  setInterval(() => syncCloudHomework(false), 2.5 * 60 * 1000);
   updateTodayBadge();
 
   // 1. Tastatur- und Screenreader-Steuerung bereitstellen
