@@ -1,11 +1,15 @@
 {
-  "version": "1.9.12",
+  "version": "1.9.13",
   "name": "Barrierefreies WebUntis",
   "buildDate": "2026-09-14",
   "repository": "https://github.com/Lauju1909/BarrierefreiesWebUntis",
   "executable": "Barrierefreies_WebUntis.exe",
   "features": [
-    "100% dynamische Fächer & Noten: Vollständige Entfernung aller fest einprogrammierten Fächerlisten und Standardfächer (z. B. keine festen 12 LWL-Fächer mehr). Schulfächer und Noten werden ausschließlich dynamisch aus WebUntis bezogen. Bei neuen oder externen Schulen werden nur die tatsächlich existierenden Fächer angezeigt.",
+    "Eigene Hausaufgaben hinzufügen (N): Eigene Aufgaben anlegen mit Schulfach, Fälligkeitsdatum (inkl. Schnellauswahl Morgen, Übermorgen, In 1 Woche), Aufgabenbeschreibung und Wahl zwischen 'Nur für mich (Privat)' oder 'Für meine Klasse'.",
+    "Persistente Erledigt-Status & WebUntis-Sync: Erledigt-Status bleibt bei allen WebUntis-Synchronisationen dauerhaft erhalten und wird mit der Android-App und dem Backend synchronisiert.",
+    "Behebung doppelter Stunden-Ansage: Kein doppeltes Vorlesen der Stunde mehr für Blinde (z. B. '2. Std.' und danach '2. Stunde: ...'). Zeitbox ist für Screenreader sauber ausgeblendet, Inhalt wird direkt und ohne Redundanz in der Überschrift vorgelesen.",
+    "Vollständige Schulfach-Namen im Stundenplan: Erste Stunde und alle weiteren Stunden zeigen jetzt stets den vollständigen Schulfachnamen an (z. B. 'Deutsch / Kommunikation (D)' statt nur 'D').",
+    "100% dynamische Fächer & Noten: Vollständige Entfernung aller fest einprogrammierten Fächerlisten und Standardfächer.",
     "100% dynamische WebUntis-Metadaten: Vollständige Beseitigung aller fest einprogrammierten Lehrer und Klassen. Fächer, Lehrer und Klassen werden vollkommen dynamisch aus WebUntis ermittelt. Saubere Trennung von Fach-Kürzel und Fachname für Screenreader (z. B. 'M: Mathematik' statt 'MMathematik').",
     "NVDA-Kombinationsfeld Notenspiegel: Optionstexte enthalten direkt Schuljahr, Notenanzahl und Gesamtschnitt. NVDA liest bei Pfeiltasten-Navigation jede Auswahl nativ, klar und ohne Abbruch vor.",
     "Beseitigung von Screenreader-Überflutung: aria-live='polite' vom Fächerkarten-Container entfernt und Live-Region auf polite umgestellt, damit NVDA beim Navigieren nicht unterbrochen oder stummgeschaltet wird.",

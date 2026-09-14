@@ -582,6 +582,51 @@ namespace BarrierefreierStundenplan
                 return;
             }
 
+            // Eigene Hausaufgaben Synchronisation (Desktop & Android Kompatibilität)
+            if (rawUrl == "/api/custom_homework" || rawUrl == "/api/homework_sync")
+            {
+                string hwFile = Path.Combine(_baseDir, "custom_homework.json");
+                string docFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "custom_homework.json");
+                if (req.HttpMethod == "POST")
+                {
+                    try
+                    {
+                        using (StreamReader reader = new StreamReader(req.InputStream, req.ContentEncoding))
+                        {
+                            string json = reader.ReadToEnd();
+                            File.WriteAllText(hwFile, json, Encoding.UTF8);
+                            try { File.WriteAllText(docFile, json, Encoding.UTF8); } catch { }
+                            LogUntis(string.Format("Custom homework saved ({0} bytes)", json.Length));
+                        }
+                        resp.StatusCode = 200;
+                        resp.ContentType = "application/json";
+                        byte[] ok = Encoding.UTF8.GetBytes("{\"saved\":true}");
+                        resp.OutputStream.Write(ok, 0, ok.Length);
+                        resp.Close();
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogUntis("Error saving custom homework: " + ex.Message);
+                        resp.StatusCode = 500;
+                        resp.Close();
+                        return;
+                    }
+                }
+                else
+                {
+                    string json = "[]";
+                    if (File.Exists(hwFile)) json = File.ReadAllText(hwFile, Encoding.UTF8);
+                    else if (File.Exists(docFile)) json = File.ReadAllText(docFile, Encoding.UTF8);
+                    resp.StatusCode = 200;
+                    resp.ContentType = "application/json; charset=utf-8";
+                    byte[] data = Encoding.UTF8.GetBytes(json);
+                    resp.OutputStream.Write(data, 0, data.Length);
+                    resp.Close();
+                    return;
+                }
+            }
+
             // 2. Fensterstatus (kein automatisches Beenden bei bloßem Tabwechsel)
             if (rawUrl == "/api/window_closing")
             {

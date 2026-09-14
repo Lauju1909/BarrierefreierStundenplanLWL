@@ -226,6 +226,8 @@ function loadAppData() {
         classregEvents: (parsed.classregEvents && Array.isArray(parsed.classregEvents) && parsed.classregEvents.length > 0) ? parsed.classregEvents : [...DEFAULT_CLASSREG_EVENTS],
         messages: (parsed.messages && Array.isArray(parsed.messages)) ? parsed.messages : [],
         deletedMessageIds: (parsed.deletedMessageIds && Array.isArray(parsed.deletedMessageIds)) ? parsed.deletedMessageIds : [],
+        metadata: (parsed.metadata && typeof parsed.metadata === 'object') ? parsed.metadata : null,
+        customHomework: (parsed.customHomework && Array.isArray(parsed.customHomework)) ? parsed.customHomework : [],
         grades: (parsed.grades && typeof parsed.grades === 'object') ? parsed.grades : {},
         webuntisGradeList: (parsed.auth && parsed.auth.isLoggedIn)
           ? (Array.isArray(parsed.webuntisGradeList) ? parsed.webuntisGradeList : [])
@@ -2745,6 +2747,22 @@ async function performWebUntisSync(userOverride, passOverride) {
     // D. Hausaufgaben aus dem Stundenplan & Klassenbuch hinzufügen
     timetableHomeworks.forEach(addUniqueHomework);
 
+    // E. Eigene Hausaufgaben hinzufügen
+    if (Array.isArray(appData.customHomework)) {
+      appData.customHomework.forEach(ch => {
+        addUniqueHomework({
+          id: ch.id,
+          subject: ch.subject,
+          teacher: ch.teacher || '',
+          dueDate: ch.dueDate || 'Ohne Frist',
+          text: ch.text,
+          completed: ch.completed !== undefined ? ch.completed : !!preservedCompletedMap[ch.id],
+          isCustom: true,
+          scope: ch.scope || 'private'
+        });
+      });
+    }
+
     if (newHomework.length > 0 || !appData.homework || appData.homework.length === 0) {
       appData.homework = newHomework;
     } else {
@@ -3179,6 +3197,130 @@ function cleanTeacherName(teacherStr) {
 // =============================================================================
 // 7b. UNTIS STUNDENPLAN PARSING & METADATEN-MAPPING
 // =============================================================================
+
+// =============================================================================
+// SCHULFACH-EXPANSION & DYNAMISCHE VOLLNAMEN
+// =============================================================================
+const COMMON_FALLBACK_SUBJECTS = {
+  'D': 'Deutsch / Kommunikation',
+  'DE': 'Deutsch / Kommunikation',
+  'M': 'Mathematik',
+  'MA': 'Mathematik',
+  'MAT': 'Mathematik',
+  'E': 'Englisch',
+  'ENG': 'Englisch',
+  'PK': 'Politik / Gesellschaftslehre',
+  'POL': 'Politik / Gesellschaftslehre',
+  'WBL': 'Wirtschafts- und Betriebslehre',
+  'BWL': 'Betriebswirtschaftslehre',
+  'VWL': 'Volkswirtschaftslehre',
+  'SP': 'Sport / Gesundheitsförderung',
+  'SPO': 'Sport / Gesundheitsförderung',
+  'REL': 'Religionslehre',
+  'KR': 'Katholische Religionslehre',
+  'ER': 'Evangelische Religionslehre',
+  'PL': 'Praktische Philosophie',
+  'PH': 'Physik',
+  'CH': 'Chemie',
+  'BIO': 'Biologie',
+  'IF': 'Informatik',
+  'INF': 'Informatik',
+  'FB GWP': 'Fachpraxis Gesamtwirtschaft',
+  'FBM-IT': 'Fachpraxis Informationstechnik',
+  'GW': 'Gesamtwirtschaft'
+};
+
+function getSubjectFullDisplay(codeOrName, subjectId = null) {
+  if (!codeOrName) return 'Unterricht';
+  const meta = appData.metadata || {};
+  const subjectsMap = meta.subjectsMap || {};
+
+  // 1. Wenn subjectId in subjectsMap vorhanden
+  if (subjectId && subjectsMap[subjectId]) {
+    const fn = subjectsMap[subjectId];
+    if (codeOrName && fn && fn.toLowerCase() !== String(codeOrName).toLowerCase() && !fn.includes('(')) {
+      return `${fn} (${codeOrName})`;
+    }
+    return fn;
+  }
+
+  const raw = String(codeOrName).trim();
+  if (!raw) return 'Unterricht';
+
+  // Wenn bereits in Klammern formatiert (z.B. "Mathematik (M)"), direkt nutzen
+  if (/\([A-Za-z0-9\s\-_/]+\)$/.test(raw)) {
+    return raw;
+  }
+
+  // 2. Direkt in WebUntis-subjectsMap suchen
+  if (subjectsMap[raw]) {
+    const fn = subjectsMap[raw];
+    if (fn.toLowerCase() !== raw.toLowerCase() && !fn.includes('(')) {
+      return `${fn} (${raw})`;
+    }
+    return fn;
+  }
+
+  // 3. Case-Insensitive in subjectsMap suchen
+  for (const k in subjectsMap) {
+    if (k.toUpperCase() === raw.toUpperCase()) {
+      const fn = subjectsMap[k];
+      if (fn.toLowerCase() !== raw.toLowerCase() && !fn.includes('(')) {
+        return `${fn} (${raw})`;
+      }
+      return fn;
+    }
+  }
+
+  // 4. In webuntisLessons suchen
+  if (Array.isArray(appData.webuntisLessons)) {
+    for (const wl of appData.webuntisLessons) {
+      const sObj = wl.subject || {};
+      const sName = (sObj.name || sObj.longName || wl.subjectName || '').trim();
+      if (sName && (sName.toUpperCase() === raw.toUpperCase() || (sObj.name && sObj.name.toUpperCase() === raw.toUpperCase()))) {
+        const longN = sObj.longName || wl.subjectName;
+        const shortN = sObj.name || raw;
+        if (longN && longN.toLowerCase() !== shortN.toLowerCase() && !longN.includes('(')) {
+          return `${longN} (${shortN})`;
+        }
+        if (longN) return longN;
+      }
+    }
+  }
+
+  // 5. In webuntisGradeList suchen
+  if (Array.isArray(appData.webuntisGradeList)) {
+    for (const g of appData.webuntisGradeList) {
+      if (g.subjectCode && g.subjectCode.toUpperCase() === raw.toUpperCase() && g.subjectName) {
+        if (!g.subjectName.includes('(')) {
+          return `${g.subjectName} (${g.subjectCode})`;
+        }
+        return g.subjectName;
+      }
+    }
+  }
+
+  // 6. In Timetable nach vollständigen Namen suchen
+  if (Array.isArray(appData.timetable)) {
+    for (const l of appData.timetable) {
+      if (l.subjectCode && l.subjectCode.toUpperCase() === raw.toUpperCase() && l.subject && l.subject !== l.subjectCode) {
+        if (!l.subject.includes('(')) {
+          return `${l.subject} (${l.subjectCode})`;
+        }
+        return l.subject;
+      }
+    }
+  }
+
+  // 7. Fallback über Standard-Fächerkürzel
+  const upper = raw.toUpperCase();
+  if (COMMON_FALLBACK_SUBJECTS[upper]) {
+    return `${COMMON_FALLBACK_SUBJECTS[upper]} (${raw})`;
+  }
+
+  return raw;
+}
+
 function parseUntisTimetableItems(items) {
   if (!items || !Array.isArray(items)) return [];
   const meta = appData.metadata || {};
@@ -3224,7 +3366,11 @@ function parseUntisTimetableItems(items) {
       else periodNum = 10;
     }
 
-    const subj = (item.su && item.su[0]) ? (subjectsMap[item.su[0].id] || item.su[0].name || item.su[0].longname || 'Unterricht') : 'Unterricht';
+    const suObj = (item.su && item.su[0]) ? item.su[0] : null;
+    const suCode = suObj ? (suObj.name || suObj.longname || '') : '';
+    const suLong = suObj ? (suObj.longname || '') : '';
+    const suId = suObj ? suObj.id : null;
+    const subj = getSubjectFullDisplay(suCode || suLong || 'Unterricht', suId);
     let teach = 'Lehrkraft';
     if (item.te && Array.isArray(item.te) && item.te.length > 0) {
       const tNames = item.te.map(t => teachersMap[t.id] || t.name || t.longname || '').filter(Boolean);
@@ -3495,6 +3641,18 @@ function renderTimetable() {
     lessons = appData.timetable.filter(l => l.day === dayIndex).sort((a, b) => a.period - b.period);
   }
 
+  // Deduplizieren von Stunden (gleicher Tag, Periode, Zeit und Fach)
+  const uniqueLessons = [];
+  const seenKeys = new Set();
+  lessons.forEach(l => {
+    const key = `${l.day}_${l.period}_${l.startTime || ''}_${(l.subject || '').trim()}`;
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      uniqueLessons.push(l);
+    }
+  });
+  lessons = uniqueLessons;
+
   const titleEl = document.getElementById('timetable-view-title');
   if (titleEl) {
     const monday = getMondayForWeekOffset(selectedWeekOffset);
@@ -3556,16 +3714,16 @@ function renderTimetable() {
     const dayPrefix = isWeekView ? `<strong>${getDayName(l.day)}:</strong> ` : '';
     const cleanRoom = formatRoomNameOnly(l.room, l.teacher);
     const cleanTeacher = cleanTeacherName(l.teacher);
-
+    const displaySubject = getSubjectFullDisplay(l.subject || l.subjectCode, l.subjectId);
     html += `
-      <article class="lesson-card interactive-lesson ${statusClass}" role="listitem" tabindex="0" onclick="openLessonDetails('${l.id}')" onkeydown="handleLessonKeydown(event, '${l.id}')" title="Klicken oder Enter drücken für Lehrstoff, Hausaufgaben &amp; Details" aria-label="${dayPrefix}${l.period}. Stunde: ${l.subject}, Raum ${cleanRoom}, Lehrer ${cleanTeacher}${l.klasse ? ', Klasse ' + l.klasse : ''}, Zeit: ${periodData.start} bis ${periodData.end} Uhr. Status: ${srStatus}. Klicken für Details, Lehrstoff und Hausaufgaben.">
-        <div class="lesson-time-box">
+      <article class="lesson-card interactive-lesson ${statusClass}" role="listitem" tabindex="0" onclick="openLessonDetails('${l.id}')" onkeydown="handleLessonKeydown(event, '${l.id}')" title="Klicken oder Enter drücken für Lehrstoff, Hausaufgaben &amp; Details" aria-label="${dayPrefix}${l.period}. Stunde: ${displaySubject}, Zeit: ${periodData.start} bis ${periodData.end} Uhr, Raum ${cleanRoom}, Lehrer ${cleanTeacher}${l.klasse ? ', Klasse ' + l.klasse : ''}. Status: ${srStatus}. Klicken für Details, Lehrstoff und Hausaufgaben.">
+        <div class="lesson-time-box" aria-hidden="true">
           <div class="lesson-period">${l.period}. Std.</div>
           <div class="lesson-clock">${periodData.start} - ${periodData.end}</div>
           ${isWeekView ? `<div style="font-size: 13px; font-weight: bold; color: var(--accent-info); margin-top: 2px;">${getDayName(l.day)}</div>` : ''}
         </div>
         <div class="lesson-main">
-          <${headingTag} class="lesson-subject-title"><span class="sr-only">${isWeekView ? getDayName(l.day) + ', ' : ''}${l.period}. Stunde: </span>${l.subject}</${headingTag}>
+          <${headingTag} class="lesson-subject-title"><span class="sr-only">${isWeekView ? getDayName(l.day) + ', ' : ''}${l.period}. Stunde: </span>${escHtml(displaySubject)}</${headingTag}>
           <div style="margin-top: 6px; font-size: var(--font-size-base); color: var(--text-secondary);">
             <div style="display: block; line-height: 1.8;"><span class="emoji-icon" aria-hidden="true">🚪 </span><strong>Raum:</strong> ${cleanRoom}</div>
             <div style="display: block; line-height: 1.8;"><span class="emoji-icon" aria-hidden="true">👨‍🏫 </span><strong>Lehrer:</strong> ${cleanTeacher}</div>
@@ -4484,13 +4642,19 @@ function renderHomework() {
           </div>
           <p class="homework-desc">${escHtml(displayText)}</p>
           ${hw.details ? `<p class="homework-details">${escHtml(hw.details)}</p>` : ''}
-          <label class="homework-toggle-label" for="${checkId}">
-            <input type="checkbox" id="${checkId}" class="homework-checkbox"
-                   ${hw.completed ? 'checked' : ''}
-                   aria-label="Als erledigt markieren: ${escHtml(hw.subject || '')}"
-                   onchange="toggleHomeworkCompleted('${hw.id}')">
-            ${hw.completed ? 'Erledigt <span class="emoji-icon" aria-hidden="true">✓</span>' : 'Als erledigt markieren'}
-          </label>
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 8px;">
+            <label class="homework-toggle-label" for="${checkId}">
+              <input type="checkbox" id="${checkId}" class="homework-checkbox"
+                     ${hw.completed ? 'checked' : ''}
+                     aria-label="Als erledigt markieren: ${escHtml(hw.subject || '')}"
+                     onchange="toggleHomeworkCompleted('${hw.id}')">
+              ${hw.completed ? 'Erledigt <span class="emoji-icon" aria-hidden="true">✓</span>' : 'Als erledigt markieren'}
+            </label>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              ${hw.isCustom ? (hw.scope === 'class' ? '<span class="urgent-badge" style="background: #ecfdf5; color: #065f46; font-weight: bold; font-size: 12px;"><span class="emoji-icon" aria-hidden="true">👥 </span>Klasse</span>' : '<span class="urgent-badge" style="background: #eff6ff; color: #1e40af; font-weight: bold; font-size: 12px;"><span class="emoji-icon" aria-hidden="true">🔒 </span>Nur für mich</span>') : ''}
+              ${hw.isCustom ? `<button type="button" class="btn btn-secondary" style="font-size: 12px; padding: 3px 8px; color: var(--accent-error);" onclick="deleteCustomHomework('${hw.id}')" aria-label="Hausaufgabe ${escHtml(hw.subject)} löschen"><span class="emoji-icon" aria-hidden="true">🗑️ </span>Löschen</button>` : ''}
+            </div>
+          </div>
         </article>`;
     });
   }
@@ -4522,11 +4686,317 @@ function speakClassregEvent(eventId) {
   announceSR(text, 'assertive');
 }
 
+
+// =============================================================================
+// EIGENE HAUSAUFGABEN (PRIVAT & KLASSE) + SYNC & MODAL
+// =============================================================================
+function populateHomeworkSubjectSelect() {
+  const sel = document.getElementById('hw-input-subject');
+  if (!sel) return;
+
+  const subjectsSet = new Set();
+
+  // Aus Metadaten
+  const meta = appData.metadata || {};
+  const subjectsMap = meta.subjectsMap || {};
+  for (const k in subjectsMap) {
+    const val = subjectsMap[k];
+    if (val && typeof val === 'string' && val.length > 1) {
+      subjectsSet.add(val.includes('(') ? val : `${val} (${k})`);
+    }
+  }
+
+  // Aus Stundenplan
+  if (Array.isArray(appData.timetable)) {
+    appData.timetable.forEach(l => {
+      if (l.subject) {
+        const full = getSubjectFullDisplay(l.subject, l.subjectId);
+        if (full) subjectsSet.add(full);
+      }
+    });
+  }
+
+  // Aus Notenübersicht
+  if (Array.isArray(appData.webuntisGradeList)) {
+    appData.webuntisGradeList.forEach(g => {
+      if (g.subjectName) {
+        subjectsSet.add(g.subjectCode ? `${g.subjectName} (${g.subjectCode})` : g.subjectName);
+      }
+    });
+  }
+
+  // Standard-Fächer als Fallback
+  if (typeof COMMON_FALLBACK_SUBJECTS !== 'undefined') {
+    Object.entries(COMMON_FALLBACK_SUBJECTS).forEach(([code, name]) => {
+      subjectsSet.add(`${name} (${code})`);
+    });
+  }
+
+  const sortedList = Array.from(subjectsSet).sort((a, b) => a.localeCompare(b, 'de'));
+
+  let optHtml = '<option value="">-- Bitte Schulfach auswählen --</option>';
+  sortedList.forEach(s => {
+    optHtml += `<option value="${escHtml(s)}">${escHtml(s)}</option>`;
+  });
+  optHtml += '<option value="Klassenorganisation / Allgemein">Klassenorganisation / Allgemein</option>';
+
+  sel.innerHTML = optHtml;
+}
+
+function openAddHomeworkModal() {
+  const modal = document.getElementById('modal-add-homework');
+  if (!modal) return;
+
+  populateHomeworkSubjectSelect();
+
+  // Standard-Datum auf morgen setzen
+  setHwQuickDate(1);
+
+  const textInput = document.getElementById('hw-input-text');
+  if (textInput) textInput.value = '';
+
+  modal.style.display = 'flex';
+  document.body.classList.add('modal-open');
+
+  const firstInput = document.getElementById('hw-input-subject');
+  if (firstInput) {
+    setTimeout(() => firstInput.focus(), 50);
+  }
+  speak('Hausaufgabe hinzufügen Dialog geöffnet.', true);
+}
+
+function closeAddHomeworkModal() {
+  const modal = document.getElementById('modal-add-homework');
+  if (!modal) return;
+  modal.style.display = 'none';
+  document.body.classList.remove('modal-open');
+}
+
+function handleAddHwModalBackdropClick(event) {
+  if (event && event.target && event.target.id === 'modal-add-homework') {
+    closeAddHomeworkModal();
+  }
+}
+
+function setHwQuickDate(daysOffset) {
+  const input = document.getElementById('hw-input-date');
+  if (!input) return;
+
+  const target = new Date();
+  target.setDate(target.getDate() + daysOffset);
+
+  // Samstag (6) -> Montag (+2)
+  if (target.getDay() === 6) {
+    target.setDate(target.getDate() + 2);
+  } else if (target.getDay() === 0) {
+    target.setDate(target.getDate() + 1);
+  }
+
+  const yyyy = target.getFullYear();
+  const mm = String(target.getMonth() + 1).padStart(2, '0');
+  const dd = String(target.getDate()).padStart(2, '0');
+  input.value = `${yyyy}-${mm}-${dd}`;
+}
+
+function handleSaveHomeworkSubmit(event) {
+  if (event) event.preventDefault();
+
+  const subjSel = document.getElementById('hw-input-subject');
+  const dateInput = document.getElementById('hw-input-date');
+  const textInput = document.getElementById('hw-input-text');
+  const scopeSel = document.getElementById('hw-input-scope');
+
+  const subject = subjSel ? subjSel.value.trim() : '';
+  const dueDate = dateInput ? dateInput.value.trim() : '';
+  const text = textInput ? textInput.value.trim() : '';
+  const scope = scopeSel ? scopeSel.value : 'private';
+
+  if (!subject) {
+    alert('Bitte wähle ein Schulfach aus.');
+    if (subjSel) subjSel.focus();
+    return;
+  }
+  if (!dueDate) {
+    alert('Bitte wähle ein Fälligkeitsdatum aus.');
+    if (dateInput) dateInput.focus();
+    return;
+  }
+  if (!text) {
+    alert('Bitte gib eine Aufgabenbeschreibung ein.');
+    if (textInput) textInput.focus();
+    return;
+  }
+
+  const newHw = {
+    id: `custom-hw-${Date.now()}`,
+    subject: subject,
+    dueDate: dueDate,
+    text: text,
+    completed: false,
+    isCustom: true,
+    scope: scope,
+    createdAt: new Date().toISOString()
+  };
+
+  if (!Array.isArray(appData.customHomework)) {
+    appData.customHomework = [];
+  }
+  appData.customHomework.push(newHw);
+
+  if (!Array.isArray(appData.homework)) {
+    appData.homework = [];
+  }
+  appData.homework.push(newHw);
+
+  saveAppData();
+  syncCustomHomeworkToBackend();
+
+  closeAddHomeworkModal();
+  renderHomework();
+  renderUrgentNotificationBanner();
+
+  const scopeLabel = scope === 'class' ? 'für deine Klasse' : 'nur für dich';
+  speak(`Hausaufgabe für ${subject} ${scopeLabel} gespeichert.`, true);
+  announceSR(`Hausaufgabe für ${subject} gespeichert.`, 'polite');
+}
+
+function deleteCustomHomework(hwId) {
+  const hw = (appData.homework || []).find(h => String(h.id) === String(hwId));
+  const subj = hw ? hw.subject : 'die Hausaufgabe';
+  if (!confirm(`Möchtest du die Hausaufgabe für ${subj} wirklich löschen?`)) {
+    return;
+  }
+
+  if (Array.isArray(appData.customHomework)) {
+    appData.customHomework = appData.customHomework.filter(h => String(h.id) !== String(hwId));
+  }
+  if (Array.isArray(appData.homework)) {
+    appData.homework = appData.homework.filter(h => String(h.id) !== String(hwId));
+  }
+
+  saveAppData();
+  syncCustomHomeworkToBackend();
+
+  renderHomework();
+  renderUrgentNotificationBanner();
+  speak('Hausaufgabe gelöscht.', true);
+  announceSR('Hausaufgabe gelöscht.', 'polite');
+}
+
+function syncCustomHomeworkToBackend() {
+  if (!Array.isArray(appData.customHomework)) return;
+  fetch('/api/custom_homework', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(appData.customHomework)
+  }).catch(() => {});
+}
+
+function loadCustomHomeworkFromBackend() {
+  fetch('/api/custom_homework')
+    .then(r => r.json())
+    .then(data => {
+      if (Array.isArray(data) && data.length > 0) {
+        if (!Array.isArray(appData.customHomework)) appData.customHomework = [];
+        let added = false;
+        data.forEach(item => {
+          if (!appData.customHomework.some(c => c.id === item.id || (c.dueDate === item.dueDate && c.text === item.text && c.subject === item.subject))) {
+            appData.customHomework.push(item);
+            added = true;
+          }
+        });
+        if (added) {
+          // In homework überführen
+          if (!Array.isArray(appData.homework)) appData.homework = [];
+          appData.customHomework.forEach(ch => {
+            if (!appData.homework.some(h => h.id === ch.id)) {
+              appData.homework.push(ch);
+            }
+          });
+          saveAppData();
+          renderHomework();
+        }
+      }
+    })
+    .catch(() => {});
+}
+
+function exportHomeworkJson() {
+  const exportData = {
+    version: '1.9.13',
+    exportDate: new Date().toISOString(),
+    klasse: appData.config.klasse || 'BFW2B',
+    customHomework: appData.customHomework || [],
+    completedHomeworkIds: (appData.homework || []).filter(h => h.completed).map(h => h.id)
+  };
+
+  const jsonStr = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `hausaufgaben_export_${formatGermanDate(new Date()).replace(/\s+/g, '_')}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  speak('Hausaufgaben erfolgreich exportiert.', true);
+}
+
+function importHomeworkJson(event) {
+  const file = event && event.target && event.target.files && event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      let count = 0;
+      if (Array.isArray(parsed.customHomework)) {
+        if (!Array.isArray(appData.customHomework)) appData.customHomework = [];
+        if (!Array.isArray(appData.homework)) appData.homework = [];
+
+        parsed.customHomework.forEach(hw => {
+          if (!appData.customHomework.some(c => c.id === hw.id || (c.text === hw.text && c.dueDate === hw.dueDate))) {
+            appData.customHomework.push(hw);
+            appData.homework.push(hw);
+            count++;
+          }
+        });
+      }
+      if (Array.isArray(parsed.completedHomeworkIds)) {
+        parsed.completedHomeworkIds.forEach(id => {
+          const matched = (appData.homework || []).find(h => String(h.id) === String(id));
+          if (matched) matched.completed = true;
+          const matchedCustom = (appData.customHomework || []).find(h => String(h.id) === String(id));
+          if (matchedCustom) matchedCustom.completed = true;
+        });
+      }
+      saveAppData();
+      syncCustomHomeworkToBackend();
+      renderHomework();
+      speak(`${count} Hausaufgabe(n) erfolgreich importiert.`, true);
+      alert(`${count} Hausaufgabe(n) erfolgreich importiert.`);
+    } catch (err) {
+      alert('Fehler beim Importieren der Datei. Bitte überprüfe das Format.');
+    }
+  };
+  reader.readAsText(file);
+}
+
 function toggleHomeworkCompleted(hwId) {
   const hw = (appData.homework || []).find(h => String(h.id) === String(hwId));
   if (!hw) return;
   hw.completed = !hw.completed;
+
+  // In appData.customHomework ebenfalls aktualisieren
+  if (Array.isArray(appData.customHomework)) {
+    const ch = appData.customHomework.find(c => String(c.id) === String(hwId));
+    if (ch) ch.completed = hw.completed;
+  }
+
   saveAppData();
+  syncCustomHomeworkToBackend();
   renderHomework();
   renderUrgentNotificationBanner();
   speak(hw.completed ? 'Als erledigt markiert.' : 'Als nicht erledigt markiert.', false);
@@ -5024,6 +5494,7 @@ function triggerDesktopNotification() {
 // =============================================================================
 function initApp() {
   loadAppData();
+  loadCustomHomeworkFromBackend();
   updateTodayBadge();
 
   // 1. Tastatur- und Screenreader-Steuerung bereitstellen
@@ -5044,6 +5515,17 @@ function initApp() {
   window.addEventListener('keydown', e => {
     if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
 
+    if (e.key === 'n' || e.key === 'N') {
+      e.preventDefault();
+      openAddHomeworkModal();
+    } else if (e.key === 'Escape') {
+      const hwModal = document.getElementById('modal-add-homework');
+      if (hwModal && hwModal.style.display !== 'none') {
+        e.preventDefault();
+        closeAddHomeworkModal();
+        return;
+      }
+    }
     if (e.key === '1') {
       e.preventDefault();
       switchTab('overview');
