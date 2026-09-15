@@ -1781,19 +1781,92 @@ async function performWebUntisSync(userOverride, passOverride) {
       classregCalls.push(callWebUntisApi('getClassregEvents', { startDate: syRange.startDateNum, endDate: syRange.endDateNum, id: kId, type: 1 }).catch(() => ({})));
     });
 
-    // E. Fehlzeiten (getStudentAbsences2017 mit TOTP über ganzes Schuljahr)
-    const absenceCalls = [
-      callWebUntisRest('/jsonrpc_intern.do?m=getStudentAbsences2017', jwtToken, 'POST', {
-        id: 'abs-' + Date.now(),
-        jsonrpc: '2.0',
-        method: 'getStudentAbsences2017',
-        params: [{ startDate: sIsoStr, endDate: eIsoStr, ...(authObjFull ? { auth: authObjFull } : {}) }]
-      }).catch(() => ({}))
-    ];
-
-    // 7. Alles parallel in einem schnellen Durchlauf abrufen (Dauer: ~1-2 Sekunden!)
+    // 7. Schüler-ID & Schuljahr ermitteln
     const effectiveStudentId = (detectedStudentIds && detectedStudentIds.size > 0) ? Array.from(detectedStudentIds)[0] : (personType === 5 ? personId : 4707);
     const effectiveSyId = (appData.schoolYear && appData.schoolYear.id) ? appData.schoolYear.id : 18;
+
+    // E. Fehlzeiten (Multi-Kanal: getStudentAbsences2017 mit TOTP, Standard-RPC & REST)
+    const absenceCalls = [];
+    const studentIdList = detectedStudentIds && detectedStudentIds.size > 0 ? Array.from(detectedStudentIds) : [effectiveStudentId];
+    
+    studentIdList.forEach(sId => {
+      // 1. Mobile JSON-RPC mit ISO-Datumsstrings (inklusive includeExcused & includeUnExcused)
+      absenceCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getStudentAbsences2017', jwtToken, 'POST', {
+        id: 'abs-iso-' + sId + '-' + Date.now(),
+        jsonrpc: '2.0',
+        method: 'getStudentAbsences2017',
+        params: [{
+          id: sId,
+          type: 'STUDENT',
+          startDate: sIsoStr,
+          endDate: eIsoStr,
+          includeExcused: true,
+          includeUnExcused: true,
+          includeUnexcused: true,
+          ...(authObjFull ? { auth: authObjFull } : {})
+        }]
+      }).catch(() => ({})));
+
+      // 2. Mobile JSON-RPC mit numerischen Untis-Daten (z. B. 20260902)
+      absenceCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getStudentAbsences2017', jwtToken, 'POST', {
+        id: 'abs-num-' + sId + '-' + Date.now(),
+        jsonrpc: '2.0',
+        method: 'getStudentAbsences2017',
+        params: [{
+          id: sId,
+          type: 'STUDENT',
+          startDate: syRange.startDateNum,
+          endDate: syRange.endDateNum,
+          includeExcused: true,
+          includeUnExcused: true,
+          includeUnexcused: true,
+          ...(authObjFull ? { auth: authObjFull } : {})
+        }]
+      }).catch(() => ({})));
+
+      // 3. Standard WebUntis JSON-RPC getStudentAbsences
+      absenceCalls.push(callWebUntisApi('getStudentAbsences', {
+        id: sId,
+        startDate: syRange.startDateNum,
+        endDate: syRange.endDateNum,
+        includeExcused: true,
+        includeUnexcused: true
+      }).catch(() => ({})));
+    });
+
+    // 4. Globaler Aufruf getStudentAbsences2017 (ohne explizite ID für aktuellen Login-Benutzer)
+    absenceCalls.push(callWebUntisRest('/jsonrpc_intern.do?m=getStudentAbsences2017', jwtToken, 'POST', {
+      id: 'abs-all-' + Date.now(),
+      jsonrpc: '2.0',
+      method: 'getStudentAbsences2017',
+      params: [{
+        startDate: sIsoStr,
+        endDate: eIsoStr,
+        includeExcused: true,
+        includeUnExcused: true,
+        includeUnexcused: true,
+        ...(authObjFull ? { auth: authObjFull } : {})
+      }]
+    }).catch(() => ({})));
+
+    // 5. Standard WebUntis JSON-RPC getAbsences
+    absenceCalls.push(callWebUntisApi('getAbsences', {
+      startDate: syRange.startDateNum,
+      endDate: syRange.endDateNum,
+      includeExcused: true,
+      includeUnexcused: true
+    }).catch(() => ({})));
+
+    // REST-Endpunkte für Fehlzeiten parallel abfragen
+    const restAbsencesCalls = [
+      callWebUntisRest(`/api/classreg/absence/students?startDate=${syRange.startDateNum}&endDate=${syRange.endDateNum}&studentId=${effectiveStudentId}`, jwtToken).catch(() => null),
+      callWebUntisRest(`/api/classreg/absence/students/absencetimes?startDate=${syRange.startDateNum}&endDate=${syRange.endDateNum}&studentId=${effectiveStudentId}`, jwtToken).catch(() => null),
+      callWebUntisRest(`/api/classreg/absences?studentId=${effectiveStudentId}`, jwtToken).catch(() => null),
+      callWebUntisRest(`/api/classreg/absences?startDate=${syRange.startDateNum}&endDate=${syRange.endDateNum}`, jwtToken).catch(() => null),
+      callWebUntisRest(`/api/classreg/absence/students`, jwtToken).catch(() => null),
+      callWebUntisRest(`/api/rest/view/v1/students/${effectiveStudentId}/absences`, jwtToken).catch(() => null),
+      callWebUntisRest(`/api/classreg/absencereasons`, jwtToken).catch(() => null)
+    ];
 
     const [
       examResponses,
@@ -1807,7 +1880,8 @@ async function performWebUntisSync(userOverride, passOverride) {
       restGradeListRes,
       restClassregEvRes,
       restMessagesRes,
-      restRecipientsRes
+      restRecipientsRes,
+      restAbsencesResults
     ] = await Promise.all([
       Promise.all(examCalls),
       Promise.all(classregCalls),
@@ -1820,7 +1894,8 @@ async function performWebUntisSync(userOverride, passOverride) {
       callWebUntisRest(`/api/classreg/grade/gradeList?personId=${effectiveStudentId}&startDate=20240801&endDate=20270731`, jwtToken).catch(() => null),
       callWebUntisRest(`/api/classreg/classregevents?studentId=${effectiveStudentId}&startDate=${syRange.startDateNum}&endDate=${syRange.endDateNum}`, jwtToken).catch(() => null),
       callWebUntisRest('/api/rest/view/v1/messages', jwtToken).catch(() => null),
-      callWebUntisRest('/api/rest/view/v1/messages/recipients/static/persons', jwtToken).catch(() => null)
+      callWebUntisRest('/api/rest/view/v1/messages/recipients/static/persons', jwtToken).catch(() => null),
+      Promise.all(restAbsencesCalls)
     ]);
     const restExamsRes1 = null;
     const restExamsRes2 = null;
@@ -1830,7 +1905,8 @@ async function performWebUntisSync(userOverride, passOverride) {
     const restHomeworkRes1 = null;
     const restHomeworkRes2 = null;
     const restHomeworkRes3 = null;
-    const restAbsencesRes = null;
+    const restAbsencesRes = restAbsencesResults;
+
     const restCalDetailResults = [];
     const restTtResults = [];
 
@@ -1846,6 +1922,52 @@ async function performWebUntisSync(userOverride, passOverride) {
     const timetableHomeworks = [];
 
     // Erweiterte Erkennung von Klassenarbeiten, Klausuren, Arbeiten und Tests
+    // Fehlzeiten-Sammlung aus Stundenplan
+    const timetableAbsences = [];
+    function scanItemForAbsence(item, idx) {
+      if (!item) return;
+      const subjName = (item.su && item.su[0]) ? (subjectsMap[item.su[0].id] || item.su[0].name || item.su[0].longname || '') : '';
+      const notes = [
+        item.substText,
+        item.lstext,
+        item.info,
+        item.bkText,
+        item.text,
+        item.activityType,
+        item.code,
+        item.cellState
+      ].filter(t => typeof t === 'string' && t.trim()).join(' ');
+
+      const isAbsCode = String(item.code || '').toLowerCase() === 'absent' ||
+                        String(item.cellState || '').toUpperCase() === 'ABSENT' ||
+                        item.studentAbsent === true ||
+                        item.isAbsent === true;
+
+      const isAbsText = /\b(abwesend|abwesenheit|krank|fehlt|fehlzeit|beurlaubt|arztbesuch|attest)\b/i.test(notes);
+
+      if (isAbsCode || isAbsText) {
+        const dStr = String(item.date || '').replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
+        if (dStr.length === 8) {
+          const isoDate = `${dStr.slice(0, 4)}-${dStr.slice(4, 6)}-${dStr.slice(6, 8)}`;
+          const sTime = item.startTime ? formatUntisTimeToStr(item.startTime) : '07:45';
+          const eTime = item.endTime ? formatUntisTimeToStr(item.endTime) : '15:10';
+          const isExc = /\b(entschuldigt|beurlaubt|genehmigt|attest)\b/i.test(notes);
+          const reason = notes.trim() ? notes.slice(0, 80) : (subjName ? `Fehlzeit in Fach ${subjName}` : 'Fehlzeit laut Stundenplan');
+          timetableAbsences.push({
+            id: `tt-abs-${item.id || idx}-${isoDate}`,
+            startDate: isoDate,
+            endDate: isoDate,
+            startTime: sTime,
+            endTime: eTime,
+            subject: subjName || '',
+            reason: reason,
+            isExcused: isExc,
+            hours: 1
+          });
+        }
+      }
+    }
+
     function scanItemForExam(item, idx) {
       if (!item) return;
       const subjName = (item.su && item.su[0]) ? (subjectsMap[item.su[0].id] || item.su[0].name || item.su[0].longname || '') : '';
@@ -2054,6 +2176,7 @@ async function performWebUntisSync(userOverride, passOverride) {
     allTtSource.forEach((item, idx) => {
       scanItemForExam(item, idx);
       scanItemForHomework(item, idx);
+      scanItemForAbsence(item, idx);
       if (item.kl && Array.isArray(item.kl)) {
         item.kl.forEach(k => { if (k && k.id) detectedKlasseIds.add(k.id); });
       }
@@ -2285,6 +2408,21 @@ async function performWebUntisSync(userOverride, passOverride) {
 
       const fullText = `${catName} ${reason} ${evt.text || ''}`.toLowerCase();
       const isExam = /\b(klausur|klassenarbeit|prüfung|pruefung|arbeit|test|leistungsnachweis|nachschreib|zk|abschlussprüfung|facharbeit)\b/i.test(fullText);
+
+      const isAbsenceEvt = /\b(abwesend|abwesenheit|krank|krankmeldung|fehlt|fehlzeit|versp\u00e4tung|verspaetung|entschuldigung|attest|arzt)\b/i.test(fullText);
+      if (isAbsenceEvt && !isExam) {
+        const isExc = /\b(entschuldigt|beurlaubt|genehmigt|attest)\b/i.test(fullText);
+        addUniqueAbsence({
+          id: `classreg-abs-${evt.id || dStr + '-' + sTime + '-' + idx}`,
+          startDate: isoDate,
+          endDate: isoDate,
+          startTime: formatUntisTimeToStr(sTime),
+          endTime: formatUntisTimeToStr(eTime),
+          reason: reason || catName || 'Fehlzeit laut Klassenbuch',
+          isExcused: isExc,
+          hours: 1
+        });
+      }
 
       if (isExam) {
         addUniqueExam({
@@ -2859,77 +2997,121 @@ async function performWebUntisSync(userOverride, passOverride) {
     const absenceKeySet = new Set();
 
     function addUniqueAbsence(absItem) {
-      if (!absItem || !absItem.startDate) return;
-      const key = `${absItem.startDate}_${absItem.startTime}_${(absItem.reason || '').toLowerCase().trim()}`;
+      if (!absItem) return;
+      const sRaw = absItem.startDate || absItem.date;
+      if (!sRaw) return;
+      const sStr = String(sRaw).replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
+      if (sStr.length !== 8) return;
+      const sIso = `${sStr.slice(0, 4)}-${sStr.slice(4, 6)}-${sStr.slice(6, 8)}`;
+      absItem.startDate = sIso;
+      if (!absItem.endDate) absItem.endDate = sIso;
+
+      const sTimeStr = absItem.startTime ? formatUntisTimeToStr(absItem.startTime) : '07:45';
+      const eTimeStr = absItem.endTime ? formatUntisTimeToStr(absItem.endTime) : '15:10';
+      absItem.startTime = sTimeStr;
+      absItem.endTime = eTimeStr;
+
+      const key = `${sIso}_${sTimeStr}_${(absItem.reason || '').toLowerCase().trim()}`;
       if (!absenceKeySet.has(key)) {
         absenceKeySet.add(key);
         newAbsences.push(absItem);
       }
     }
 
+    // A. Stundenplan-Fehlzeiten einbinden
+    if (typeof timetableAbsences !== 'undefined' && Array.isArray(timetableAbsences)) {
+      timetableAbsences.forEach(addUniqueAbsence);
+    }
+
+    // B. JSON-RPC Fehlzeiten (Mobile getStudentAbsences2017 & Standard)
     if (absenceResponses && Array.isArray(absenceResponses)) {
       absenceResponses.forEach(res => {
-        if (!res || !res.result) return;
-        const rawList = Array.isArray(res.result) ? res.result : (res.result.absences || []);
-        rawList.forEach((ab, idx) => {
-          const sRaw = ab.startDate || ab.date;
-          if (!sRaw) return;
-          const sStr = String(sRaw).replace(/-/g, '').trim();
-          if (sStr.length < 8) return;
-          const sIso = `${sStr.slice(0, 4)}-${sStr.slice(4, 6)}-${sStr.slice(6, 8)}`;
+        if (!res) return;
+        const targetObj = res.result || res.data || res;
+        const rawList = Array.isArray(targetObj) ? targetObj : (targetObj.absences || targetObj.studentAbsences || (targetObj.data && targetObj.data.absences) || []);
+        if (Array.isArray(rawList)) {
+          rawList.forEach((ab, idx) => {
+            const sRaw = ab.startDate || ab.date;
+            if (!sRaw) return;
+            const isExc = !!(ab.isExcused || ab.excused || (ab.excuse && ab.excuse.isExcused) || (ab.excuseStatus && String(ab.excuseStatus).toLowerCase() === 'excused'));
+            let reason = ab.reason || ab.text || (ab.excuse && (ab.excuse.text || ab.excuse.reason)) || '';
+            if (!reason && ab.reasonId && window.absenceReasonsMap && window.absenceReasonsMap[ab.reasonId]) {
+              reason = window.absenceReasonsMap[ab.reasonId];
+            }
+            if (!reason) reason = isExc ? 'Entschuldigte Fehlzeit' : 'Unentschuldigte Fehlzeit';
 
-          const eRaw = ab.endDate || ab.startDate || ab.date;
-          const eStr = String(eRaw).replace(/-/g, '').trim();
-          const eIso = (eStr.length >= 8) ? `${eStr.slice(0, 4)}-${eStr.slice(4, 6)}-${eStr.slice(6, 8)}` : sIso;
-
-          const isExc = !!(ab.isExcused || ab.excused || (ab.excuseStatus && String(ab.excuseStatus).toLowerCase() === 'excused'));
-          const reason = ab.reason || ab.text || ab.excuse || (isExc ? 'Entschuldigte Fehlzeit' : 'Unentschuldigt / Offen');
-          const startT = ab.startTime ? formatUntisTimeToStr(ab.startTime) : '07:45';
-          const endT = ab.endTime ? formatUntisTimeToStr(ab.endTime) : '15:10';
-
-          addUniqueAbsence({
-            id: String(ab.id || `abs-${idx}-${sIso}`),
-            startDate: sIso,
-            endDate: eIso,
-            startTime: startT,
-            endTime: endT,
-            reason: reason,
-            isExcused: isExc,
-            hours: ab.hours || ab.absentHours || 1
+            addUniqueAbsence({
+              id: String(ab.id || `rpc-abs-${idx}-${sRaw}`),
+              startDate: sRaw,
+              endDate: ab.endDate || sRaw,
+              startTime: ab.startTime || '07:45',
+              endTime: ab.endTime || '15:10',
+              reason: reason,
+              isExcused: isExc,
+              hours: ab.hours || ab.absentHours || 1
+            });
           });
-        });
+        }
       });
     }
 
-    if (restAbsencesRes) {
-      const restAbsList = Array.isArray(restAbsencesRes) ? restAbsencesRes : (restAbsencesRes.data || restAbsencesRes.absences || []);
-      if (Array.isArray(restAbsList)) {
-        restAbsList.forEach((ab, idx) => {
-          const sRaw = ab.startDate || ab.date;
-          if (!sRaw) return;
-          const sStr = String(sRaw).replace(/-/g, '').trim();
-          if (sStr.length < 8) return;
-          const sIso = `${sStr.slice(0, 4)}-${sStr.slice(4, 6)}-${sStr.slice(6, 8)}`;
-          const isExc = !!(ab.isExcused || ab.excused || (ab.excuseStatus && String(ab.excuseStatus).toLowerCase() === 'excused'));
-          const reason = ab.reason || ab.text || (isExc ? 'Entschuldigt' : 'Offen');
+    // C. REST Fehlzeiten-Ergebnisse verarbeiten
+    if (restAbsencesRes && Array.isArray(restAbsencesRes)) {
+      restAbsencesRes.forEach(rObj => {
+        if (!rObj) return;
+        if (rObj.data && Array.isArray(rObj.data.absenceReasons)) {
+          if (!window.absenceReasonsMap) window.absenceReasonsMap = {};
+          rObj.data.absenceReasons.forEach(ar => { if (ar && ar.id) window.absenceReasonsMap[ar.id] = ar.name || ar.longName; });
+        }
+        const restAbsList = Array.isArray(rObj) ? rObj : (rObj.data?.rows || rObj.data?.absences || rObj.data || rObj.absences || []);
+        if (Array.isArray(restAbsList)) {
+          restAbsList.forEach((ab, idx) => {
+            const sRaw = ab.startDate || ab.date || ab.createDate;
+            if (!sRaw) return;
+            const isExc = !!(ab.isExcused || ab.excused || (ab.excuse && ab.excuse.isExcused) || (ab.excuseStatus && String(ab.excuseStatus).toLowerCase() === 'excused'));
+            let reason = ab.reason || ab.text || ab.eventReasonName || ab.categoryName || '';
+            if (!reason && ab.reasonId && window.absenceReasonsMap && window.absenceReasonsMap[ab.reasonId]) {
+              reason = window.absenceReasonsMap[ab.reasonId];
+            }
+            if (!reason) reason = isExc ? 'Entschuldigt' : 'Unentschuldigt';
 
-          addUniqueAbsence({
-            id: String(ab.id || `rest-abs-${idx}`),
-            startDate: sIso,
-            endDate: sIso,
-            startTime: ab.startTime ? String(ab.startTime).slice(0, 5) : '07:45',
-            endTime: ab.endTime ? String(ab.endTime).slice(0, 5) : '15:10',
-            reason: reason,
-            isExcused: isExc,
-            hours: ab.hours || 1
+            addUniqueAbsence({
+              id: String(ab.id || `rest-abs-${idx}-${sRaw}`),
+              startDate: sRaw,
+              endDate: ab.endDate || sRaw,
+              startTime: ab.startTime || ab.createTime || '07:45',
+              endTime: ab.endTime || '15:10',
+              reason: reason,
+              isExcused: isExc,
+              hours: ab.hours || 1
+            });
           });
-        });
-      }
+        }
+      });
     }
 
+    // D. Dauerhaft lokal erfasste Schüler-Krankmeldungen hinzufügen
+    try {
+      const customAbsList = JSON.parse(localStorage.getItem('webuntis_custom_absences') || '[]');
+      if (Array.isArray(customAbsList)) {
+        customAbsList.forEach(ca => {
+          addUniqueAbsence(ca);
+        });
+      }
+    } catch (e) { }
+
     // Chronologisch absteigend sortieren (neueste zuerst)
-    newAbsences.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+    newAbsences.sort((a, b) => {
+      const dComp = new Date(b.startDate) - new Date(a.startDate);
+      if (dComp !== 0) return dComp;
+      return (b.startTime || '').localeCompare(a.startTime || '');
+    });
     appData.absences = newAbsences;
+
+    // Im Cache sichern
+    try {
+      localStorage.setItem('webuntis_cached_absences', JSON.stringify(newAbsences));
+    } catch (e) { }
 
     // 14. Klassenbuch & Lehrstoff sammeln
     const newClassbook = [];
