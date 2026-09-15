@@ -697,7 +697,7 @@ function showLoginView() {
   const statusEl = document.getElementById('sync-status-text');
   if (statusEl) statusEl.textContent = 'Bitte anmelden';
 
-  announceSR('Willkommen beim barrierefreien Stundenplan des LWL-Berufskollegs Soest. Bitte melde dich mit deinen WebUntis-Zugangsdaten an.', 'assertive');
+  announceSR('Willkommen bei Barrierefreies WebUntis für blinde und sehbehinderte Schülerinnen und Schüler. Bitte melde dich mit deinen WebUntis-Zugangsdaten an.', 'assertive');
 }
 
 function hideLoginView() {
@@ -744,7 +744,7 @@ async function handleLoginSubmit(e) {
     statusBox.style.display = 'block';
     statusBox.innerHTML = `
       <div style="background: rgba(2, 132, 199, 0.1); border: 2px solid var(--accent-info); padding: 14px; border-radius: 8px;">
-        <strong style="color: var(--accent-info);"><span class="emoji-icon" aria-hidden="true">🔄 </span>Melde an WebUntis des LWL-Berufskollegs Soest an...</strong>
+        <strong style="color: var(--accent-info);"><span class="emoji-icon" aria-hidden="true">🔄 </span>Melde an WebUntis (${escHtml(appData.config.schoolName || "deiner Schule")}) an...</strong>
       </div>
     `;
   }
@@ -3080,7 +3080,7 @@ function triggerManualSync() {
 function openOfficialWebUntis() {
   const url = `https://${appData.config.server}/WebUntis/?school=${appData.config.schoolShort}`;
   window.open(url, '_blank', 'noopener,noreferrer');
-  announceSR('Offizielles WebUntis des LWL-Berufskollegs Soest wird geöffnet.', 'polite');
+  announceSR('Offizielles WebUntis wird geöffnet.', 'polite');
 }
 
 // =============================================================================
@@ -3905,7 +3905,7 @@ function renderExams() {
   if (syBadge) syBadge.textContent = `Schuljahr ${schoolYearName}`;
 
   const subtitle = document.getElementById('exams-schoolyear-subtitle');
-  if (subtitle) subtitle.textContent = `Vollständige Jahresübersicht aller Klausuren, Arbeiten und Ferientermine für das Schuljahr ${schoolYearName} am LWL-Berufskolleg Soest.`;
+  if (subtitle) subtitle.textContent = `Vollständige Jahresübersicht aller Klausuren, Arbeiten und Ferientermine für das Schuljahr ${schoolYearName} .`;
 
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -4006,7 +4006,7 @@ function renderExams() {
         <div class="status-box" style="padding: 32px; text-align: center;">
           <span class="emoji-icon" style="font-size: 40px;" aria-hidden="true">📝</span>
           <h3 style="font-size: var(--font-size-lg); font-weight: bold; margin-top: 12px;">Keine Prüfungen in WebUntis eingetragen</h3>
-          <p class="field-hint" style="max-width: 520px; margin: 8px auto 0;">In deinem WebUntis-Konto am LWL-Berufskolleg Soest sind aktuell keine Klausuren oder Prüfungen hinterlegt. Sobald deine Lehrkräfte oder das Schulbüro Arbeiten ansetzen, werden diese hier automatisch synchronisiert.</p>
+          <p class="field-hint" style="max-width: 520px; margin: 8px auto 0;">In deinem WebUntis-Konto sind aktuell keine Klausuren oder Prüfungen hinterlegt. Sobald deine Lehrkräfte oder das Schulbüro Arbeiten ansetzen, werden diese hier automatisch synchronisiert.</p>
           <button type="button" class="btn btn-secondary" style="margin-top: 16px;" onclick="setExamFilter('all')">
             Alle Termine & Ferien anzeigen
           </button>
@@ -4163,7 +4163,7 @@ function readAllExamsAndEvents() {
 
   const syName = appData.schoolYear ? appData.schoolYear.name : '2026/2027';
 
-  let text = `Jahresübersicht für das Schuljahr ${syName} am LWL-Berufskolleg Soest. `;
+  let text = `Jahresübersicht für das Schuljahr ${syName} . `;
   text += `Du hast insgesamt ${upcomingExams.length} anstehende Prüfungen und ${upcomingHolidays.length} anstehende Ferien- und Feiertage. `;
 
   if (upcomingExams.length > 0) {
