@@ -172,6 +172,26 @@ async function syncIServData(userInitiated = false) {
       else if (mData.data && mData.data.data && Array.isArray(mData.data.data)) rawList = mData.data.data;
       else if (Array.isArray(mData)) rawList = mData;
 
+      if (rawList.length === 0 && mData.data && mData.data.accounts && mData.data.accounts.valid) {
+        const validAccs = Object.values(mData.data.accounts.valid);
+        validAccs.forEach(acc => {
+          const mboxes = acc.mailboxes && acc.mailboxes.mailboxes;
+          if (mboxes) {
+            const inbox = mboxes.inbox;
+            if (inbox && inbox.totalCount > 0) {
+              rawList.push({
+                id: 'iserv-mail-inbox-summary',
+                from: acc.displayName || acc.username || 'IServ Posteingang',
+                subject: `Posteingang: ${inbox.totalCount} E-Mails (${inbox.unreadCount} ungelesen)`,
+                preview: `In deinem offiziellen IServ-Postfach (${acc.displayName || ''}) befinden sich aktuell ${inbox.totalCount} E-Mails, davon ${inbox.unreadCount} neu/ungelesen. Klicke auf „In IServ öffnen“, um alle E-Mails direkt zu lesen oder zu beantworten.`,
+                date: new Date().toISOString(),
+                unread: (inbox.unreadCount > 0)
+              });
+            }
+          }
+        });
+      }
+
       appData.iservEmails = rawList.map((m, idx) => {
         let senderStr = 'Unbekannt';
         if (m.from && Array.isArray(m.from) && m.from[0]) {
@@ -217,11 +237,21 @@ async function syncIServData(userInitiated = false) {
     if (cRes.ok) {
       const cData = await cRes.json();
       let eventList = [];
-      if (cData.upcoming && Array.isArray(cData.upcoming)) {
-        eventList = eventList.concat(cData.upcoming);
+      if (cData.upcoming) {
+        if (Array.isArray(cData.upcoming)) {
+          eventList = eventList.concat(cData.upcoming);
+        } else if (cData.upcoming.events && Array.isArray(cData.upcoming.events)) {
+          eventList = eventList.concat(cData.upcoming.events);
+        }
       }
-      if (cData.events && Array.isArray(cData.events)) {
-        eventList = eventList.concat(cData.events);
+      if (cData.events) {
+        if (Array.isArray(cData.events)) {
+          eventList = eventList.concat(cData.events);
+        } else if (typeof cData.events === 'object') {
+          Object.values(cData.events).forEach(feedItems => {
+            if (Array.isArray(feedItems)) eventList = eventList.concat(feedItems);
+          });
+        }
       }
 
       // Deduplizieren und normalisieren
@@ -259,7 +289,8 @@ async function syncIServData(userInitiated = false) {
     if (exRes.ok) {
       const exData = await exRes.json();
       let rawTasks = [];
-      if (exData.data && Array.isArray(exData.data)) rawTasks = exData.data;
+      if (exData.exercises && Array.isArray(exData.exercises)) rawTasks = exData.exercises;
+      else if (exData.data && Array.isArray(exData.data)) rawTasks = exData.data;
       else if (exData.data && exData.data.data && Array.isArray(exData.data.data)) rawTasks = exData.data.data;
       else if (Array.isArray(exData)) rawTasks = exData;
 

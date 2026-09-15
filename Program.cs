@@ -1859,6 +1859,7 @@ namespace BarrierefreierStundenplan
                 if (rawUrl.Length > 10) subPath = rawUrl.Substring(10);
                 if (subPath.Contains("?")) subPath = subPath.Substring(0, subPath.IndexOf('?'));
                 subPath = subPath.Trim('/');
+                LogUntis("ProxyIServ: " + req.HttpMethod + " " + rawUrl);
 
                 // Lese Anmeldedaten aus Headern (falls vom Client dynamisch übermittelt)
                 string srvHdr = req.Headers["X-IServ-Server"];
@@ -2052,8 +2053,11 @@ namespace BarrierefreierStundenplan
                 HttpWebRequest mReq = (HttpWebRequest)WebRequest.Create(url);
                 mReq.CookieContainer = _iservCookies;
                 mReq.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-                mReq.Headers["Accept"] = "application/json, text/html, */*";
+                mReq.Accept = "application/json, text/javascript, */*; q=0.01";
+                mReq.Headers["X-Requested-With"] = "XMLHttpRequest";
+                mReq.Referer = "https://" + _iservHost + "/iserv/mail";
                 mReq.Timeout = 15000;
+                LogUntis("HandleIServEmails: Requesting " + url);
 
                 string content;
                 using (HttpWebResponse mResp = (HttpWebResponse)mReq.GetResponse())
@@ -2061,16 +2065,21 @@ namespace BarrierefreierStundenplan
                 {
                     content = sr.ReadToEnd();
                 }
+                LogUntis("HandleIServEmails: Received " + (content != null ? content.Length : 0) + " bytes");
 
                 string jsonOutput = "";
-                Match mPhp = Regex.Match(content, "<script[^>]*id=[\"']php-data[\"'][^>]*>([\\s\\S]*?)</script>", RegexOptions.IgnoreCase);
-                if (mPhp.Success)
+                string trimmed = (content ?? "").Trim();
+                if (trimmed.StartsWith("{") || trimmed.StartsWith("["))
                 {
-                    jsonOutput = mPhp.Groups[1].Value.Trim();
+                    jsonOutput = trimmed;
                 }
-                else if (content.Trim().StartsWith("{") || content.Trim().StartsWith("["))
+                else
                 {
-                    jsonOutput = content.Trim();
+                    Match mPhp = Regex.Match(content, "<script[^>]*id=[\"']php-data[\"'][^>]*>([\\s\\S]*?)</script>", RegexOptions.IgnoreCase);
+                    if (mPhp.Success)
+                    {
+                        jsonOutput = mPhp.Groups[1].Value.Trim();
+                    }
                 }
 
                 if (!string.IsNullOrEmpty(jsonOutput))
