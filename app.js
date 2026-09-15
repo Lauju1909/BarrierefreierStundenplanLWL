@@ -3103,16 +3103,24 @@ async function performWebUntisSync(userOverride, passOverride) {
             );
 
             let reasonParts = [];
-            if (ab.absenceReason) reasonParts.push(ab.absenceReason);
-            if (ab.reason && ab.reason !== ab.absenceReason) reasonParts.push(ab.reason);
+            const specificText = (ab.text || (ab.excuse && ab.excuse.text) || '').trim();
+            const genericCategory = (ab.absenceReason || ab.reason || '').trim();
+
+            if (genericCategory && !/^abwesend ohne grund$/i.test(genericCategory)) {
+              reasonParts.push(genericCategory);
+            }
+            if (specificText && !reasonParts.includes(specificText)) {
+              reasonParts.push(specificText);
+            }
+            if (!reasonParts.length && genericCategory) {
+              reasonParts.push(genericCategory);
+            }
             if (!reasonParts.length && ab.reasonId && window.absenceReasonsMap && window.absenceReasonsMap[ab.reasonId]) {
               reasonParts.push(window.absenceReasonsMap[ab.reasonId]);
             }
             if (!reasonParts.length && ab.absenceReasonId && window.absenceReasonsMap && window.absenceReasonsMap[ab.absenceReasonId]) {
               reasonParts.push(window.absenceReasonsMap[ab.absenceReasonId]);
             }
-            if (ab.text && !reasonParts.includes(ab.text)) reasonParts.push(ab.text);
-            if (ab.excuse && ab.excuse.text && !reasonParts.includes(ab.excuse.text)) reasonParts.push(ab.excuse.text);
 
             let reason = reasonParts.filter(Boolean).join(' – ') || (isExc ? 'Entschuldigte Fehlzeit' : 'Unentschuldigte Fehlzeit');
 
@@ -3191,11 +3199,18 @@ async function performWebUntisSync(userOverride, passOverride) {
             );
 
             let reasonParts = [];
-            if (ab.absenceReason) reasonParts.push(ab.absenceReason);
-            if (ab.reason && ab.reason !== ab.absenceReason) reasonParts.push(ab.reason);
-            if (ab.eventReasonName) reasonParts.push(ab.eventReasonName);
-            if (ab.categoryName) reasonParts.push(ab.categoryName);
-            if (ab.text && !reasonParts.includes(ab.text)) reasonParts.push(ab.text);
+            const specificText = (ab.text || '').trim();
+            const genericCategory = (ab.absenceReason || ab.reason || ab.eventReasonName || ab.categoryName || '').trim();
+
+            if (genericCategory && !/^abwesend ohne grund$/i.test(genericCategory)) {
+              reasonParts.push(genericCategory);
+            }
+            if (specificText && !reasonParts.includes(specificText)) {
+              reasonParts.push(specificText);
+            }
+            if (!reasonParts.length && genericCategory) {
+              reasonParts.push(genericCategory);
+            }
 
             let reason = reasonParts.filter(Boolean).join(' – ') || (isExc ? 'Entschuldigt' : 'Unentschuldigt');
 
@@ -5826,23 +5841,25 @@ function renderAbsences() {
     const statusClass = abs.isExcused ? 'excused' : 'unexcused';
     const isCustom    = !!abs.isCustom;
 
+    let cleanReason = (abs.reason || '').trim();
+    if (/^Abwesend ohne Grund\s*[–\-:]\s*(.+)$/i.test(cleanReason)) {
+      const m = cleanReason.match(/^Abwesend ohne Grund\s*[–\-:]\s*(.+)$/i);
+      if (m && m[1] && m[1].trim()) cleanReason = m[1].trim();
+    }
+
     html += `
-      <article class="absence-item ${statusClass}" role="article" tabindex="0"
-               aria-label="Fehlzeit am ${dateStr}, ${timeStr}, ${statusText}">
+      <article class="absence-item ${statusClass}">
         <div class="absence-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
           <div>
             <h4 class="absence-date" style="margin: 0; font-size: 1.15rem; font-weight: bold;">
-              <span class="emoji-icon" aria-hidden="true">📅 </span>${dateStr}
+              <span class="emoji-icon" aria-hidden="true">📅 </span>${dateStr} <span style="font-weight: normal; font-size: 0.95rem; color: var(--text-secondary); margin-left: 8px;"><span class="emoji-icon" aria-hidden="true">⏰ </span>${timeStr} (${abs.hours || 1} Std.)</span>
             </h4>
-            <span class="absence-time" style="font-size: 0.95rem; color: var(--text-secondary); display: inline-block; margin-top: 4px;">
-              <span class="emoji-icon" aria-hidden="true">⏰ </span>${timeStr}
-            </span>
           </div>
           <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
             <span class="absence-status ${statusClass}" style="font-weight: bold;">${statusLabel}</span>
             <button type="button" class="btn btn-secondary" style="min-height: 32px; padding: 3px 8px; font-size: 0.85rem;"
                     onclick="toggleAbsenceExcusedStatus('${abs.id}')"
-                    aria-label="Status für Fehlzeit am ${dateStr} umschalten (aktuell ${statusText})">
+                    aria-label="${abs.isExcused ? 'Status umschalten: als unentschuldigt markieren' : 'Status umschalten: als entschuldigt markieren'}">
               <span>Status ändern</span>
             </button>
             ${isCustom ? `
@@ -5855,7 +5872,7 @@ function renderAbsences() {
           </div>
         </div>
         ${abs.subject ? `<div style="margin-top: 6px;"><span class="absence-subject"><span class="emoji-icon" aria-hidden="true">📘 </span>Fach: ${escHtml(abs.subject)}</span></div>` : ''}
-        ${abs.reason  ? `<div style="margin-top: 6px;"><span class="absence-reason"><strong>Grund:</strong> ${escHtml(abs.reason)}</span></div>`  : ''}
+        ${cleanReason ? `<div style="margin-top: 6px;"><span class="absence-reason"><strong>Grund:</strong> ${escHtml(cleanReason)}</span></div>` : ''}
       </article>`;
   });
 
