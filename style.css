@@ -1433,10 +1433,10 @@ body.theme-high-contrast .gpa-big-number {
   line-height: 1.2;
 }
 .absence-stat-label {
-  font-size: 14px;
+  font-size: 15px;
   color: var(--text-secondary);
   font-weight: 600;
-  margin-top: 4px;
+  margin-bottom: 6px;
 }
 
 .absence-item {

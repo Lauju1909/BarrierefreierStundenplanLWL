@@ -539,21 +539,21 @@
       <!-- STATISTIK-KARTEN -->
       <h3 class="sr-only">Fehlzeiten-Statistik</h3>
       <div class="absence-stats-grid" id="absence-stats-container">
-        <div class="absence-stat-card">
-          <div class="absence-stat-number" id="stat-absence-days">0</div>
-          <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">📅 </span>Fehltage gesamt</div>
-        </div>
-        <div class="absence-stat-card">
-          <div class="absence-stat-number" id="stat-absence-hours">0</div>
+        <div class="absence-stat-card" id="card-stat-hours" role="region" aria-label="Fehlstunden gesamt: 0 Stunden">
           <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">⏱️ </span>Fehlstunden gesamt</div>
+          <div class="absence-stat-number"><span id="stat-absence-hours">0</span> <span style="font-size: 1.1rem; font-weight: normal;">Std.</span></div>
         </div>
-        <div class="absence-stat-card">
-          <div class="absence-stat-number" id="stat-absence-excused" style="color: var(--accent-ok);">0</div>
+        <div class="absence-stat-card" id="card-stat-days" role="region" aria-label="Ganze Fehltage: 0 Tage">
+          <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">📅 </span>Ganze Fehltage</div>
+          <div class="absence-stat-number"><span id="stat-absence-days">0</span> <span style="font-size: 1.1rem; font-weight: normal;">Tage</span></div>
+        </div>
+        <div class="absence-stat-card" id="card-stat-excused" role="region" aria-label="Entschuldigt: 0 Stunden">
           <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">🟢 </span>Entschuldigt</div>
+          <div class="absence-stat-number" style="color: var(--accent-ok);"><span id="stat-absence-excused">0</span> <span style="font-size: 1.1rem; font-weight: normal;">Std.</span></div>
         </div>
-        <div class="absence-stat-card">
-          <div class="absence-stat-number" id="stat-absence-unexcused" style="color: var(--accent-danger);">0</div>
+        <div class="absence-stat-card" id="card-stat-unexcused" role="region" aria-label="Unentschuldigt oder offen: 0 Stunden">
           <div class="absence-stat-label"><span class="emoji-icon" aria-hidden="true">🔴 </span>Unentschuldigt / Offen</div>
+          <div class="absence-stat-number" style="color: var(--accent-danger);"><span id="stat-absence-unexcused">0</span> <span style="font-size: 1.1rem; font-weight: normal;">Std.</span></div>
         </div>
       </div>
 

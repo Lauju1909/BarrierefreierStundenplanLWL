@@ -5746,34 +5746,62 @@ function renderAbsences() {
   const excusedEl  = document.getElementById('stat-absence-excused');
   const openEl     = document.getElementById('stat-absence-unexcused');
 
-  // Fehltage: Anzahl unterschiedlicher Kalendertage
-  const distinctDays = new Set(absences.map(a => (a.startDate || a.date || '').slice(0, 10)).filter(Boolean)).size;
-  const excusedCount = absences.filter(a => !!a.isExcused).length;
-  const openCount    = absences.filter(a => !a.isExcused).length;
+  const cardHours     = document.getElementById('card-stat-hours');
+  const cardDays      = document.getElementById('card-stat-days');
+  const cardExcused   = document.getElementById('card-stat-excused');
+  const cardUnexcused = document.getElementById('card-stat-unexcused');
 
-  // Fehlstunden berechnen
+  let fullDays = 0;
+  let partialDays = 0;
   let totalHours = 0;
+  let excusedHours = 0;
+  let openHours = 0;
+  const dayMap = {};
+
   absences.forEach(a => {
+    let h = 1;
     if (a.hours && typeof a.hours === 'number') {
-      totalHours += a.hours;
+      h = a.hours;
     } else if (a.startTime && a.endTime) {
       const sMin = parseMinutesFromTimeStr(a.startTime);
       const eMin = parseMinutesFromTimeStr(a.endTime);
       const diff = eMin - sMin;
-      if (diff > 0) {
-        totalHours += Math.max(1, Math.round(diff / 45));
-      } else {
-        totalHours += 1;
-      }
+      h = diff > 0 ? Math.max(1, Math.round(diff / 45)) : 1;
     } else {
-      totalHours += 6; // Ganztägige Fehlzeit (Standard: 6 Stunden)
+      h = 6; // Ganztägige Fehlzeit (Standard: 6 Stunden)
+    }
+    totalHours += h;
+    if (a.isExcused) {
+      excusedHours += h;
+    } else {
+      openHours += h;
+    }
+
+    const dayKey = (a.startDate || a.date || '').slice(0, 10);
+    if (dayKey) {
+      if (!dayMap[dayKey]) dayMap[dayKey] = 0;
+      dayMap[dayKey] += h;
     }
   });
 
-  if (totalEl)    totalEl.textContent    = String(distinctDays || absences.length);
-  if (hoursEl)    hoursEl.textContent    = String(totalHours);
-  if (excusedEl)  excusedEl.textContent  = String(excusedCount);
-  if (openEl)     openEl.textContent     = String(openCount);
+  Object.values(dayMap).forEach(dayH => {
+    if (dayH >= 5) fullDays += 1;
+    else partialDays += 1;
+  });
+
+  if (hoursEl)   hoursEl.textContent   = String(totalHours);
+  if (totalEl)   totalEl.textContent   = String(fullDays);
+  if (excusedEl) excusedEl.textContent = String(excusedHours);
+  if (openEl)    openEl.textContent    = String(openHours);
+
+  if (cardHours) cardHours.setAttribute('aria-label', `Fehlstunden gesamt: ${totalHours} Stunden`);
+  if (cardDays) {
+    const dayLabel = fullDays === 1 ? '1 ganzer Fehltag' : `${fullDays} ganze Fehltage`;
+    const partLabel = partialDays > 0 ? ` (${partialDays} Tag mit Verspätung bzw. Teil-Fehlzeit)` : '';
+    cardDays.setAttribute('aria-label', `${dayLabel}${partLabel}`);
+  }
+  if (cardExcused) cardExcused.setAttribute('aria-label', `Entschuldigte Fehlstunden: ${excusedHours} Stunden`);
+  if (cardUnexcused) cardUnexcused.setAttribute('aria-label', `Unentschuldigte Fehlstunden: ${openHours} Stunden`);
 
   if (absences.length === 0) {
     container.innerHTML = `
@@ -5991,29 +6019,68 @@ function toggleAbsenceExcusedStatus(id) {
 
 function readAbsencesSummary() {
   const absences = appData.absences || [];
-  const distinctDays = new Set(absences.map(a => (a.startDate || a.date || '').slice(0, 10)).filter(Boolean)).size;
-  const total   = absences.length;
-  const excused = absences.filter(a => !!a.isExcused).length;
-  const open    = total - excused;
 
+  let fullDays = 0;
+  let partialDays = 0;
+  let totalHours = 0;
+  let excusedHours = 0;
+  let openHours = 0;
+  const dayMap = {};
+
+  absences.forEach(a => {
+    let h = 1;
+    if (a.hours && typeof a.hours === 'number') {
+      h = a.hours;
+    } else if (a.startTime && a.endTime) {
+      const sMin = parseMinutesFromTimeStr(a.startTime);
+      const eMin = parseMinutesFromTimeStr(a.endTime);
+      const diff = eMin - sMin;
+      h = diff > 0 ? Math.max(1, Math.round(diff / 45)) : 1;
+    } else {
+      h = 6;
+    }
+    totalHours += h;
+    if (a.isExcused) {
+      excusedHours += h;
+    } else {
+      openHours += h;
+    }
+
+    const dayKey = (a.startDate || a.date || '').slice(0, 10);
+    if (dayKey) {
+      if (!dayMap[dayKey]) dayMap[dayKey] = 0;
+      dayMap[dayKey] += h;
+    }
+  });
+
+  Object.values(dayMap).forEach(dayH => {
+    if (dayH >= 5) fullDays += 1;
+    else partialDays += 1;
+  });
+
+  const total = absences.length;
   const todayIso = new Date().toISOString().slice(0, 10);
   const todayAbsences = absences.filter(a => (a.startDate || a.date || '').slice(0, 10) === todayIso);
 
-  let text = `Fehlzeiten-Übersicht: Du hast insgesamt ${distinctDays} Fehltag${distinctDays !== 1 ? 'e' : ''} mit ${total} erfassten Fehlzeiten`;
-  if (total > 0) {
-    text += `, davon ${excused} entschuldigt und ${open} unentschuldigt oder offen`;
+  let text = `Fehlzeiten-Übersicht: Du hast insgesamt ${totalHours} Fehlstunde${totalHours !== 1 ? 'n' : ''} und ${fullDays} ganze Fehltag${fullDays !== 1 ? 'e' : ''}`;
+  if (partialDays > 0 && fullDays === 0) {
+    text += ` (${partialDays} Tag mit Verspätung bzw. Teil-Fehlzeit)`;
+  }
+  if (totalHours > 0) {
+    text += `, davon ${excusedHours} Stunden entschuldigt und ${openHours} Stunden unentschuldigt oder offen`;
   }
   text += '. ';
 
   if (todayAbsences.length > 0) {
-    text += `Wichtig: Für den heutigen Tag liegen ${todayAbsences.length} erfasste Fehlzeiten vor: `;
+    text += `Wichtig für heute: Es liegt eine Verspätung bzw. Fehlzeit von `;
     todayAbsences.forEach(ta => {
-      text += `Grund: ${ta.reason || 'Krank'}. Status: ${ta.isExcused ? 'Entschuldigt' : 'Noch offen'}. `;
+      const h = ta.hours || 1;
+      text += `${h} Stunde${h !== 1 ? 'n' : ''} vor (${ta.startTime || ''} bis ${ta.endTime || ''} Uhr). Grund: ${ta.reason || 'Krank'}. Status: ${ta.isExcused ? 'Entschuldigt' : 'Noch unentschuldigt'}. `;
     });
   }
 
-  if (open > 0) {
-    text += `Du hast aktuell noch ${open} unentschuldigte Fehlzeit${open !== 1 ? 'en' : ''}. Reiche zeitnah eine Entschuldigung ein.`;
+  if (openHours > 0) {
+    text += `Du hast aktuell noch ${openHours} unentschuldigte Fehlstunde${openHours !== 1 ? 'n' : ''}. Reiche zeitnah eine Entschuldigung ein.`;
   } else if (total > 0) {
     text += 'Alle deine erfassten Fehlzeiten sind vollständig entschuldigt.';
   } else {
