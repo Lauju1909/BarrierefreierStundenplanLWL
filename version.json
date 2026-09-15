@@ -1,11 +1,13 @@
 {
-  "version": "1.9.15",
+  "version": "1.9.16",
   "name": "Barrierefreies WebUntis",
   "buildDate": "2026-09-15",
   "repository": "https://github.com/Lauju1909/BarrierefreiesWebUntis",
   "executable": "Barrierefreies_WebUntis.exe",
   "features": [
-    "Für blinde & sehbehinderte Schülerinnen und Schüler aller Schulen: Alle Titel, Beschreibungen, Audio-Begrüßungen und Fußzeilen wurden einladend, inspirierend und universell formuliert ('Entwickelt für blinde und sehbehinderte Schülerinnen und Schüler • 100% barrierefrei • Optimiert für NVDA, JAWS, Braillezeilen und Windows-Tastatursteuerung'), damit sich Schüler jeder Schule angesprochen fühlen.",
+    "Umfassender Barrierefreiheits- & Code-Audit: 100% dynamische Klassenerkennung im Stundenplan für beliebige Schulen (kein festes BFW2B mehr), dynamische Lehrkräfteliste aus WebUntis, 0 ungeschützte Emojis im gesamten DOM.",
+    "Barrierefreie Audio-Signale (Earcons): Dezente, angenehme Klangsignale für blinde Nutzer bei wichtigen Aktionen (Erfolgreich gespeichert, Erledigt-Haken gesetzt, Dialog geöffnet, Aufgabe gelöscht) für sofortiges taktiles/akustisches Feedback.",
+    "Für blinde & sehbehinderte Schülerinnen und Schüler aller Schulen: Alle Titel, Beschreibungen, Audio-Begrüßungen und Fußzeilen wurden einladend, inspirierend und universell formuliert ('Entwickelt für blinde und sehbehinderte Schülerinnen und Schüler • 100% barrierefrei • Optimiert für NVDA, JAWS, Braillezeilen und Windows-Tastatursteuerung').",
     "Internet-Cloud-Synchronisation für Klasse & Handy: Hausaufgaben werden vollautomatisch über das Internet synchronisiert. Keine manuelle Dateiübertragung mehr nötig.",
     "Dynamische Bereiche für neue Klassen & Schuljahre: Trägt ein Schüler eine Hausaufgabe ein, wird automatisch online ein neuer Bereich für die jeweilige Schule, das Schuljahr und die Klasse angelegt.",
     "Benutzer-Kopplung für persönliche Aufgaben & Erledigt-Status: Private Hausaufgaben und 'Erledigt'-Häkchen sind direkt an das persönliche Benutzerkonto gekoppelt und wandern live zwischen PC und Smartphone mit.",

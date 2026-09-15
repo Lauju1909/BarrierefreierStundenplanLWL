@@ -1,3 +1,72 @@
+
+// =============================================================================
+// BARRIEREFREIE AUDIO-SIGNALE (EARCONS FÜR BLINDE NUTZER)
+// =============================================================================
+let audioCtx = null;
+
+function getAudioContext() {
+  if (!audioCtx && (window.AudioContext || window.webkitAudioContext)) {
+    const AudioCtor = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AudioCtor();
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(() => {});
+  }
+  return audioCtx;
+}
+
+function playEarcon(type) {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    if (type === 'success') {
+      // Dreiklang aufwärts (C5 - E5 - G5)
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(523.25, now); // C5
+      osc.frequency.setValueAtTime(659.25, now + 0.08); // E5
+      osc.frequency.setValueAtTime(783.99, now + 0.16); // G5
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+      osc.start(now);
+      osc.stop(now + 0.35);
+    } else if (type === 'done') {
+      // Zweiklang Erledigt-Haken (G5 - C6)
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(783.99, now);
+      osc.frequency.setValueAtTime(1046.50, now + 0.06);
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+      osc.start(now);
+      osc.stop(now + 0.22);
+    } else if (type === 'open') {
+      // Weicher Aufwärtston beim Öffnen von Dialogen
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.exponentialRampToValueAtTime(660, now + 0.12);
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      osc.start(now);
+      osc.stop(now + 0.18);
+    } else if (type === 'delete') {
+      // Abwärtston beim Löschen
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(550, now);
+      osc.frequency.exponentialRampToValueAtTime(330, now + 0.15);
+      gain.gain.setValueAtTime(0.09, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      osc.start(now);
+      osc.stop(now + 0.2);
+    }
+  } catch (e) { }
+}
+
 /**
  * Barrierefreier Stundenplan & Prüfungsmanager
  * Speziell für das LWL-Berufskolleg Soest (Förderschwerpunkt Sehen)
@@ -818,7 +887,7 @@ async function handleLoginSubmit(e) {
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.innerHTML = '<span class="emoji-icon">🚀</span> <strong>Anmelden &amp; Stundenplan laden</strong>';
+      submitBtn.innerHTML = '<span class="emoji-icon" aria-hidden="true">🚀 </span><strong>Anmelden &amp; Stundenplan laden</strong>';
     }
   }
 }
@@ -3378,9 +3447,16 @@ function parseUntisTimetableItems(items) {
     }
     let klasse = '';
     if (item.kl && Array.isArray(item.kl) && item.kl.length > 0) {
-      const myKlasse = item.kl.find(k => k.name === 'BFW2B' || k.id === 2032 || (k.name && k.name.includes('BFW2B')));
+      const cfgKl = (appData.config.klasse || '').trim().toUpperCase();
+      let myKlasse = null;
+      if (cfgKl) {
+        myKlasse = item.kl.find(k => (k.name && k.name.toUpperCase() === cfgKl) || (k.name && k.name.toUpperCase().includes(cfgKl)));
+      }
+      if (!myKlasse && item.kl.length === 1) {
+        myKlasse = item.kl[0];
+      }
       if (myKlasse) {
-        klasse = myKlasse.name || klassenMap[myKlasse.id] || 'BFW2B';
+        klasse = myKlasse.name || klassenMap[myKlasse.id] || (myKlasse.id ? `Klasse ${myKlasse.id}` : '');
         if (item.kl.length > 1) klasse += ' (Kurs)';
       } else {
         klasse = item.kl.map(k => k.name || klassenMap[k.id] || k.longname || '').filter(Boolean).join(', ');
@@ -4748,6 +4824,12 @@ function openAddHomeworkModal() {
   if (!modal) return;
 
   populateHomeworkSubjectSelect();
+  const optClass = document.getElementById('hw-scope-class-opt');
+  if (optClass) {
+    const klName = appData.config.klasse || (appData.timetable && appData.timetable[0] && appData.timetable[0].klasse) || '';
+    optClass.textContent = '[Klasse] Für meine Klasse' + (klName ? ` (${klName})` : '');
+  }
+
 
   // Standard-Datum auf morgen setzen
   setHwQuickDate(1);
@@ -4762,6 +4844,7 @@ function openAddHomeworkModal() {
   if (firstInput) {
     setTimeout(() => firstInput.focus(), 50);
   }
+  playEarcon('open');
   speak('Hausaufgabe hinzufügen Dialog geöffnet.', true);
 }
 
@@ -4857,6 +4940,7 @@ function handleSaveHomeworkSubmit(event) {
   renderUrgentNotificationBanner();
 
   const scopeLabel = scope === 'class' ? 'für deine Klasse' : 'nur für dich';
+  playEarcon('success');
   speak(`Hausaufgabe für ${subject} ${scopeLabel} gespeichert.`, true);
   announceSR(`Hausaufgabe für ${subject} gespeichert.`, 'polite');
 }
@@ -4881,6 +4965,7 @@ function deleteCustomHomework(hwId) {
 
   renderHomework();
   renderUrgentNotificationBanner();
+  playEarcon('delete');
   speak('Hausaufgabe gelöscht.', true);
   announceSR('Hausaufgabe gelöscht.', 'polite');
 }
@@ -5214,6 +5299,7 @@ function toggleHomeworkCompleted(hwId) {
   syncCloudHomework();
   renderHomework();
   renderUrgentNotificationBanner();
+  playEarcon('done');
   speak(hw.completed ? 'Als erledigt markiert.' : 'Als nicht erledigt markiert.', false);
 }
 
@@ -5928,7 +6014,7 @@ async function checkSoftwareUpdate() {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = '<span class="emoji-icon">🔍</span> <strong>Jetzt auf Updates prüfen</strong>';
+      btn.innerHTML = '<span class="emoji-icon" aria-hidden="true">🔍 </span><strong>Jetzt auf Updates prüfen</strong>';
     }
   }
 }
@@ -6039,7 +6125,7 @@ async function sendUserFeedback(e) {
 
   if (submitBtn) {
     submitBtn.disabled = false;
-    submitBtn.innerHTML = '<span class="emoji-icon">📤</span> <strong>Feedback &amp; Nachricht absenden</strong>';
+    submitBtn.innerHTML = '<span class="emoji-icon" aria-hidden="true">📤 </span><strong>Feedback &amp; Nachricht absenden</strong>';
   }
 
   // Archiv in der App sofort aktualisieren
@@ -6182,7 +6268,24 @@ function getTeachersList() {
   if (appData.teachers && Array.isArray(appData.teachers) && appData.teachers.length > 0) {
     return appData.teachers;
   }
-  return DEFAULT_TEACHERS_FALLBACK;
+  const meta = appData.metadata || {};
+  const teachersMap = meta.teachersMap || {};
+  const list = [];
+  const seen = new Set();
+  for (const idOrCode in teachersMap) {
+    const tName = teachersMap[idOrCode];
+    if (tName && !seen.has(tName)) {
+      seen.add(tName);
+      list.push({ id: idOrCode, name: idOrCode, longName: tName });
+    }
+  }
+  if (list.length > 0) {
+    return list;
+  }
+  if (typeof isSoestCampusSchool === 'function' && isSoestCampusSchool()) {
+    return DEFAULT_TEACHERS_FALLBACK;
+  }
+  return [];
 }
 
 function renderMessagesView() {
