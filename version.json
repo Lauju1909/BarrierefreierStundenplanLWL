@@ -1,10 +1,11 @@
 {
-  "version": "1.9.18",
+  "version": "1.9.19",
   "name": "Barrierefreies WebUntis",
   "buildDate": "2026-09-15",
   "repository": "https://github.com/Lauju1909/BarrierefreiesWebUntis",
   "executable": "Barrierefreies_WebUntis.exe",
   "features": [
+    "WebUntis Fehlzeiten-Erkennung behoben: WebUntis Mobile startDateTime/endDateTime und geteilte Abwesenheitsgruende (z. B. Taxi-Verspaetung, Krankheit) werden sofort erkannt, in der Fehlzeiten-Statistik und Liste angezeigt sowie barrierefrei vorgelesen.",
     "Umfassender Barrierefreiheits- & Code-Audit: 100% dynamische Klassenerkennung im Stundenplan für beliebige Schulen (kein festes BFW2B mehr), dynamische Lehrkräfteliste aus WebUntis, 0 ungeschützte Emojis im gesamten DOM.",
     "Barrierefreie Audio-Signale (Earcons): Dezente, angenehme Klangsignale für blinde Nutzer bei wichtigen Aktionen (Erfolgreich gespeichert, Erledigt-Haken gesetzt, Dialog geöffnet, Aufgabe gelöscht) für sofortiges taktiles/akustisches Feedback.",
     "Für blinde & sehbehinderte Schülerinnen und Schüler aller Schulen: Alle Titel, Beschreibungen, Audio-Begrüßungen und Fußzeilen wurden einladend, inspirierend und universell formuliert ('Entwickelt für blinde und sehbehinderte Schülerinnen und Schüler • 100% barrierefrei • Optimiert für NVDA, JAWS, Braillezeilen und Windows-Tastatursteuerung').",

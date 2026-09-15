@@ -2998,16 +2998,34 @@ async function performWebUntisSync(userOverride, passOverride) {
 
     function addUniqueAbsence(absItem) {
       if (!absItem) return;
-      const sRaw = absItem.startDate || absItem.date;
+      let sRaw = absItem.startDate || absItem.date || absItem.startDateTime || (absItem.excuse && absItem.excuse.date);
       if (!sRaw) return;
-      const sStr = String(sRaw).replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
-      if (sStr.length !== 8) return;
-      const sIso = `${sStr.slice(0, 4)}-${sStr.slice(4, 6)}-${sStr.slice(6, 8)}`;
+      let sIso = '';
+      if (typeof sRaw === 'string' && sRaw.includes('T')) {
+        sIso = sRaw.split('T')[0];
+      } else {
+        const sClean = String(sRaw).replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
+        if (sClean.length === 8) {
+          sIso = `${sClean.slice(0, 4)}-${sClean.slice(4, 6)}-${sClean.slice(6, 8)}`;
+        } else {
+          sIso = String(sRaw).slice(0, 10);
+        }
+      }
       absItem.startDate = sIso;
       if (!absItem.endDate) absItem.endDate = sIso;
 
-      const sTimeStr = absItem.startTime ? formatUntisTimeToStr(absItem.startTime) : '07:45';
-      const eTimeStr = absItem.endTime ? formatUntisTimeToStr(absItem.endTime) : '15:10';
+      let sTimeStr = '07:45';
+      if (absItem.startTime !== undefined) sTimeStr = formatUntisTimeToStr(absItem.startTime);
+      else if (absItem.startDateTime && typeof absItem.startDateTime === 'string' && absItem.startDateTime.includes('T')) {
+        sTimeStr = absItem.startDateTime.split('T')[1].replace('Z', '').slice(0, 5);
+      }
+
+      let eTimeStr = '15:10';
+      if (absItem.endTime !== undefined) eTimeStr = formatUntisTimeToStr(absItem.endTime);
+      else if (absItem.endDateTime && typeof absItem.endDateTime === 'string' && absItem.endDateTime.includes('T')) {
+        eTimeStr = absItem.endDateTime.split('T')[1].replace('Z', '').slice(0, 5);
+      }
+
       absItem.startTime = sTimeStr;
       absItem.endTime = eTimeStr;
 
@@ -3031,24 +3049,92 @@ async function performWebUntisSync(userOverride, passOverride) {
         const rawList = Array.isArray(targetObj) ? targetObj : (targetObj.absences || targetObj.studentAbsences || (targetObj.data && targetObj.data.absences) || []);
         if (Array.isArray(rawList)) {
           rawList.forEach((ab, idx) => {
-            const sRaw = ab.startDate || ab.date;
+            if (!ab) return;
+            // 1. Datum extrahieren (startDateTime, startDate, date, excuse.date)
+            let sRaw = ab.startDateTime || ab.startDate || ab.date || (ab.excuse && ab.excuse.date);
+            let eRaw = ab.endDateTime || ab.endDate || sRaw;
             if (!sRaw) return;
-            const isExc = !!(ab.isExcused || ab.excused || (ab.excuse && ab.excuse.isExcused) || (ab.excuseStatus && String(ab.excuseStatus).toLowerCase() === 'excused'));
-            let reason = ab.reason || ab.text || (ab.excuse && (ab.excuse.text || ab.excuse.reason)) || '';
-            if (!reason && ab.reasonId && window.absenceReasonsMap && window.absenceReasonsMap[ab.reasonId]) {
-              reason = window.absenceReasonsMap[ab.reasonId];
+
+            let sIso = '';
+            if (typeof sRaw === 'string' && sRaw.includes('T')) {
+              sIso = sRaw.split('T')[0];
+            } else {
+              const sClean = String(sRaw).replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
+              if (sClean.length === 8) {
+                sIso = `${sClean.slice(0, 4)}-${sClean.slice(4, 6)}-${sClean.slice(6, 8)}`;
+              } else {
+                sIso = String(sRaw).slice(0, 10);
+              }
             }
-            if (!reason) reason = isExc ? 'Entschuldigte Fehlzeit' : 'Unentschuldigte Fehlzeit';
+
+            let eIso = sIso;
+            if (eRaw) {
+              if (typeof eRaw === 'string' && eRaw.includes('T')) {
+                eIso = eRaw.split('T')[0];
+              } else {
+                const eClean = String(eRaw).replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
+                if (eClean.length === 8) {
+                  eIso = `${eClean.slice(0, 4)}-${eClean.slice(4, 6)}-${eClean.slice(6, 8)}`;
+                }
+              }
+            }
+
+            // 2. Zeiten extrahieren
+            let sTime = '07:45';
+            let eTime = '15:10';
+            if (ab.startDateTime && typeof ab.startDateTime === 'string' && ab.startDateTime.includes('T')) {
+              sTime = ab.startDateTime.split('T')[1].replace('Z', '').slice(0, 5);
+            } else if (ab.startTime !== undefined) {
+              sTime = formatUntisTimeToStr(ab.startTime);
+            }
+
+            if (ab.endDateTime && typeof ab.endDateTime === 'string' && ab.endDateTime.includes('T')) {
+              eTime = ab.endDateTime.split('T')[1].replace('Z', '').slice(0, 5);
+            } else if (ab.endTime !== undefined) {
+              eTime = formatUntisTimeToStr(ab.endTime);
+            }
+
+            // 3. Status & Grund (WebUntis liefert oft absenceReason und text getrennt)
+            const isExc = !!(
+              ab.isExcused ||
+              ab.excused ||
+              (ab.excuse && (ab.excuse.isExcused || ab.excuse.excuseStatusId === 1 || ab.excuse.status === 'excused')) ||
+              (ab.excuseStatus && String(ab.excuseStatus).toLowerCase() === 'excused')
+            );
+
+            let reasonParts = [];
+            if (ab.absenceReason) reasonParts.push(ab.absenceReason);
+            if (ab.reason && ab.reason !== ab.absenceReason) reasonParts.push(ab.reason);
+            if (!reasonParts.length && ab.reasonId && window.absenceReasonsMap && window.absenceReasonsMap[ab.reasonId]) {
+              reasonParts.push(window.absenceReasonsMap[ab.reasonId]);
+            }
+            if (!reasonParts.length && ab.absenceReasonId && window.absenceReasonsMap && window.absenceReasonsMap[ab.absenceReasonId]) {
+              reasonParts.push(window.absenceReasonsMap[ab.absenceReasonId]);
+            }
+            if (ab.text && !reasonParts.includes(ab.text)) reasonParts.push(ab.text);
+            if (ab.excuse && ab.excuse.text && !reasonParts.includes(ab.excuse.text)) reasonParts.push(ab.excuse.text);
+
+            let reason = reasonParts.filter(Boolean).join(' – ') || (isExc ? 'Entschuldigte Fehlzeit' : 'Unentschuldigte Fehlzeit');
+
+            // Fehlstunden (Dauer / 45 min)
+            let hours = ab.hours || ab.absentHours || 1;
+            if (sTime && eTime) {
+              const sMin = parseMinutesFromTimeStr(sTime);
+              const eMin = parseMinutesFromTimeStr(eTime);
+              if (eMin > sMin) {
+                hours = Math.max(1, Math.round((eMin - sMin) / 45));
+              }
+            }
 
             addUniqueAbsence({
-              id: String(ab.id || `rpc-abs-${idx}-${sRaw}`),
-              startDate: sRaw,
-              endDate: ab.endDate || sRaw,
-              startTime: ab.startTime || '07:45',
-              endTime: ab.endTime || '15:10',
+              id: String(ab.id || `rpc-abs-${idx}-${sIso}`),
+              startDate: sIso,
+              endDate: eIso,
+              startTime: sTime,
+              endTime: eTime,
               reason: reason,
               isExcused: isExc,
-              hours: ab.hours || ab.absentHours || 1
+              hours: hours
             });
           });
         }
@@ -3066,21 +3152,59 @@ async function performWebUntisSync(userOverride, passOverride) {
         const restAbsList = Array.isArray(rObj) ? rObj : (rObj.data?.rows || rObj.data?.absences || rObj.data || rObj.absences || []);
         if (Array.isArray(restAbsList)) {
           restAbsList.forEach((ab, idx) => {
-            const sRaw = ab.startDate || ab.date || ab.createDate;
+            if (!ab) return;
+            let sRaw = ab.startDateTime || ab.startDate || ab.date || ab.createDate || (ab.excuse && ab.excuse.date);
             if (!sRaw) return;
-            const isExc = !!(ab.isExcused || ab.excused || (ab.excuse && ab.excuse.isExcused) || (ab.excuseStatus && String(ab.excuseStatus).toLowerCase() === 'excused'));
-            let reason = ab.reason || ab.text || ab.eventReasonName || ab.categoryName || '';
-            if (!reason && ab.reasonId && window.absenceReasonsMap && window.absenceReasonsMap[ab.reasonId]) {
-              reason = window.absenceReasonsMap[ab.reasonId];
+            let sIso = '';
+            if (typeof sRaw === 'string' && sRaw.includes('T')) {
+              sIso = sRaw.split('T')[0];
+            } else {
+              const sClean = String(sRaw).replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
+              if (sClean.length === 8) {
+                sIso = `${sClean.slice(0, 4)}-${sClean.slice(4, 6)}-${sClean.slice(6, 8)}`;
+              } else {
+                sIso = String(sRaw).slice(0, 10);
+              }
             }
-            if (!reason) reason = isExc ? 'Entschuldigt' : 'Unentschuldigt';
+
+            let sTime = '07:45';
+            let eTime = '15:10';
+            if (ab.startDateTime && typeof ab.startDateTime === 'string' && ab.startDateTime.includes('T')) {
+              sTime = ab.startDateTime.split('T')[1].replace('Z', '').slice(0, 5);
+            } else if (ab.startTime !== undefined) {
+              sTime = formatUntisTimeToStr(ab.startTime);
+            } else if (ab.createTime !== undefined) {
+              sTime = formatUntisTimeToStr(ab.createTime);
+            }
+
+            if (ab.endDateTime && typeof ab.endDateTime === 'string' && ab.endDateTime.includes('T')) {
+              eTime = ab.endDateTime.split('T')[1].replace('Z', '').slice(0, 5);
+            } else if (ab.endTime !== undefined) {
+              eTime = formatUntisTimeToStr(ab.endTime);
+            }
+
+            const isExc = !!(
+              ab.isExcused ||
+              ab.excused ||
+              (ab.excuse && (ab.excuse.isExcused || ab.excuse.excuseStatusId === 1)) ||
+              (ab.excuseStatus && String(ab.excuseStatus).toLowerCase() === 'excused')
+            );
+
+            let reasonParts = [];
+            if (ab.absenceReason) reasonParts.push(ab.absenceReason);
+            if (ab.reason && ab.reason !== ab.absenceReason) reasonParts.push(ab.reason);
+            if (ab.eventReasonName) reasonParts.push(ab.eventReasonName);
+            if (ab.categoryName) reasonParts.push(ab.categoryName);
+            if (ab.text && !reasonParts.includes(ab.text)) reasonParts.push(ab.text);
+
+            let reason = reasonParts.filter(Boolean).join(' – ') || (isExc ? 'Entschuldigt' : 'Unentschuldigt');
 
             addUniqueAbsence({
-              id: String(ab.id || `rest-abs-${idx}-${sRaw}`),
-              startDate: sRaw,
-              endDate: ab.endDate || sRaw,
-              startTime: ab.startTime || ab.createTime || '07:45',
-              endTime: ab.endTime || '15:10',
+              id: String(ab.id || `rest-abs-${idx}-${sIso}`),
+              startDate: sIso,
+              endDate: ab.endDate || sIso,
+              startTime: sTime,
+              endTime: eTime,
               reason: reason,
               isExcused: isExc,
               hours: ab.hours || 1
@@ -5581,19 +5705,33 @@ function formatAbsenceTimeClean(t) {
 }
 
 function formatAbsenceDateReadable(abs) {
-  const dRaw = abs.startDate || abs.date;
+  const dRaw = abs.startDate || abs.date || abs.startDateTime;
   if (!dRaw) return '–';
-  const s = String(dRaw).replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
-  if (s.length !== 8) return String(dRaw);
-  const y = parseInt(s.slice(0, 4), 10);
-  const m = parseInt(s.slice(4, 6), 10) - 1;
-  const d = parseInt(s.slice(6, 8), 10);
-  const dt = new Date(y, m, d);
+  let iso = '';
+  if (typeof dRaw === 'string' && dRaw.includes('-')) {
+    iso = dRaw.split('T')[0].trim().slice(0, 10);
+  } else {
+    const sClean = String(dRaw).replace(/\D/g, '').slice(0, 8);
+    if (sClean.length === 8) {
+      iso = `${sClean.slice(0, 4)}-${sClean.slice(4, 6)}-${sClean.slice(6, 8)}`;
+    } else {
+      iso = String(dRaw);
+    }
+  }
 
-  const today = new Date();
-  const isToday = (today.getFullYear() === y && today.getMonth() === m && today.getDate() === d);
-  const baseFmt = formatGermanDate(dt);
-  return isToday ? `Heute (${baseFmt})` : baseFmt;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    const parts = iso.split('-');
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const d = parseInt(parts[2], 10);
+    const dt = new Date(y, m, d);
+
+    const today = new Date();
+    const isToday = (today.getFullYear() === y && today.getMonth() === m && today.getDate() === d);
+    const baseFmt = (typeof formatGermanDate === 'function') ? formatGermanDate(dt) : `${String(d).padStart(2, '0')}.${String(m + 1).padStart(2, '0')}.${y}`;
+    return isToday ? `Heute (${baseFmt})` : baseFmt;
+  }
+  return String(dRaw);
 }
 
 function renderAbsences() {
