@@ -318,7 +318,7 @@ namespace BarrierefreierStundenplan
                 }
                 catch { }
             }
-            return "1.9.22";
+            return "1.9.23";
         }
 
         private static bool IsNewerVersion(string remote, string local)
@@ -1004,6 +1004,13 @@ namespace BarrierefreierStundenplan
             if (rawUrl.StartsWith("/api/webuntis"))
             {
                 ProxyWebUntis(req, resp);
+                return;
+            }
+
+            // 6. IServ API Proxy Endpoints (Login, Emails, Calendar, Exercises)
+            if (rawUrl.StartsWith("/api/iserv"))
+            {
+                ProxyIServ(req, resp);
                 return;
             }
 
@@ -1822,6 +1829,418 @@ namespace BarrierefreierStundenplan
             }
             return null;
         }
+
+
+        #region IServ API Proxy Implementation
+        private static CookieContainer _iservCookies = new CookieContainer();
+        private static string _iservHost = "";
+        private static string _iservUser = "";
+        private static string _iservPass = "";
+        private static bool _iservLoggedIn = false;
+
+        private static void ProxyIServ(HttpListenerRequest req, HttpListenerResponse resp)
+        {
+            try
+            {
+                resp.Headers["Access-Control-Allow-Origin"] = "*";
+                resp.Headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
+                resp.Headers["Access-Control-Allow-Headers"] = "Content-Type, X-IServ-Server, X-IServ-User, X-IServ-Pass";
+                resp.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+
+                if (req.HttpMethod == "OPTIONS")
+                {
+                    resp.StatusCode = 204;
+                    resp.Close();
+                    return;
+                }
+
+                string rawUrl = req.RawUrl;
+                string subPath = "";
+                if (rawUrl.Length > 10) subPath = rawUrl.Substring(10);
+                if (subPath.Contains("?")) subPath = subPath.Substring(0, subPath.IndexOf('?'));
+                subPath = subPath.Trim('/');
+
+                // Lese Anmeldedaten aus Headern (falls vom Client dynamisch übermittelt)
+                string srvHdr = req.Headers["X-IServ-Server"];
+                string userHdr = req.Headers["X-IServ-User"];
+                string passHdr = req.Headers["X-IServ-Pass"];
+
+                if (!string.IsNullOrEmpty(srvHdr)) _iservHost = srvHdr.Trim().Replace("https://", "").Replace("http://", "").TrimEnd('/');
+                if (!string.IsNullOrEmpty(userHdr)) _iservUser = userHdr.Trim();
+                if (!string.IsNullOrEmpty(passHdr)) _iservPass = passHdr.Trim();
+
+                if (subPath == "login")
+                {
+                    HandleIServLogin(req, resp);
+                    return;
+                }
+                else if (subPath == "status")
+                {
+                    SendJsonResponse(resp, 200, string.Format("{{\"success\":true,\"loggedIn\":{0},\"server\":\"{1}\",\"user\":\"{2}\"}}", 
+                        _iservLoggedIn ? "true" : "false", EscapeJsonString(_iservHost), EscapeJsonString(_iservUser)));
+                    return;
+                }
+                else if (subPath == "emails")
+                {
+                    HandleIServEmails(req, resp);
+                    return;
+                }
+                else if (subPath == "calendar")
+                {
+                    HandleIServCalendar(req, resp);
+                    return;
+                }
+                else if (subPath == "exercises" || subPath == "tasks")
+                {
+                    HandleIServExercises(req, resp);
+                    return;
+                }
+
+                SendJsonResponse(resp, 404, "{\"success\":false,\"error\":\"Unbekannter IServ-Endpunkt\"}");
+            }
+            catch (Exception ex)
+            {
+                SendJsonResponse(resp, 500, string.Format("{{\"success\":false,\"error\":\"{0}\"}}", EscapeJsonString(ex.Message)));
+            }
+        }
+
+        private static void HandleIServLogin(HttpListenerRequest req, HttpListenerResponse resp)
+        {
+            string srv = _iservHost;
+            string user = _iservUser;
+            string pass = _iservPass;
+
+            if (req.HttpMethod == "POST")
+            {
+                try
+                {
+                    using (StreamReader sr = new StreamReader(req.InputStream, Encoding.UTF8))
+                    {
+                        string body = sr.ReadToEnd();
+                        Match mSrv = Regex.Match(body, "\"server\"\\s*:\\s*\"([^\"]+)\"");
+                        Match mUser = Regex.Match(body, "\"username\"\\s*:\\s*\"([^\"]+)\"");
+                        Match mPass = Regex.Match(body, "\"password\"\\s*:\\s*\"([^\"]+)\"");
+                        if (mSrv.Success) srv = mSrv.Groups[1].Value.Trim();
+                        if (mUser.Success) user = mUser.Groups[1].Value.Trim();
+                        if (mPass.Success) pass = mPass.Groups[1].Value.Trim();
+                    }
+                }
+                catch { }
+            }
+
+            string error;
+            bool ok = EnsureIServLogin(srv, user, pass, out error);
+            if (ok)
+            {
+                SendJsonResponse(resp, 200, string.Format("{{\"success\":true,\"message\":\"Erfolgreich mit IServ verbunden\",\"server\":\"{0}\",\"user\":\"{1}\"}}", 
+                    EscapeJsonString(_iservHost), EscapeJsonString(_iservUser)));
+            }
+            else
+            {
+                SendJsonResponse(resp, 401, string.Format("{{\"success\":false,\"error\":\"{0}\"}}", EscapeJsonString(error ?? "Anmeldung fehlgeschlagen.")));
+            }
+        }
+
+        private static bool EnsureIServLogin(string srv, string user, string pass, out string error)
+        {
+            error = null;
+            if (string.IsNullOrEmpty(srv) || string.IsNullOrEmpty(user) || string.IsNullOrEmpty(pass))
+            {
+                error = "Server, Benutzername und Passwort sind erforderlich.";
+                return false;
+            }
+
+            srv = srv.Trim().Replace("https://", "").Replace("http://", "").TrimEnd('/');
+            _iservHost = srv;
+            _iservUser = user;
+            _iservPass = pass;
+            _iservCookies = new CookieContainer();
+
+            try
+            {
+                string loginUrl = "https://" + srv + "/iserv/auth/login";
+
+                // 1. Initial GET to obtain session cookies / CSRF
+                HttpWebRequest preReq = (HttpWebRequest)WebRequest.Create(loginUrl);
+                preReq.CookieContainer = _iservCookies;
+                preReq.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+                preReq.Timeout = 12000;
+                try { using (HttpWebResponse preResp = (HttpWebResponse)preReq.GetResponse()) { } } catch { }
+
+                // 2. Submit credentials via POST
+                HttpWebRequest postReq = (HttpWebRequest)WebRequest.Create(loginUrl);
+                postReq.Method = "POST";
+                postReq.CookieContainer = _iservCookies;
+                postReq.ContentType = "application/x-www-form-urlencoded";
+                postReq.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+                postReq.AllowAutoRedirect = true;
+                postReq.Timeout = 15000;
+
+                string postBody = string.Format("_username={0}&_password={1}", Uri.EscapeDataString(user), Uri.EscapeDataString(pass));
+                byte[] bodyBytes = Encoding.UTF8.GetBytes(postBody);
+                postReq.ContentLength = bodyBytes.Length;
+                using (Stream os = postReq.GetRequestStream())
+                {
+                    os.Write(bodyBytes, 0, bodyBytes.Length);
+                }
+
+                string respHtml;
+                using (HttpWebResponse postResp = (HttpWebResponse)postReq.GetResponse())
+                using (StreamReader sr = new StreamReader(postResp.GetResponseStream(), Encoding.UTF8))
+                {
+                    respHtml = sr.ReadToEnd();
+                }
+
+                if (respHtml.Contains("Anmeldung fehlgeschlagen") || respHtml.Contains("Ungültige Anmeldedaten"))
+                {
+                    _iservLoggedIn = false;
+                    error = "Anmeldung fehlgeschlagen! Bitte überprüfe Server, Benutzername und Passwort.";
+                    return false;
+                }
+
+                // 3. Confirm access to /iserv/
+                HttpWebRequest homeReq = (HttpWebRequest)WebRequest.Create("https://" + srv + "/iserv/");
+                homeReq.CookieContainer = _iservCookies;
+                homeReq.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+                homeReq.AllowAutoRedirect = true;
+                homeReq.Timeout = 12000;
+                string homeHtml;
+                using (HttpWebResponse homeResp = (HttpWebResponse)homeReq.GetResponse())
+                using (StreamReader sr = new StreamReader(homeResp.GetResponseStream(), Encoding.UTF8))
+                {
+                    homeHtml = sr.ReadToEnd();
+                }
+
+                // Follow redirect if meta refresh is present
+                Match mRedirect = Regex.Match(homeHtml, "url=([^\"\\s>]+)");
+                if (mRedirect.Success)
+                {
+                    string redir = mRedirect.Groups[1].Value.Replace("&amp;", "&");
+                    if (!redir.StartsWith("http")) redir = "https://" + srv + (redir.StartsWith("/") ? redir : "/" + redir);
+                    HttpWebRequest redReq = (HttpWebRequest)WebRequest.Create(redir);
+                    redReq.CookieContainer = _iservCookies;
+                    redReq.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+                    try { using (HttpWebResponse redResp = (HttpWebResponse)redReq.GetResponse()) { } } catch { }
+                }
+
+                _iservLoggedIn = true;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _iservLoggedIn = false;
+                error = "Verbindungsfehler zu IServ: " + ex.Message;
+                return false;
+            }
+        }
+
+        private static void HandleIServEmails(HttpListenerRequest req, HttpListenerResponse resp)
+        {
+            if (!_iservLoggedIn)
+            {
+                string err;
+                if (!EnsureIServLogin(_iservHost, _iservUser, _iservPass, out err))
+                {
+                    SendJsonResponse(resp, 401, string.Format("{{\"success\":false,\"error\":\"{0}\"}}", EscapeJsonString(err)));
+                    return;
+                }
+            }
+
+            try
+            {
+                string url = "https://" + _iservHost + "/iserv/mail/api/message/list?path=INBOX&length=50&start=0&order%5Bcolumn%5D=date&order%5Bdir%5D=desc";
+                HttpWebRequest mReq = (HttpWebRequest)WebRequest.Create(url);
+                mReq.CookieContainer = _iservCookies;
+                mReq.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+                mReq.Headers["Accept"] = "application/json, text/html, */*";
+                mReq.Timeout = 15000;
+
+                string content;
+                using (HttpWebResponse mResp = (HttpWebResponse)mReq.GetResponse())
+                using (StreamReader sr = new StreamReader(mResp.GetResponseStream(), Encoding.UTF8))
+                {
+                    content = sr.ReadToEnd();
+                }
+
+                string jsonOutput = "";
+                Match mPhp = Regex.Match(content, "<script[^>]*id=[\"']php-data[\"'][^>]*>([\\s\\S]*?)</script>", RegexOptions.IgnoreCase);
+                if (mPhp.Success)
+                {
+                    jsonOutput = mPhp.Groups[1].Value.Trim();
+                }
+                else if (content.Trim().StartsWith("{") || content.Trim().StartsWith("["))
+                {
+                    jsonOutput = content.Trim();
+                }
+
+                if (!string.IsNullOrEmpty(jsonOutput))
+                {
+                    SendJsonResponse(resp, 200, string.Format("{{\"success\":true,\"data\":{0}}}", jsonOutput));
+                }
+                else
+                {
+                    SendJsonResponse(resp, 200, "{\"success\":true,\"data\":{\"data\":[]}}");
+                }
+            }
+            catch (Exception ex)
+            {
+                SendJsonResponse(resp, 500, string.Format("{{\"success\":false,\"error\":\"{0}\"}}", EscapeJsonString(ex.Message)));
+            }
+        }
+
+        private static void HandleIServCalendar(HttpListenerRequest req, HttpListenerResponse resp)
+        {
+            if (!_iservLoggedIn)
+            {
+                string err;
+                if (!EnsureIServLogin(_iservHost, _iservUser, _iservPass, out err))
+                {
+                    SendJsonResponse(resp, 401, string.Format("{{\"success\":false,\"error\":\"{0}\"}}", EscapeJsonString(err)));
+                    return;
+                }
+            }
+
+            try
+            {
+                string urlUpcoming = "https://" + _iservHost + "/iserv/calendar/api/upcoming";
+                HttpWebRequest cReq = (HttpWebRequest)WebRequest.Create(urlUpcoming);
+                cReq.CookieContainer = _iservCookies;
+                cReq.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+                cReq.Timeout = 15000;
+
+                string contentUpcoming = "[]";
+                try
+                {
+                    using (HttpWebResponse cResp = (HttpWebResponse)cReq.GetResponse())
+                    using (StreamReader sr = new StreamReader(cResp.GetResponseStream(), Encoding.UTF8))
+                    {
+                        contentUpcoming = sr.ReadToEnd().Trim();
+                    }
+                }
+                catch { }
+
+                DateTime now = DateTime.Now;
+                string startDate = now.AddMonths(-1).ToString("yyyy-MM-dd");
+                string endDate = now.AddMonths(4).ToString("yyyy-MM-dd");
+                string urlMulti = string.Format("https://{0}/iserv/calendar/feed/calendar-multi?start={1}&end={2}", _iservHost, startDate, endDate);
+                
+                string contentMulti = "[]";
+                try
+                {
+                    HttpWebRequest mReq = (HttpWebRequest)WebRequest.Create(urlMulti);
+                    mReq.CookieContainer = _iservCookies;
+                    mReq.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+                    mReq.Timeout = 15000;
+                    using (HttpWebResponse mResp = (HttpWebResponse)mReq.GetResponse())
+                    using (StreamReader sr = new StreamReader(mResp.GetResponseStream(), Encoding.UTF8))
+                    {
+                        contentMulti = sr.ReadToEnd().Trim();
+                    }
+                }
+                catch { }
+
+                SendJsonResponse(resp, 200, string.Format("{{\"success\":true,\"upcoming\":{0},\"events\":{1}}}", 
+                    contentUpcoming.StartsWith("[") || contentUpcoming.StartsWith("{") ? contentUpcoming : "[]", 
+                    contentMulti.StartsWith("[") || contentMulti.StartsWith("{") ? contentMulti : "[]"));
+            }
+            catch (Exception ex)
+            {
+                SendJsonResponse(resp, 500, string.Format("{{\"success\":false,\"error\":\"{0}\"}}", EscapeJsonString(ex.Message)));
+            }
+        }
+
+        private static void HandleIServExercises(HttpListenerRequest req, HttpListenerResponse resp)
+        {
+            if (!_iservLoggedIn)
+            {
+                string err;
+                if (!EnsureIServLogin(_iservHost, _iservUser, _iservPass, out err))
+                {
+                    SendJsonResponse(resp, 401, string.Format("{{\"success\":false,\"error\":\"{0}\"}}", EscapeJsonString(err)));
+                    return;
+                }
+            }
+
+            try
+            {
+                string url = "https://" + _iservHost + "/iserv/exercise";
+                HttpWebRequest exReq = (HttpWebRequest)WebRequest.Create(url);
+                exReq.CookieContainer = _iservCookies;
+                exReq.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+                exReq.Timeout = 15000;
+
+                string html;
+                using (HttpWebResponse exResp = (HttpWebResponse)exReq.GetResponse())
+                using (StreamReader sr = new StreamReader(exResp.GetResponseStream(), Encoding.UTF8))
+                {
+                    html = sr.ReadToEnd();
+                }
+
+                Match mPhp = Regex.Match(html, "<script[^>]*id=[\"']php-data[\"'][^>]*>([\\s\\S]*?)</script>", RegexOptions.IgnoreCase);
+                if (mPhp.Success)
+                {
+                    string jsonData = mPhp.Groups[1].Value.Trim();
+                    SendJsonResponse(resp, 200, string.Format("{{\"success\":true,\"data\":{0}}}", jsonData));
+                    return;
+                }
+
+                StringBuilder jsonList = new StringBuilder("[");
+                int count = 0;
+                MatchCollection rows = Regex.Matches(html, "<tr[^>]*>([\\s\\S]*?)</tr>", RegexOptions.IgnoreCase);
+                foreach (Match row in rows)
+                {
+                    string rText = row.Groups[1].Value;
+                    if (rText.Contains("<th")) continue;
+                    MatchCollection cols = Regex.Matches(rText, "<td[^>]*>([\\s\\S]*?)</td>", RegexOptions.IgnoreCase);
+                    if (cols.Count >= 3)
+                    {
+                        string c0 = StripHtml(cols[0].Groups[1].Value).Trim();
+                        string c1 = StripHtml(cols[1].Groups[1].Value).Trim();
+                        string c2 = StripHtml(cols[2].Groups[1].Value).Trim();
+                        string c3 = cols.Count >= 4 ? StripHtml(cols[3].Groups[1].Value).Trim() : "";
+                        string c4 = cols.Count >= 5 ? StripHtml(cols[4].Groups[1].Value).Trim() : "";
+
+                        Match mLink = Regex.Match(rText, "href=[\"']([^\"']+)[\"']");
+                        string link = mLink.Success ? mLink.Groups[1].Value : "";
+
+                        if (count > 0) jsonList.Append(",");
+                        jsonList.AppendFormat("{{\"id\":\"ex-{0}\",\"title\":\"{1}\",\"subject\":\"{2}\",\"start\":\"{3}\",\"end\":\"{4}\",\"status\":\"{5}\",\"link\":\"{6}\"}}",
+                            count + 1, EscapeJsonString(c0), EscapeJsonString(c1), EscapeJsonString(c2), EscapeJsonString(c3), EscapeJsonString(c4), EscapeJsonString(link));
+                        count++;
+                    }
+                }
+                jsonList.Append("]");
+                SendJsonResponse(resp, 200, string.Format("{{\"success\":true,\"exercises\":{0}}}", jsonList.ToString()));
+            }
+            catch (Exception ex)
+            {
+                SendJsonResponse(resp, 500, string.Format("{{\"success\":false,\"error\":\"{0}\"}}", EscapeJsonString(ex.Message)));
+            }
+        }
+
+        private static void SendJsonResponse(HttpListenerResponse resp, int statusCode, string json)
+        {
+            try
+            {
+                resp.StatusCode = statusCode;
+                resp.ContentType = "application/json; charset=utf-8";
+                resp.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+                byte[] b = Encoding.UTF8.GetBytes(json);
+                resp.ContentLength64 = b.Length;
+                resp.OutputStream.Write(b, 0, b.Length);
+                resp.OutputStream.Flush();
+                resp.Close();
+            }
+            catch { }
+        }
+
+        private static string StripHtml(string html)
+        {
+            if (string.IsNullOrEmpty(html)) return "";
+            return Regex.Replace(html, "<[^>]+>", " ").Replace("&nbsp;", " ").Replace("&amp;", "&").Trim();
+        }
+        #endregion
+
 
         private static string EscapeJsonString(string s)
         {

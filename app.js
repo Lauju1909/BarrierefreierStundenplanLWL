@@ -1,5 +1,320 @@
 
 // =============================================================================
+// ISERV INTEGRATION MODULE (WCAG 2.2 AAA - E-MAIL, KALENDER & AUFGABEN)
+// =============================================================================
+
+function togglePasswordVisibility(inputId, btnEl) {
+  const inp = document.getElementById(inputId);
+  if (!inp) return;
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    if (btnEl) btnEl.setAttribute('aria-label', 'Passwort verbergen');
+    announceSR('Passwort wird im Klartext angezeigt.', 'polite');
+  } else {
+    inp.type = 'password';
+    if (btnEl) btnEl.setAttribute('aria-label', 'Passwort anzeigen');
+    announceSR('Passwort ist verborgen.', 'polite');
+  }
+  playEarcon('open');
+}
+
+function updateIServUIState() {
+  const isEnabled = !!appData.config.iservEnabled;
+  const formEl = document.getElementById('iserv-credentials-form');
+  if (formEl) formEl.style.display = isEnabled ? 'block' : 'none';
+
+  const badgeEl = document.getElementById('iserv-status-badge');
+  if (badgeEl) {
+    if (!isEnabled) {
+      badgeEl.textContent = 'Deaktiviert';
+      badgeEl.style.background = 'rgba(100, 116, 139, 0.15)';
+      badgeEl.style.borderColor = 'var(--border-color)';
+    } else {
+      const hasCreds = !!(appData.config.iservServer && appData.config.iservUsername && appData.config.iservPassword);
+      badgeEl.textContent = hasCreds ? 'Aktiviert & Verbunden' : 'Aktiviert (Zugangsdaten fehlen)';
+      badgeEl.style.background = hasCreds ? 'rgba(22, 163, 74, 0.15)' : 'rgba(234, 179, 8, 0.15)';
+      badgeEl.style.borderColor = hasCreds ? 'var(--accent-ok)' : 'var(--accent-warning)';
+    }
+  }
+
+  // Filter Buttons in den Reitern ein-/ausblenden
+  const btnMsgIserv = document.getElementById('btn-filter-msg-iserv');
+  if (btnMsgIserv) btnMsgIserv.style.display = isEnabled ? 'inline-flex' : 'none';
+
+  const btnHwIserv = document.getElementById('hw-filter-iserv');
+  if (btnHwIserv) btnHwIserv.style.display = isEnabled ? 'inline-flex' : 'none';
+
+  const btnExamIserv = document.getElementById('filter-iserv');
+  if (btnExamIserv) btnExamIserv.style.display = isEnabled ? 'inline-flex' : 'none';
+
+  const btnSync = document.getElementById('btn-iserv-sync');
+  if (btnSync) btnSync.style.display = (isEnabled && appData.config.iservPassword) ? 'inline-flex' : 'none';
+}
+
+function toggleIServIntegration(enabled) {
+  appData.config.iservEnabled = !!enabled;
+  saveAppData();
+  updateIServUIState();
+
+  if (appData.config.iservEnabled) {
+    playEarcon('success');
+    announceSR('IServ-Funktionen wurden aktiviert. Bitte trage deine IServ-Zugangsdaten ein und teste die Verbindung.', 'assertive');
+    if (appData.config.iservServer && appData.config.iservUsername && appData.config.iservPassword) {
+      syncIServData(false);
+    }
+  } else {
+    playEarcon('delete');
+    announceSR('IServ-Funktionen wurden deaktiviert.', 'polite');
+    renderMessagesView();
+    renderHomework();
+    renderExams();
+  }
+}
+
+async function testAndSaveIServLogin() {
+  const srvEl = document.getElementById('cfg-iserv-server');
+  const userEl = document.getElementById('cfg-iserv-username');
+  const passEl = document.getElementById('cfg-iserv-password');
+  const statusBox = document.getElementById('iserv-status-box');
+
+  const srv = (srvEl ? srvEl.value : '').trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  const user = (userEl ? userEl.value : '').trim();
+  const pass = (passEl ? passEl.value : '').trim();
+
+  if (!srv || !user || !pass) {
+    if (statusBox) {
+      statusBox.style.display = 'block';
+      statusBox.innerHTML = '<div style="color: var(--accent-danger); font-weight: bold;"><span class="emoji-icon" aria-hidden="true">⚠️ </span>Bitte Server, Benutzername und Passwort vollständig ausfüllen.</div>';
+    }
+    announceSR('Bitte Server, Benutzername und Passwort für IServ vollständig ausfüllen.', 'assertive');
+    playEarcon('delete');
+    return;
+  }
+
+  if (statusBox) {
+    statusBox.style.display = 'block';
+    statusBox.innerHTML = '<div style="color: var(--text-color); font-weight: bold;"><span class="emoji-icon" aria-hidden="true">⏳ </span>Verbindung zu ' + escHtml(srv) + ' wird geprüft...</div>';
+  }
+  announceSR('Verbindung zu IServ wird getestet...', 'polite');
+
+  try {
+    const res = await fetch('/api/iserv/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ server: srv, username: user, password: pass })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      appData.config.iservEnabled = true;
+      appData.config.iservServer = srv;
+      appData.config.iservUsername = user;
+      appData.config.iservPassword = pass;
+      saveAppData();
+      updateIServUIState();
+
+      if (statusBox) {
+        statusBox.style.display = 'block';
+        statusBox.innerHTML = '<div style="background: rgba(22, 163, 74, 0.15); border: 2px solid var(--accent-ok); border-radius: var(--radius-sm); padding: 12px; color: var(--accent-ok); font-weight: bold;"><span class="emoji-icon" aria-hidden="true">✅ </span>Erfolgreich mit IServ verbunden! Zugangsdaten wurden sicher gespeichert.</div>';
+      }
+
+      playEarcon('success');
+      const msg = 'Erfolgreich mit IServ verbunden! Lade jetzt E-Mails, Kalender und Aufgaben...';
+      announceSR(msg, 'assertive');
+      speak('Erfolgreich mit IServ verbunden.');
+
+      await syncIServData(true);
+    } else {
+      const errMsg = data.error || 'Anmeldung fehlgeschlagen. Bitte Zugangsdaten prüfen.';
+      if (statusBox) {
+        statusBox.style.display = 'block';
+        statusBox.innerHTML = '<div style="background: rgba(220, 38, 38, 0.15); border: 2px solid var(--accent-danger); border-radius: var(--radius-sm); padding: 12px; color: var(--accent-danger); font-weight: bold;"><span class="emoji-icon" aria-hidden="true">❌ </span>' + escHtml(errMsg) + '</div>';
+      }
+      playEarcon('delete');
+      announceSR('IServ Verbindungsfehler: ' + errMsg, 'assertive');
+      speak('IServ Verbindungsfehler: ' + errMsg);
+    }
+  } catch (err) {
+    const errMsg = 'Server nicht erreichbar oder Netzwerkfehler: ' + (err.message || err);
+    if (statusBox) {
+      statusBox.style.display = 'block';
+      statusBox.innerHTML = '<div style="background: rgba(220, 38, 38, 0.15); border: 2px solid var(--accent-danger); border-radius: var(--radius-sm); padding: 12px; color: var(--accent-danger); font-weight: bold;"><span class="emoji-icon" aria-hidden="true">❌ </span>' + escHtml(errMsg) + '</div>';
+    }
+    playEarcon('delete');
+    announceSR(errMsg, 'assertive');
+  }
+}
+
+async function syncIServData(userInitiated = false) {
+  if (!appData.config.iservEnabled) return;
+  const srv = appData.config.iservServer;
+  const user = appData.config.iservUsername;
+  const pass = appData.config.iservPassword;
+  if (!srv || !user || !pass) return;
+
+  const headers = {
+    'X-IServ-Server': srv,
+    'X-IServ-User': user,
+    'X-IServ-Pass': pass
+  };
+
+  if (userInitiated) {
+    announceSR('Synchronisiere IServ E-Mails, Kalender und Aufgaben...', 'polite');
+  }
+
+  // 1. IServ E-Mails abrufen
+  try {
+    const mRes = await fetch('/api/iserv/emails', { headers });
+    if (mRes.ok) {
+      const mData = await mRes.json();
+      let rawList = [];
+      if (mData.data && Array.isArray(mData.data)) rawList = mData.data;
+      else if (mData.data && mData.data.data && Array.isArray(mData.data.data)) rawList = mData.data.data;
+      else if (Array.isArray(mData)) rawList = mData;
+
+      appData.iservEmails = rawList.map((m, idx) => {
+        let senderStr = 'Unbekannt';
+        if (m.from && Array.isArray(m.from) && m.from[0]) {
+          senderStr = m.from[0].name || m.from[0].email || 'Unbekannt';
+        } else if (typeof m.from === 'string') {
+          senderStr = m.from;
+        } else if (m.sender) {
+          senderStr = m.sender;
+        }
+
+        let dateStr = '';
+        if (m.date && typeof m.date === 'object' && m.date.date) {
+          dateStr = m.date.date;
+        } else if (m.date) {
+          dateStr = String(m.date);
+        }
+
+        let isUnread = false;
+        if (Array.isArray(m.flags)) {
+          isUnread = !m.flags.includes('\\Seen') && !m.flags.includes('Seen');
+        } else if (typeof m.unread === 'boolean') {
+          isUnread = m.unread;
+        }
+
+        return {
+          id: m.id || m.uid || ('iserv-mail-' + idx),
+          type: 'iserv',
+          sender: senderStr,
+          subject: m.subject || '(Kein Betreff)',
+          text: m.preview || m.text || m.body || m.snippet || '',
+          date: dateStr || new Date().toISOString(),
+          unread: isUnread
+        };
+      });
+    }
+  } catch (e) {
+    console.warn('IServ Mail Sync Warnung:', e);
+  }
+
+  // 2. IServ Kalender abrufen
+  try {
+    const cRes = await fetch('/api/iserv/calendar', { headers });
+    if (cRes.ok) {
+      const cData = await cRes.json();
+      let eventList = [];
+      if (cData.upcoming && Array.isArray(cData.upcoming)) {
+        eventList = eventList.concat(cData.upcoming);
+      }
+      if (cData.events && Array.isArray(cData.events)) {
+        eventList = eventList.concat(cData.events);
+      }
+
+      // Deduplizieren und normalisieren
+      const seenIds = new Set();
+      appData.iservEvents = [];
+      eventList.forEach((ev, idx) => {
+        const id = ev.id || ('iserv-ev-' + idx);
+        if (seenIds.has(id)) return;
+        seenIds.add(id);
+
+        let sDate = ev.start || ev.startDate || ev.date || '';
+        let eDate = ev.end || ev.endDate || sDate;
+        let title = ev.title || ev.summary || 'IServ Termin';
+        let desc = ev.description || ev.details || '';
+        let loc = ev.location || ev.room || 'IServ';
+
+        appData.iservEvents.push({
+          id: id,
+          title: title,
+          description: desc,
+          startDate: sDate,
+          endDate: eDate,
+          location: loc,
+          allDay: !!ev.allDay
+        });
+      });
+    }
+  } catch (e) {
+    console.warn('IServ Calendar Sync Warnung:', e);
+  }
+
+  // 3. IServ Aufgaben abrufen
+  try {
+    const exRes = await fetch('/api/iserv/exercises', { headers });
+    if (exRes.ok) {
+      const exData = await exRes.json();
+      let rawTasks = [];
+      if (exData.data && Array.isArray(exData.data)) rawTasks = exData.data;
+      else if (exData.data && exData.data.data && Array.isArray(exData.data.data)) rawTasks = exData.data.data;
+      else if (Array.isArray(exData)) rawTasks = exData;
+
+      appData.iservTasks = rawTasks.map((t, idx) => {
+        return {
+          id: t.id || ('iserv-task-' + idx),
+          title: t.title || t.name || t.subject || 'Aufgabe',
+          subject: t.subject || t.course || '',
+          teacher: t.teacher || t.author || '',
+          dueDate: t.end || t.dueDate || t.date || '',
+          completed: !!t.done || !!t.completed,
+          description: t.description || t.text || t.content || ''
+        };
+      });
+    }
+  } catch (e) {
+    console.warn('IServ Exercises Sync Warnung:', e);
+  }
+
+  saveAppData();
+  renderMessagesView();
+  renderHomework();
+  renderExams();
+
+  if (userInitiated) {
+    playEarcon('success');
+    const msg = `IServ aktualisiert: ${appData.iservEmails.length} E-Mails, ${appData.iservTasks.length} Aufgaben und ${appData.iservEvents.length} Termine geladen.`;
+    announceSR(msg, 'polite');
+    speak(msg);
+  }
+}
+
+function speakIServEmail(mailId) {
+  const mail = (appData.iservEmails || []).find(m => String(m.id) === String(mailId));
+  if (!mail) return;
+  const dObj = mail.date ? new Date(mail.date) : null;
+  const dateFormatted = dObj && !isNaN(dObj) ? formatGermanDate(dObj) : '';
+  const text = `IServ E-Mail von ${mail.sender}${dateFormatted ? ' vom ' + dateFormatted : ''}: Betreff: ${mail.subject}. Inhalt: ${mail.text || 'Keine Textvorschau vorhanden.'}`;
+  speak(text, true);
+  announceSR(text, 'assertive');
+}
+
+function speakIServTask(taskId) {
+  const task = (appData.iservTasks || []).find(t => String(t.id) === String(taskId));
+  if (!task) return;
+  const dObj = task.dueDate ? new Date(task.dueDate) : null;
+  const dateFormatted = dObj && !isNaN(dObj) ? formatGermanDate(dObj) : (task.dueDate || 'Kein Abgabetermin');
+  const statusStr = task.completed ? 'Bereits erledigt' : 'Noch offen';
+  const text = `IServ Aufgabe: ${task.title}. ${task.subject ? 'Fach ' + task.subject + '. ' : ''}${task.teacher ? 'Von Lehrkraft ' + task.teacher + '. ' : ''}Fällig am ${dateFormatted}. Status: ${statusStr}. ${task.description ? 'Beschreibung: ' + task.description : ''}`;
+  speak(text, true);
+  announceSR(text, 'assertive');
+}
+
+
+// =============================================================================
 // BARRIEREFREIE AUDIO-SIGNALE (EARCONS FÜR BLINDE NUTZER)
 // =============================================================================
 let audioCtx = null;
@@ -89,7 +404,11 @@ const DEFAULT_CONFIG = {
   fontSize: 'font-normal',
   ttsEnabled: true,
   ttsRate: 1.0,
-  textOnlyMode: false
+  textOnlyMode: false,
+  iservEnabled: false,
+  iservServer: 'lwl-bk-soest.de',
+  iservUsername: '',
+  iservPassword: ''
 };
 
 
@@ -182,7 +501,10 @@ let appData = {
   selectedGradeSchoolYear: '2025/2026',
   canteen: null,
   selectedCanteenWeek: 'kw38',
-  selectedCanteenDay: 'all'
+  selectedCanteenDay: 'all',
+  iservEmails: [],
+  iservEvents: [],
+  iservTasks: []
 };
 
 // Fehlzeiten & Krankmeldungen sofort aus dem lokalen Speicher laden
@@ -342,7 +664,10 @@ function loadAppData() {
         schoolYear: parsed.schoolYear || null,
         examFilter: 'all',
         homeworkFilter: parsed.homeworkFilter || 'all',
-        messagesFilter: 'all'
+        messagesFilter: 'all',
+        iservEmails: (parsed.iservEmails && Array.isArray(parsed.iservEmails)) ? parsed.iservEmails : [],
+        iservEvents: (parsed.iservEvents && Array.isArray(parsed.iservEvents)) ? parsed.iservEvents : [],
+        iservTasks: (parsed.iservTasks && Array.isArray(parsed.iservTasks)) ? parsed.iservTasks : []
       };
 
       // Gelöschte Nachrichten aus dem Speicher filtern
@@ -447,6 +772,18 @@ function applyConfig() {
   // Account Display
   const uDisp = document.getElementById('settings-username-display');
   if (uDisp) uDisp.textContent = appData.config.username || 'Nicht angemeldet';
+
+  // IServ Settings Population
+  const cfgIservEnabled = document.getElementById('cfg-iserv-enabled');
+  if (cfgIservEnabled) cfgIservEnabled.checked = !!appData.config.iservEnabled;
+  const cfgIservServer = document.getElementById('cfg-iserv-server');
+  if (cfgIservServer && appData.config.iservServer) cfgIservServer.value = appData.config.iservServer;
+  const cfgIservUser = document.getElementById('cfg-iserv-username');
+  if (cfgIservUser && appData.config.iservUsername) cfgIservUser.value = appData.config.iservUsername;
+  const cfgIservPass = document.getElementById('cfg-iserv-password');
+  if (cfgIservPass && appData.config.iservPassword) cfgIservPass.value = appData.config.iservPassword;
+
+  updateIServUIState();
 }
 
 function saveSettings(e) {
@@ -3462,6 +3799,9 @@ async function performWebUntisSync(userOverride, passOverride) {
     try { triggerDesktopNotification(); } catch (e) { logClient('triggerDesktopNotification error: ' + (e.stack || e)); }
     try { updateSyncDisplay(); } catch (e) { logClient('updateSyncDisplay error: ' + (e.stack || e)); }
 
+    if (appData.config.iservEnabled) {
+      syncIServData(false).catch(e => console.warn('IServ Sync Hintergrundfehler:', e));
+    }
     announceSR(`Stundenplan aktualisiert. ${appData.timetable.length} Stunden geladen.`, 'polite');
     logClient('performWebUntisSync completed successfully! timetable count: ' + appData.timetable.length);
     return true;
@@ -4319,7 +4659,8 @@ function setExamFilter(filterType) {
     all: 'Alle Termine und Prüfungen des Schuljahres',
     exams: 'Nur Prüfungen und Klausuren',
     holidays: 'Nur Ferien und Feiertage',
-    upcoming: 'Nur anstehende Termine'
+    upcoming: 'Nur anstehende Termine',
+    iserv: 'Nur IServ-Kalendertermine'
   };
   announceSR(`Filter aktiviert: ${labels[appData.examFilter] || appData.examFilter}`, 'polite');
 }
@@ -4402,11 +4743,39 @@ function renderExams() {
     });
   }
 
+  // C. IServ Kalendertermine
+  if (appData.config.iservEnabled && appData.iservEvents && Array.isArray(appData.iservEvents)) {
+    appData.iservEvents.forEach(ev => {
+      const sIso = normalizeToIsoDate(ev.startDate);
+      const eIso = normalizeToIsoDate(ev.endDate) || sIso;
+      if (!sIso) return;
+      const sParts = sIso.split('-');
+      const eParts = eIso.split('-');
+      const sObj = new Date(parseInt(sParts[0]), parseInt(sParts[1]) - 1, parseInt(sParts[2]));
+      const eObj = new Date(parseInt(eParts[0]), parseInt(eParts[1]) - 1, parseInt(eParts[2]));
+      allEvents.push({
+        id: ev.id,
+        type: 'iserv',
+        title: ev.title,
+        subTitle: ev.description || 'IServ Termin',
+        dateStr: sIso,
+        endDateStr: eIso,
+        dateObj: sObj,
+        endDateObj: eObj,
+        timeStr: (sIso === eIso) ? 'Ganztägig (IServ)' : `Vom ${formatGermanDate(sObj)} bis ${formatGermanDate(eObj)}`,
+        room: ev.location || 'IServ Kalender',
+        teacher: 'IServ Schulserver',
+        isHoliday: false
+      });
+    });
+  }
+
   // Zähler für Filter-Buttons aktualisieren
   const totalAll = allEvents.length;
   const totalExams = allEvents.filter(e => e.type === 'exam').length;
   const totalHolidays = allEvents.filter(e => e.type === 'holiday' || e.type === 'appointment').length;
   const totalUpcoming = allEvents.filter(e => e.endDateObj >= todayStart).length;
+  const totalIserv = allEvents.filter(e => e.type === 'iserv').length;
 
   const countAllEl = document.getElementById('count-all');
   if (countAllEl) countAllEl.textContent = totalAll;
@@ -4416,6 +4785,8 @@ function renderExams() {
   if (countHolidaysEl) countHolidaysEl.textContent = totalHolidays;
   const countUpcomingEl = document.getElementById('count-upcoming');
   if (countUpcomingEl) countUpcomingEl.textContent = totalUpcoming;
+  const countIservEl = document.getElementById('count-iserv');
+  if (countIservEl) countIservEl.textContent = totalIserv;
 
   // 2. Filter anwenden
   const filter = appData.examFilter || 'all';
@@ -4424,6 +4795,8 @@ function renderExams() {
     filtered = allEvents.filter(e => e.type === 'exam');
   } else if (filter === 'holidays') {
     filtered = allEvents.filter(e => e.type === 'holiday' || e.type === 'appointment');
+  } else if (filter === 'iserv') {
+    filtered = allEvents.filter(e => e.type === 'iserv');
   } else if (filter === 'upcoming') {
     filtered = allEvents.filter(e => e.endDateObj >= todayStart);
   }
@@ -4881,16 +5254,19 @@ function renderHomework() {
   const classbookCount = classbook.length;
   const classregCount  = classregEvents.length;
 
+  const iservTasks = (appData.config.iservEnabled && Array.isArray(appData.iservTasks)) ? appData.iservTasks : [];
   const countAllEl  = document.getElementById('hw-count-all');
   const countPendEl = document.getElementById('hw-count-pending');
   const countCompEl = document.getElementById('hw-count-completed');
   const countCbEl   = document.getElementById('hw-count-classbook');
   const countCrEl   = document.getElementById('hw-count-classreg');
-  if (countAllEl)  countAllEl.textContent  = String(allHw.length);
-  if (countPendEl) countPendEl.textContent = String(pendingCount);
-  if (countCompEl) countCompEl.textContent = String(completedCount);
+  const countIservEl = document.getElementById('hw-count-iserv');
+  if (countAllEl)  countAllEl.textContent  = String(allHw.length + iservTasks.length);
+  if (countPendEl) countPendEl.textContent = String(pendingCount + iservTasks.filter(t => !t.completed).length);
+  if (countCompEl) countCompEl.textContent = String(completedCount + iservTasks.filter(t => t.completed).length);
   if (countCbEl)   countCbEl.textContent   = String(classbookCount);
   if (countCrEl)   countCrEl.textContent   = String(classregCount);
+  if (countIservEl) countIservEl.textContent = String(iservTasks.length);
 
   // Filter-Button aktiv-Zustand über Button-IDs setzen
   const filterMap = {
@@ -4898,7 +5274,8 @@ function renderHomework() {
     'pending':   'hw-filter-pending',
     'all':       'hw-filter-all',
     'completed': 'hw-filter-completed',
-    'classbook': 'hw-filter-classbook'
+    'classbook': 'hw-filter-classbook',
+    'iserv':     'hw-filter-iserv'
   };
   Object.entries(filterMap).forEach(([f, id]) => {
     const btn = document.getElementById(id);
@@ -4909,6 +5286,62 @@ function renderHomework() {
   });
 
   let html = '';
+
+  
+  // ---------------------------------------------------------------------------
+  // FALL 1B: SEPARATER FILTER "ISERV-AUFGABEN"
+  // ---------------------------------------------------------------------------
+  if (filter === 'iserv') {
+    html += `
+      <div class="banner-header" style="padding: 12px 0; margin-bottom: 16px;">
+        <h3 class="section-subheading" style="margin: 0; font-size: 1.25rem;"><span class="emoji-icon" aria-hidden="true">📋 </span>IServ-Aufgabenliste (${iservTasks.length} Aufgaben)</h3>
+        <p class="field-hint">Aufgaben und Übungen aus dem offiziellen IServ-Aufgabenmodul deines Schulkontos.</p>
+      </div>`;
+
+    if (iservTasks.length === 0) {
+      html += `
+        <div class="empty-state" role="status" aria-live="polite">
+          <span aria-hidden="true"><span class="emoji-icon" aria-hidden="true">📋</span></span>
+          <h4 style="margin: 0; font-size: inherit; font-weight: bold;">Aktuell liegen keine IServ-Aufgaben vor.</h4>
+          <p class="empty-hint">Neue Aufgaben werden bei der nächsten Synchronisation automatisch von IServ geladen.</p>
+        </div>`;
+    } else {
+      iservTasks.forEach(t => {
+        const dObj = t.dueDate ? new Date(t.dueDate) : null;
+        const dateFormatted = dObj && !isNaN(dObj) ? formatGermanDate(dObj) : (t.dueDate || 'Kein Termin angegeben');
+        const statusBadge = t.completed 
+          ? '<span class="badge" style="background:#dcfce7; color:#15803d; font-weight:bold;">Erledigt</span>' 
+          : '<span class="badge" style="background:#fef3c7; color:#92400e; font-weight:bold;">Ausstehend / Offen</span>';
+
+        html += `
+          <article class="homework-card" style="border-left: 6px solid #0891b2; margin-bottom: 16px; padding: 18px 20px; background: var(--bg-card); border-radius: 8px;" tabindex="0" role="article" aria-label="IServ Aufgabe ${escHtml(t.title)}: Fällig am ${dateFormatted}">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <span class="badge-iserv"><span class="emoji-icon" aria-hidden="true">🌐 </span>IServ Aufgabe</span>
+                <span class="homework-date-badge" style="background: var(--bg-highlight); color: var(--text-color); font-weight: bold; font-size: 14px;">
+                  <span class="emoji-icon" aria-hidden="true">📅 </span>Fällig: ${escHtml(dateFormatted)}
+                </span>
+                ${t.subject ? `<span class="urgent-badge" style="background: #fef3c7; color: #92400e; font-weight: bold; font-size: 13px;"><span class="emoji-icon" aria-hidden="true">📚 </span>${escHtml(t.subject)}</span>` : ''}
+                ${t.teacher ? `<span class="urgent-badge" style="background: #e0e7ff; color: #3730a3; font-weight: bold; font-size: 13px;"><span class="emoji-icon" aria-hidden="true">👤 </span>${escHtml(t.teacher)}</span>` : ''}
+                ${statusBadge}
+              </div>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button type="button" class="btn btn-secondary" style="min-height: 32px; padding: 4px 12px; font-size: 13px;" onclick="speakIServTask('${t.id}')" aria-label="Diese IServ-Aufgabe vorlesen">
+                  <span class="emoji-icon" aria-hidden="true">🔊 </span>Vorlesen
+                </button>
+                <a href="https://${escHtml(appData.config.iservServer || 'lwl-bk-soest.de')}/iserv/exercise" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="min-height: 32px; padding: 4px 12px; font-size: 13px; text-decoration: none;" aria-label="Aufgabe in IServ öffnen">
+                  <span class="emoji-icon" aria-hidden="true">🌐 </span>IServ
+                </a>
+              </div>
+            </div>
+            <h4 class="homework-title" style="margin: 6px 0 10px 0; font-size: 1.15rem; font-weight: bold;">${escHtml(t.title)}</h4>
+            ${t.description ? `<p class="homework-desc" style="margin: 0; color: var(--text-secondary); line-height: 1.5;">${escHtml(t.description)}</p>` : ''}
+          </article>`;
+      });
+    }
+    container.innerHTML = html;
+    return;
+  }
 
   // ---------------------------------------------------------------------------
   // FALL 1: SEPARATER PUNKT "OFFIZIELLE KLASSENBUCHEINTRÄGE"
@@ -5099,7 +5532,8 @@ function setHomeworkFilter(filterType) {
     pending: 'Offene Hausaufgaben',
     all: 'Alle Hausaufgaben',
     completed: 'Erledigte Hausaufgaben',
-    classbook: 'Durchgenommener Lehrstoff'
+    classbook: 'Durchgenommener Lehrstoff',
+    iserv: 'IServ-Aufgabenliste'
   };
   announceSR(`Filter aktiviert: ${names[filterType] || filterType}`, 'polite');
 }
@@ -6969,22 +7403,26 @@ function renderMessagesView() {
   const filter = appData.messagesFilter || 'all';
 
   // Zähler aktualisieren
-  const allCount = messages.length;
+  const iservEmails = (appData.config.iservEnabled && Array.isArray(appData.iservEmails)) ? appData.iservEmails : [];
+  const allCount = messages.length + iservEmails.length;
   const newsCount = messages.filter(m => m.type === 'news').length;
   const inboxCount = messages.filter(m => m.type === 'inbox').length;
   const sentCount = messages.filter(m => m.type === 'sent').length;
+  const iservCount = iservEmails.length;
 
   const cAll = document.getElementById('count-msg-all');
   const cNews = document.getElementById('count-msg-news');
   const cInbox = document.getElementById('count-msg-inbox');
   const cSent = document.getElementById('count-msg-sent');
+  const cIserv = document.getElementById('count-msg-iserv');
   if (cAll) cAll.textContent = String(allCount);
   if (cNews) cNews.textContent = String(newsCount);
   if (cInbox) cInbox.textContent = String(inboxCount);
   if (cSent) cSent.textContent = String(sentCount);
+  if (cIserv) cIserv.textContent = String(iservCount);
 
   // Filter Buttons Styling
-  ['all', 'news', 'inbox', 'sent'].forEach(f => {
+  ['all', 'news', 'inbox', 'sent', 'iserv'].forEach(f => {
     const btn = document.getElementById(`btn-filter-msg-${f}`);
     if (btn) {
       btn.classList.toggle('active', f === filter);
@@ -7011,6 +7449,10 @@ function renderMessagesView() {
   if (filter === 'news') filtered = messages.filter(m => m.type === 'news');
   else if (filter === 'inbox') filtered = messages.filter(m => m.type === 'inbox');
   else if (filter === 'sent') filtered = messages.filter(m => m.type === 'sent');
+  else if (filter === 'iserv') filtered = iservEmails;
+  else if (filter === 'all' && iservEmails.length > 0) {
+    filtered = [...messages, ...iservEmails].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+  }
 
   if (filtered.length === 0) {
     container.innerHTML = `
@@ -7026,13 +7468,18 @@ function renderMessagesView() {
   filtered.forEach(msg => {
     const isNews = msg.type === 'news';
     const isSent = msg.type === 'sent';
-    const isInbox = msg.type === 'inbox' || (!isNews && !isSent);
+    const isIserv = msg.type === 'iserv';
+    const isInbox = msg.type === 'inbox' || (!isNews && !isSent && !isIserv);
 
     let badgeClass = 'msg-badge-inbox';
     let badgeLabel = '<span class="emoji-icon" aria-hidden="true">📥 </span>Posteingang';
     let highlightClass = 'inbox-highlight';
 
-    if (isNews) {
+    if (isIserv) {
+      badgeClass = 'msg-badge-iserv';
+      badgeLabel = '<span class="emoji-icon" aria-hidden="true">📧 </span>IServ E-Mail';
+      highlightClass = msg.unread ? 'iserv-highlight iserv-unread' : 'iserv-highlight';
+    } else if (isNews) {
       badgeClass = 'msg-badge-news';
       badgeLabel = '<span class="emoji-icon" aria-hidden="true">📢 </span>Tagesnachricht der Schule';
       highlightClass = 'news-highlight';
@@ -7053,12 +7500,19 @@ function renderMessagesView() {
             <span class="msg-date"><span class="emoji-icon" aria-hidden="true">📅 </span>${escHtml(dateFormatted)}${timeFormatted ? ' um ' + escHtml(timeFormatted) + ' Uhr' : ''}</span>
           </div>
           <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            ${isIserv ? `
+            <button type="button" class="btn btn-secondary" style="min-height: 34px; padding: 4px 10px; font-size: 13px;" onclick="speakIServEmail('${msg.id}')" aria-label="Diese E-Mail vorlesen">
+              <span class="emoji-icon" aria-hidden="true">🔊 </span>Vorlesen
+            </button>
+            <a href="https://${escHtml(appData.config.iservServer || 'lwl-bk-soest.de')}/iserv/mail" target="_blank" rel="noopener noreferrer" class="btn btn-secondary" style="min-height: 34px; padding: 4px 10px; font-size: 13px; text-decoration: none;" aria-label="E-Mail im IServ Webmailer öffnen">
+              <span class="emoji-icon" aria-hidden="true">🌐 </span>In IServ öffnen
+            </a>` : `
             <button type="button" class="btn btn-secondary" style="min-height: 34px; padding: 4px 10px; font-size: 13px;" onclick="speakMsg('${msg.id}')" aria-label="Diese Mitteilung vorlesen">
               <span class="emoji-icon" aria-hidden="true">🔊 </span>Vorlesen
             </button>
             <button type="button" class="btn btn-danger" style="min-height: 34px; padding: 4px 10px; font-size: 13px;" onclick="deleteMessage('${msg.id}')" aria-label="Mitteilung ${escHtml(msg.subject || '')} löschen">
               <span class="emoji-icon" aria-hidden="true">🗑️ </span>Löschen
-            </button>
+            </button>`}
           </div>
         </div>
         <h4 class="msg-title">${escHtml(msg.subject || 'Ohne Betreff')}</h4>
@@ -7211,6 +7665,14 @@ function handleSendMessageSubmit(event) {
 function filterMessages(type) {
   appData.messagesFilter = type;
   renderMessagesView();
+  const names = {
+    all: 'Alle Nachrichten und E-Mails',
+    news: 'Tagesnachrichten und Ticker',
+    inbox: 'WebUntis Posteingang',
+    sent: 'Gesendete Mitteilungen',
+    iserv: 'IServ E-Mails'
+  };
+  announceSR('Filter aktiviert: ' + (names[type] || type), 'polite');
 }
 
 function readMessagesSummary() {
@@ -7218,11 +7680,13 @@ function readMessagesSummary() {
   const news = msgs.filter(m => m.type === 'news');
   const inbox = msgs.filter(m => m.type === 'inbox');
   const sent = msgs.filter(m => m.type === 'sent');
+  const iserv = (appData.config.iservEnabled && Array.isArray(appData.iservEmails)) ? appData.iservEmails : [];
 
   let text = `Mitteilungs-Übersicht: Du hast ${msgs.length} Mitteilung${msgs.length !== 1 ? 'en' : ''}. `;
   if (news.length > 0) text += `Davon ${news.length} Tagesnachricht${news.length > 1 ? 'en' : ''} der Schule. `;
   if (inbox.length > 0) text += `Du hast ${inbox.length} Nachricht${inbox.length > 1 ? 'en' : ''} im Posteingang. `;
   if (sent.length > 0) text += `Du hast ${sent.length} Nachricht${sent.length > 1 ? 'en' : ''} gesendet. `;
+  if (iserv.length > 0) text += `Zusätzlich liegen ${iserv.length} E-Mail${iserv.length > 1 ? 's' : ''} in deinem IServ-Postfach. `;
 
   if (msgs.length === 0) {
     text += 'Aktuell liegen keine neuen Mitteilungen oder Tagesnachrichten vor.';

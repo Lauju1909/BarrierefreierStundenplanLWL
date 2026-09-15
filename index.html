@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Barrierefreies WebUntis – Für blinde und sehbehinderte Schülerinnen und Schüler</title>
-  <link rel="stylesheet" href="style.css?v=1.9.22">
+  <link rel="stylesheet" href="style.css?v=1.9.23">
 </head>
 <body class="theme-light font-normal" id="app-body">
 
@@ -368,6 +368,9 @@
             <button type="button" class="btn btn-secondary filter-btn" id="filter-upcoming" onclick="setExamFilter('upcoming')">
               <span><span class="emoji-icon" aria-hidden="true">⏳ </span><strong>Nur anstehend</strong> (<span id="count-upcoming">0</span>)</span>
             </button>
+            <button type="button" class="btn btn-secondary filter-btn" id="filter-iserv" onclick="setExamFilter('iserv')" style="display: none;">
+              <span><span class="emoji-icon" aria-hidden="true">📅 </span><strong>IServ-Termine</strong> (<span id="count-iserv">0</span>)</span>
+            </button>
           </div>
           <div id="exams-schoolyear-badge" class="today-badge" style="font-size: 14px; font-weight: bold; background: rgba(2, 132, 199, 0.15); border: 2px solid var(--accent-info);">
             Schuljahr 2026/2027
@@ -432,6 +435,9 @@
             </button>
             <button type="button" class="btn btn-secondary filter-btn" id="hw-filter-classbook" onclick="setHomeworkFilter('classbook')">
               <span><span class="emoji-icon" aria-hidden="true">📖 </span><strong>Durchgenommener Lehrstoff</strong> (<span id="hw-count-classbook">0</span>)</span>
+            </button>
+            <button type="button" class="btn btn-secondary filter-btn" id="hw-filter-iserv" onclick="setHomeworkFilter('iserv')" style="display: none;">
+              <span><span class="emoji-icon" aria-hidden="true">📋 </span><strong>IServ-Aufgaben</strong> (<span id="hw-count-iserv">0</span>)</span>
             </button>
           </div>
         </div>
@@ -639,6 +645,9 @@
         <button type="button" class="filter-btn" id="btn-filter-msg-sent" onclick="filterMessages('sent')">
           <span><span class="emoji-icon" aria-hidden="true">📤 </span>Gesendet</span> <span class="filter-count" id="count-msg-sent">0</span>
         </button>
+        <button type="button" class="filter-btn" id="btn-filter-msg-iserv" onclick="filterMessages('iserv')" style="display: none;">
+          <span><span class="emoji-icon" aria-hidden="true">📧 </span>IServ E-Mails</span> <span class="filter-count" id="count-msg-iserv">0</span>
+        </button>
       </div>
 
       <!-- LISTE DER MITTEILUNGEN & TAGESNACHRICHTEN -->
@@ -821,6 +830,68 @@
         </div>
       </section>
 
+      
+      <!-- 2. ISERV-SCHULSERVER (E-MAILS, KALENDER & AUFGABEN) -->
+      <section class="section-card" aria-labelledby="iserv-cfg-heading">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 8px;">
+          <h3 id="iserv-cfg-heading" style="font-size: var(--font-size-lg); margin: 0;">
+            <span class="emoji-icon" aria-hidden="true">🌐 </span>IServ-Schulserver (E-Mail, Kalender &amp; Aufgaben)
+          </h3>
+          <span id="iserv-status-badge" class="today-badge" style="background: rgba(100, 116, 139, 0.15); border: 2px solid var(--border-color); font-weight: bold; font-size: 13px;">
+            Deaktiviert
+          </span>
+        </div>
+        <p class="field-hint">
+          Verbinde dein offizielles IServ-Schulkonto, um deine E-Mails (Reiter 6), deinen IServ-Kalender (Reiter 3) und deine Schulaufgaben (Reiter 4) direkt barrierefrei abzurufen.
+        </p>
+
+        <div style="margin-top: 14px;">
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 12px; background: var(--bg-surface-elevated); border: 2px solid var(--border-color); border-radius: var(--radius-md);">
+            <input type="checkbox" id="cfg-iserv-enabled" onchange="toggleIServIntegration(this.checked)" style="width: 24px; height: 24px;">
+            <span style="font-size: var(--font-size-base); font-weight: bold;">IServ-Funktionen aktivieren (E-Mails, Kalender &amp; Aufgabenliste)</span>
+          </label>
+        </div>
+
+        <div id="iserv-credentials-form" style="display: none; margin-top: 16px; background: var(--bg-surface-elevated); border: 2px solid var(--border-color); border-radius: var(--radius-md); padding: 18px;">
+          <div class="accessible-form">
+            <div class="form-group">
+              <label for="cfg-iserv-server" class="field-label"><strong>IServ-Server / Schul-Domain:</strong> <span style="color: var(--accent-danger);">*</span></label>
+              <input type="text" id="cfg-iserv-server" class="large-input" placeholder="z. B. lwl-bk-soest.de oder meine-schule.de" value="lwl-bk-soest.de" autocomplete="url">
+              <span class="field-hint">Gib die Internet-Adresse deines IServ-Portals an (ohne https://).</span>
+            </div>
+
+            <div class="form-row-2">
+              <div class="form-group">
+                <label for="cfg-iserv-username" class="field-label"><strong>IServ-Benutzername:</strong> <span style="color: var(--accent-danger);">*</span></label>
+                <input type="text" id="cfg-iserv-username" class="large-input" placeholder="vorname.nachname" autocomplete="username">
+                <span class="field-hint">Dein IServ-Kürzel oder Vorname.Nachname.</span>
+              </div>
+              <div class="form-group">
+                <label for="cfg-iserv-password" class="field-label"><strong>IServ-Passwort:</strong> <span style="color: var(--accent-danger);">*</span></label>
+                <div style="display: flex; gap: 8px;">
+                  <input type="password" id="cfg-iserv-password" class="large-input" placeholder="••••••••" autocomplete="current-password" style="flex: 1;">
+                  <button type="button" class="btn btn-secondary" onclick="togglePasswordVisibility('cfg-iserv-password', this)" style="min-height: 48px; padding: 0 12px;" aria-label="Passwort anzeigen oder verbergen">
+                    <span class="emoji-icon" aria-hidden="true">👁️</span>
+                  </button>
+                </div>
+                <span class="field-hint">Wird sicher lokal auf deinem Rechner gespeichert.</span>
+              </div>
+            </div>
+
+            <div class="form-actions" style="margin-top: 16px; display: flex; gap: 12px; flex-wrap: wrap;">
+              <button type="button" class="btn btn-primary" id="btn-iserv-test" onclick="testAndSaveIServLogin()">
+                <span class="emoji-icon" aria-hidden="true">🔌 </span><strong>Verbindung testen &amp; speichern</strong>
+              </button>
+              <button type="button" class="btn btn-secondary" id="btn-iserv-sync" onclick="syncIServData(true)" style="display: none;">
+                <span class="emoji-icon" aria-hidden="true">🔄 </span>Jetzt IServ-Daten abrufen
+              </button>
+            </div>
+
+            <div id="iserv-status-box" style="display: none; margin-top: 14px;" role="status" aria-live="polite"></div>
+          </div>
+        </div>
+      </section>
+
       <!-- 2. BARRIEREFREIHEIT & DESIGN -->
       <section class="section-card" aria-labelledby="a11y-cfg-heading">
         <h3 id="a11y-cfg-heading" style="font-size: var(--font-size-lg); margin-bottom: 6px;"><span class="emoji-icon" aria-hidden="true">👁️ </span>Barrierefreiheit &amp; Kontraste (WCAG 2.2 AAA)</h3>
@@ -879,7 +950,7 @@
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
             <div>
               <p style="font-size: var(--font-size-base); margin-bottom: 4px;">
-                Installierte Version: <strong id="app-version-display">v1.9.9</strong> (Barrierefreies WebUntis)             </p>
+                Installierte Version: <strong id="app-version-display">v1.9.23</strong> (Barrierefreies WebUntis)             </p>
               <p style="font-size: 14px; color: var(--text-muted);" id="update-status-detail">
                 Automatische Hintergrundaktualisierung über GitHub ist aktiv.
               </p>
@@ -1112,6 +1183,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=1.9.22"></script>
+  <script src="app.js?v=1.9.23"></script>
 </body>
 </html>

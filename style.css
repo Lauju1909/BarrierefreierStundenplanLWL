@@ -2412,3 +2412,50 @@ body.theme-high-contrast .school-search-item:focus-visible {
   background: #ffff00 !important;
   color: #000000 !important;
 }
+
+
+/* ISERV INTEGRATION STYLES */
+.msg-badge-iserv {
+  background: #cffafe;
+  color: #0e7490;
+  border: 1px solid #0891b2;
+}
+
+.iserv-highlight {
+  border-left: 6px solid #0891b2 !important;
+}
+
+.badge-iserv {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-weight: bold;
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.iserv-unread {
+  background: #f0fdf4 !important;
+  border-left: 6px solid #16a34a !important;
+}
+
+body.theme-dark .msg-badge-iserv {
+  background: #164e63;
+  color: #a5f3fc;
+  border-color: #0891b2;
+}
+
+body.theme-dark .badge-iserv {
+  background: #075985;
+  color: #bae6fd;
+}
+
+body.theme-high-contrast .msg-badge-iserv,
+body.theme-high-contrast .badge-iserv {
+  background: #000000 !important;
+  color: #ffff00 !important;
+  border: 2px solid #ffff00 !important;
+}
