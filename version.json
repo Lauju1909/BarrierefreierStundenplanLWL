@@ -1,10 +1,11 @@
 {
-  "version": "1.9.21",
+  "version": "1.9.22",
   "name": "Barrierefreies WebUntis",
   "buildDate": "2026-09-15",
   "repository": "https://github.com/Lauju1909/BarrierefreiesWebUntis",
   "executable": "Barrierefreies_WebUntis.exe",
   "features": [
+    "Cache-Busting & perfekte Fehlzeiten-Darstellung: HTTP No-Cache Header fuer WebView2 und Cache-Parameter (?v=1.9.22). Fehlzeiten-Karte zeigt Wochentag, Datum und saubere Uhrzeit mit \"bis\" (z. B. Dienstag, 15.09.2026 (Heute) • 07:45 bis 09:15 Uhr (2 Fehlstunden)). Grund ohne redundantes \"ohne Grund\". Button beschreibt direkt die Aktion (\"Als entschuldigt markieren\").",
     "Doppelansagen in Fehlzeiten-Karten beseitigt: aria-label und tabindex von Artikeln entfernt, redundant wiederholter Status im Button auf eine klare Handlungsaufforderung umgestellt und Begruendung bereinigt, sodass Datum, Uhrzeit, Status und Grund genau einmal barrierefrei vorgelesen werden.",
     "Fehlzeiten-Statistik barrierefrei & unmissverstaendlich optimiert: Saubere Trennung von Fehlstunden (2 Std.) und ganzen Fehltagen (0 Tage bei Teilverspaetung). Einheitliche Beschriftung vor den Zahlen mit Einheiten (Std. / Tage) und praezisen ARIA-Regionen, damit Screenreader-Nutzer Fehltage und Fehlstunden niemals mehr verwechseln.",
     "WebUntis Fehlzeiten-Erkennung behoben: WebUntis Mobile startDateTime/endDateTime und geteilte Abwesenheitsgruende (z. B. Taxi-Verspaetung, Krankheit) werden sofort erkannt, in der Fehlzeiten-Statistik und Liste angezeigt sowie barrierefrei vorgelesen.",

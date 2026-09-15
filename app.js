@@ -190,8 +190,27 @@ try {
   const initCachedAbs = JSON.parse(localStorage.getItem('webuntis_cached_absences') || '[]');
   const initCustomAbs = JSON.parse(localStorage.getItem('webuntis_custom_absences') || '[]');
   const initAbsMap = new Map();
-  if (Array.isArray(initCachedAbs)) initCachedAbs.forEach(a => { if (a && a.id) initAbsMap.set(a.id, a); });
-  if (Array.isArray(initCustomAbs)) initCustomAbs.forEach(a => { if (a && a.id) initAbsMap.set(a.id, a); });
+  function cleanAbsReason(r) {
+    if (!r) return '';
+    let str = String(r).trim();
+    if (/^Abwesend ohne Grund\s*[–\-:]\s*(.+)$/i.test(str)) {
+      const m = str.match(/^Abwesend ohne Grund\s*[–\-:]\s*(.+)$/i);
+      if (m && m[1]) return m[1].trim();
+    }
+    return str;
+  }
+  if (Array.isArray(initCachedAbs)) initCachedAbs.forEach(a => {
+    if (a && a.id) {
+      if (a.reason) a.reason = cleanAbsReason(a.reason);
+      initAbsMap.set(a.id, a);
+    }
+  });
+  if (Array.isArray(initCustomAbs)) initCustomAbs.forEach(a => {
+    if (a && a.id) {
+      if (a.reason) a.reason = cleanAbsReason(a.reason);
+      initAbsMap.set(a.id, a);
+    }
+  });
   if (initAbsMap.size > 0) {
     appData.absences = Array.from(initAbsMap.values()).sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
   }
@@ -5743,8 +5762,9 @@ function formatAbsenceDateReadable(abs) {
 
     const today = new Date();
     const isToday = (today.getFullYear() === y && today.getMonth() === m && today.getDate() === d);
-    const baseFmt = (typeof formatGermanDate === 'function') ? formatGermanDate(dt) : `${String(d).padStart(2, '0')}.${String(m + 1).padStart(2, '0')}.${y}`;
-    return isToday ? `Heute (${baseFmt})` : baseFmt;
+    const dayName = dt.toLocaleDateString('de-DE', { weekday: 'long' });
+    const dayFmt = `${String(d).padStart(2, '0')}.${String(m + 1).padStart(2, '0')}.${y}`;
+    return isToday ? `${dayName}, ${dayFmt} (Heute)` : `${dayName}, ${dayFmt}`;
   }
   return String(dRaw);
 }
@@ -5833,13 +5853,14 @@ function renderAbsences() {
   absences.forEach((abs, idx) => {
     const dateStr = formatAbsenceDateReadable(abs);
     const timeStr = (abs.startTime && abs.endTime)
-      ? `${formatAbsenceTimeClean(abs.startTime)} – ${formatAbsenceTimeClean(abs.endTime)} Uhr`
+      ? `${formatAbsenceTimeClean(abs.startTime)} bis ${formatAbsenceTimeClean(abs.endTime)} Uhr`
       : 'Ganztägig (gesamter Schultag)';
 
     const statusLabel = abs.isExcused ? '<span class="emoji-icon" aria-hidden="true">🟢 </span>Entschuldigt' : '<span class="emoji-icon" aria-hidden="true">🔴 </span>Unentschuldigt / Offen';
     const statusText  = abs.isExcused ? 'Entschuldigt' : 'Unentschuldigt / Offen';
     const statusClass = abs.isExcused ? 'excused' : 'unexcused';
     const isCustom    = !!abs.isCustom;
+    const hoursNum    = abs.hours || 1;
 
     let cleanReason = (abs.reason || '').trim();
     if (/^Abwesend ohne Grund\s*[–\-:]\s*(.+)$/i.test(cleanReason)) {
@@ -5852,15 +5873,15 @@ function renderAbsences() {
         <div class="absence-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
           <div>
             <h4 class="absence-date" style="margin: 0; font-size: 1.15rem; font-weight: bold;">
-              <span class="emoji-icon" aria-hidden="true">📅 </span>${dateStr} <span style="font-weight: normal; font-size: 0.95rem; color: var(--text-secondary); margin-left: 8px;"><span class="emoji-icon" aria-hidden="true">⏰ </span>${timeStr} (${abs.hours || 1} Std.)</span>
+              <span class="emoji-icon" aria-hidden="true">📅 </span>${dateStr} <span style="font-weight: normal; font-size: 0.95rem; color: var(--text-secondary); margin-left: 8px;">• <span class="emoji-icon" aria-hidden="true">⏰ </span>${timeStr} (${hoursNum} Fehlstunde${hoursNum !== 1 ? 'n' : ''})</span>
             </h4>
           </div>
           <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
             <span class="absence-status ${statusClass}" style="font-weight: bold;">${statusLabel}</span>
             <button type="button" class="btn btn-secondary" style="min-height: 32px; padding: 3px 8px; font-size: 0.85rem;"
                     onclick="toggleAbsenceExcusedStatus('${abs.id}')"
-                    aria-label="${abs.isExcused ? 'Status umschalten: als unentschuldigt markieren' : 'Status umschalten: als entschuldigt markieren'}">
-              <span>Status ändern</span>
+                    aria-label="${abs.isExcused ? 'Fehlzeit als unentschuldigt markieren' : 'Fehlzeit als entschuldigt markieren'}">
+              <span>${abs.isExcused ? 'Als offen markieren' : 'Als entschuldigt markieren'}</span>
             </button>
             ${isCustom ? `
               <button type="button" class="btn btn-secondary" style="min-height: 32px; padding: 3px 8px; font-size: 0.85rem; color: var(--accent-danger);"

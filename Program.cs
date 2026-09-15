@@ -318,7 +318,7 @@ namespace BarrierefreierStundenplan
                 }
                 catch { }
             }
-            return "1.9.21";
+            return "1.9.22";
         }
 
         private static bool IsNewerVersion(string remote, string local)
@@ -1009,6 +1009,10 @@ namespace BarrierefreierStundenplan
 
             // 5. Integrierte statische Dateien (HTML, CSS, JS) aus Disk oder EXE servieren
             string filename = rawUrl.TrimStart('/');
+            if (filename.Contains("?"))
+            {
+                filename = filename.Substring(0, filename.IndexOf('?'));
+            }
             if (string.IsNullOrEmpty(filename) || filename == "/")
             {
                 filename = "index.html";
@@ -1020,6 +1024,9 @@ namespace BarrierefreierStundenplan
             {
                 resp.StatusCode = 200;
                 resp.ContentType = contentType;
+                resp.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+                resp.Headers["Pragma"] = "no-cache";
+                resp.Headers["Expires"] = "0";
                 resp.ContentLength64 = content.Length;
                 resp.OutputStream.Write(content, 0, content.Length);
                 resp.OutputStream.Flush();
