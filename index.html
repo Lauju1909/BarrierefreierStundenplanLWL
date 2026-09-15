@@ -455,13 +455,86 @@
             <h2 class="banner-title">Fehlzeiten &amp; Entschuldigungen</h2>
             <p class="banner-subtitle">Übersicht aller Fehltage, Fehlstunden und Entschuldigungsstatus aus WebUntis.</p>
           </div>
-          <div>
-            <button type="button" class="btn btn-secondary" onclick="readAbsencesSummary()">
+          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button type="button" class="btn btn-primary" onclick="toggleAbsenceComposer()" id="btn-compose-absence-toggle">
+              <span class="emoji-icon" aria-hidden="true">✍️ </span><strong>Krankmeldung / Fehlzeit erfassen (K)</strong>
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="readAbsencesSummary()" aria-label="Fehlzeiten vorlesen">
               <span class="emoji-icon" aria-hidden="true">🔊 </span>Fehlzeiten vorlesen (V)
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="performWebUntisSync()" title="Fehlzeiten aus WebUntis aktualisieren">
+              <span class="emoji-icon" aria-hidden="true">🔄 </span>Aktualisieren (A)
             </button>
           </div>
         </div>
       </div>
+
+      <!-- FORMULAR ZUM ERFASSEN EINER KRANKMELDUNG / FEHLZEIT (EINKLAPPBAR) -->
+      <section id="absence-composer-card" class="section-card" style="display: none; border-color: var(--accent-primary); margin-bottom: 20px;" aria-labelledby="absence-composer-heading">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+          <h3 id="absence-composer-heading" style="font-size: var(--font-size-lg); color: var(--accent-primary);"><span class="emoji-icon" aria-hidden="true">✍️ </span>Krankmeldung / Fehlzeit erfassen</h3>
+          <button type="button" class="btn btn-secondary" style="min-height: 36px; padding: 4px 10px;" onclick="toggleAbsenceComposer(false)" aria-label="Formular schließen"><span class="emoji-icon" aria-hidden="true">✕ </span>Schließen</button>
+        </div>
+        <form id="form-report-absence" onsubmit="handleReportAbsenceSubmit(event)" class="accessible-form">
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="absence-start-date" class="field-label"><strong>Datum (von):</strong> <span class="required-star">*</span></label>
+              <input type="date" id="absence-start-date" class="large-input" required>
+            </div>
+            <div class="form-group">
+              <label for="absence-end-date" class="field-label"><strong>Datum (bis):</strong> <span class="required-star">*</span></label>
+              <input type="date" id="absence-end-date" class="large-input" required>
+            </div>
+          </div>
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="absence-reason-select" class="field-label"><strong>Grund der Fehlzeit:</strong> <span class="required-star">*</span></label>
+              <select id="absence-reason-select" class="large-select" required>
+                <option value="Krankheit">Krankheit / Erkältung</option>
+                <option value="Arzttermin">Arzttermin</option>
+                <option value="Behördengang">Behördengang / Amtstermin</option>
+                <option value="Beurlaubung">Genehmigte Beurlaubung</option>
+                <option value="Praktikum">Praktikum</option>
+                <option value="Sonstiges">Sonstiges</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="absence-type-select" class="field-label"><strong>Umfang / Zeitspanne:</strong> <span class="required-star">*</span></label>
+              <select id="absence-type-select" class="large-select" onchange="handleAbsenceTypeChange(this.value)">
+                <option value="full">Ganztägig (gesamter Schultag)</option>
+                <option value="custom">Bestimmte Uhrzeit / Stunden</option>
+              </select>
+            </div>
+          </div>
+          <div id="absence-custom-times" class="form-row-2" style="display: none;">
+            <div class="form-group">
+              <label for="absence-start-time" class="field-label"><strong>Beginn:</strong></label>
+              <input type="time" id="absence-start-time" class="large-input" value="07:45">
+            </div>
+            <div class="form-group">
+              <label for="absence-end-time" class="field-label"><strong>Ende:</strong></label>
+              <input type="time" id="absence-end-time" class="large-input" value="15:10">
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="absence-note" class="field-label"><strong>Bemerkung / Notiz (optional):</strong></label>
+            <input type="text" id="absence-note" class="large-input" placeholder="z. B. Ärztliches Attest wird nachgereicht">
+          </div>
+          <div class="form-group" style="margin-top: 10px;">
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: var(--font-size-base); padding: 4px 0;">
+              <input type="checkbox" id="absence-send-message" style="width: 20px; height: 20px;">
+              <span><strong>Mitteilung an Lehrkraft senden</strong> (automatisch über WebUntis)</span>
+            </label>
+          </div>
+          <div class="form-actions" style="margin-top: 14px; display: flex; gap: 10px; justify-content: flex-end;">
+            <button type="button" class="btn btn-secondary" onclick="toggleAbsenceComposer(false)">Abbrechen</button>
+            <button type="submit" class="btn btn-primary" id="btn-save-absence">
+              <span class="emoji-icon" aria-hidden="true">💾 </span><strong>Fehlzeit speichern</strong>
+            </button>
+          </div>
+        </form>
+        <div id="absence-composer-status" style="display: none; margin-top: 12px;"></div>
+      </section>
 
       <!-- STATISTIK-KARTEN -->
       <h3 class="sr-only">Fehlzeiten-Statistik</h3>

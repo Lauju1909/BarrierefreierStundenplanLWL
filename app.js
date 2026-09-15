@@ -185,6 +185,18 @@ let appData = {
   selectedCanteenDay: 'all'
 };
 
+// Fehlzeiten & Krankmeldungen sofort aus dem lokalen Speicher laden
+try {
+  const initCachedAbs = JSON.parse(localStorage.getItem('webuntis_cached_absences') || '[]');
+  const initCustomAbs = JSON.parse(localStorage.getItem('webuntis_custom_absences') || '[]');
+  const initAbsMap = new Map();
+  if (Array.isArray(initCachedAbs)) initCachedAbs.forEach(a => { if (a && a.id) initAbsMap.set(a.id, a); });
+  if (Array.isArray(initCustomAbs)) initCustomAbs.forEach(a => { if (a && a.id) initAbsMap.set(a.id, a); });
+  if (initAbsMap.size > 0) {
+    appData.absences = Array.from(initAbsMap.values()).sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+  }
+} catch (e) { }
+
 let currentTab = 'overview';
 let selectedDay = 'today'; // 'today', 'tomorrow', 1..5, 'all'
 let selectedWeekOffset = 0; // 0 = aktuelle Schulwoche, -1 = vorherige Woche, +1 = nächste Woche
@@ -5359,8 +5371,49 @@ function readHomeworkSummary() {
 }
 
 // =============================================================================
-// 9d. FEHLZEITEN RENDERN
+// 9d. FEHLZEITEN RENDERN & KRANKMELDUNGEN (VOLLSTÄNDIG BARRIEREFREI WCAG 2.2 AAA)
 // =============================================================================
+
+function parseMinutesFromTimeStr(t) {
+  if (!t) return 0;
+  const s = String(t).trim();
+  if (s.includes(':')) {
+    const p = s.split(':');
+    return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0);
+  }
+  const n = parseInt(s, 10);
+  if (isNaN(n)) return 0;
+  return Math.floor(n / 100) * 60 + (n % 100);
+}
+
+function formatAbsenceTimeClean(t) {
+  if (!t) return '–';
+  const s = String(t).trim();
+  if (s.includes(':')) {
+    const parts = s.split(':');
+    return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+  }
+  const n = parseInt(s, 10);
+  if (isNaN(n)) return s;
+  return `${String(Math.floor(n / 100)).padStart(2, '0')}:${String(n % 100).padStart(2, '0')}`;
+}
+
+function formatAbsenceDateReadable(abs) {
+  const dRaw = abs.startDate || abs.date;
+  if (!dRaw) return '–';
+  const s = String(dRaw).replace(/[-T:\s].*$/, '').replace(/-/g, '').trim().slice(0, 8);
+  if (s.length !== 8) return String(dRaw);
+  const y = parseInt(s.slice(0, 4), 10);
+  const m = parseInt(s.slice(4, 6), 10) - 1;
+  const d = parseInt(s.slice(6, 8), 10);
+  const dt = new Date(y, m, d);
+
+  const today = new Date();
+  const isToday = (today.getFullYear() === y && today.getMonth() === m && today.getDate() === d);
+  const baseFmt = formatGermanDate(dt);
+  return isToday ? `Heute (${baseFmt})` : baseFmt;
+}
+
 function renderAbsences() {
   const container = document.getElementById('absences-list-container');
   if (!container) return;
@@ -5373,90 +5426,278 @@ function renderAbsences() {
   const excusedEl  = document.getElementById('stat-absence-excused');
   const openEl     = document.getElementById('stat-absence-unexcused');
 
-  const total    = absences.length;
-  const excused  = absences.filter(a => a.isExcused).length;
-  const open     = total - excused;
-  const minutes  = absences.reduce((sum, a) => {
-    if (a.startTime && a.endTime) {
-      const [sh, sm] = String(a.startTime).padStart(4,'0').match(/../g).map(Number);
-      const [eh, em] = String(a.endTime).padStart(4,'0').match(/../g).map(Number);
-      return sum + ((eh * 60 + em) - (sh * 60 + sm));
+  // Fehltage: Anzahl unterschiedlicher Kalendertage
+  const distinctDays = new Set(absences.map(a => (a.startDate || a.date || '').slice(0, 10)).filter(Boolean)).size;
+  const excusedCount = absences.filter(a => !!a.isExcused).length;
+  const openCount    = absences.filter(a => !a.isExcused).length;
+
+  // Fehlstunden berechnen
+  let totalHours = 0;
+  absences.forEach(a => {
+    if (a.hours && typeof a.hours === 'number') {
+      totalHours += a.hours;
+    } else if (a.startTime && a.endTime) {
+      const sMin = parseMinutesFromTimeStr(a.startTime);
+      const eMin = parseMinutesFromTimeStr(a.endTime);
+      const diff = eMin - sMin;
+      if (diff > 0) {
+        totalHours += Math.max(1, Math.round(diff / 45));
+      } else {
+        totalHours += 1;
+      }
+    } else {
+      totalHours += 6; // Ganztägige Fehlzeit (Standard: 6 Stunden)
     }
-    return sum + 45; // Annahme: 1 Stunde = 45 min
-  }, 0);
-  const hours = Math.round(minutes / 45); // Fehlstunden (à 45 min)
+  });
 
-  if (totalEl)    totalEl.textContent    = String(total);
-  if (hoursEl)    hoursEl.textContent    = String(hours);
-
-  if (excusedEl)  excusedEl.textContent  = String(excused);
-  if (openEl)     openEl.textContent     = String(open);
-
+  if (totalEl)    totalEl.textContent    = String(distinctDays || absences.length);
+  if (hoursEl)    hoursEl.textContent    = String(totalHours);
+  if (excusedEl)  excusedEl.textContent  = String(excusedCount);
+  if (openEl)     openEl.textContent     = String(openCount);
 
   if (absences.length === 0) {
     container.innerHTML = `
       <div class="empty-state" role="status" aria-live="polite">
         <span aria-hidden="true"><span class="emoji-icon" aria-hidden="true">✅</span></span>
         <h3 style="margin: 0; font-size: inherit; font-weight: bold;">Keine Fehlzeiten vorhanden.</h3>
-        <p class="empty-hint">Fehlzeiten werden automatisch aus WebUntis geladen.</p>
+        <p class="empty-hint">Fehlzeiten werden automatisch aus WebUntis geladen oder können oben mit "Krankmeldung / Fehlzeit erfassen" eingetragen werden.</p>
       </div>`;
     return;
   }
 
-  const fmtTime = t => {
-    if (!t) return '–';
-    const s = String(t).padStart(4,'0');
-    return s.slice(0,2) + ':' + s.slice(2);
-  };
-
   let html = `<h3 class="section-subheading" style="margin: 18px 0 12px 0; font-size: 1.25rem;"><span class="emoji-icon" aria-hidden="true">⏱️ </span>Erfasste Fehlzeiten (${absences.length})</h3>`;
-  absences.forEach(abs => {
-    const dateStr = abs.date
-      ? formatGermanDate(new Date(
-          String(abs.date).slice(0,4) + '-' +
-          String(abs.date).slice(4,6) + '-' +
-          String(abs.date).slice(6,8)))
-      : (abs.startDate ? formatGermanDate(new Date(abs.startDate)) : '–');
+  
+  absences.forEach((abs, idx) => {
+    const dateStr = formatAbsenceDateReadable(abs);
+    const timeStr = (abs.startTime && abs.endTime)
+      ? `${formatAbsenceTimeClean(abs.startTime)} – ${formatAbsenceTimeClean(abs.endTime)} Uhr`
+      : 'Ganztägig (gesamter Schultag)';
 
-    const timeStr = (abs.startTime || abs.endTime)
-      ? `${fmtTime(abs.startTime)} – ${fmtTime(abs.endTime)}`
-      : 'Ganztägig';
-
-    const statusLabel = abs.isExcused ? '<span class="emoji-icon" aria-hidden="true">✅ </span>Entschuldigt' : '<span class="emoji-icon" aria-hidden="true">⚠️ </span>Unentschuldigt';
+    const statusLabel = abs.isExcused ? '<span class="emoji-icon" aria-hidden="true">🟢 </span>Entschuldigt' : '<span class="emoji-icon" aria-hidden="true">🔴 </span>Unentschuldigt / Offen';
+    const statusText  = abs.isExcused ? 'Entschuldigt' : 'Unentschuldigt / Offen';
     const statusClass = abs.isExcused ? 'excused' : 'unexcused';
+    const isCustom    = !!abs.isCustom;
 
     html += `
-      <article class="absence-item ${statusClass}" role="article"
-               aria-label="Fehlzeit am ${dateStr}, ${statusLabel}">
-        <div class="absence-header">
-          <h4 class="absence-date"><span class="emoji-icon" aria-hidden="true">📅 </span>${dateStr}</h4>
-          <span class="absence-time"><span class="emoji-icon" aria-hidden="true">⏰ </span>${timeStr}</span>
-          <span class="absence-status ${statusClass}">${statusLabel}</span>
+      <article class="absence-item ${statusClass}" role="article" tabindex="0"
+               aria-label="Fehlzeit am ${dateStr}, ${timeStr}, ${statusText}">
+        <div class="absence-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
+          <div>
+            <h4 class="absence-date" style="margin: 0; font-size: 1.15rem; font-weight: bold;">
+              <span class="emoji-icon" aria-hidden="true">📅 </span>${dateStr}
+            </h4>
+            <span class="absence-time" style="font-size: 0.95rem; color: var(--text-secondary); display: inline-block; margin-top: 4px;">
+              <span class="emoji-icon" aria-hidden="true">⏰ </span>${timeStr}
+            </span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <span class="absence-status ${statusClass}" style="font-weight: bold;">${statusLabel}</span>
+            <button type="button" class="btn btn-secondary" style="min-height: 32px; padding: 3px 8px; font-size: 0.85rem;"
+                    onclick="toggleAbsenceExcusedStatus('${abs.id}')"
+                    aria-label="Status für Fehlzeit am ${dateStr} umschalten (aktuell ${statusText})">
+              <span>Status ändern</span>
+            </button>
+            ${isCustom ? `
+              <button type="button" class="btn btn-secondary" style="min-height: 32px; padding: 3px 8px; font-size: 0.85rem; color: var(--accent-danger);"
+                      onclick="deleteCustomAbsence('${abs.id}')"
+                      aria-label="Fehlzeit am ${dateStr} löschen">
+                <span class="emoji-icon" aria-hidden="true">🗑️ </span>Löschen
+              </button>
+            ` : ''}
+          </div>
         </div>
-        ${abs.subject ? `<span class="absence-subject"><span class="emoji-icon" aria-hidden="true">📘 </span>${escHtml(abs.subject)}</span>` : ''}
-        ${abs.reason  ? `<span class="absence-reason">Grund: ${escHtml(abs.reason)}</span>`  : ''}
+        ${abs.subject ? `<div style="margin-top: 6px;"><span class="absence-subject"><span class="emoji-icon" aria-hidden="true">📘 </span>Fach: ${escHtml(abs.subject)}</span></div>` : ''}
+        ${abs.reason  ? `<div style="margin-top: 6px;"><span class="absence-reason"><strong>Grund:</strong> ${escHtml(abs.reason)}</span></div>`  : ''}
       </article>`;
   });
 
   container.innerHTML = html;
 }
 
+// Dialog zur Erfassung einer neuen Krankmeldung / Fehlzeit öffnen/schließen
+function toggleAbsenceComposer(show) {
+  const card = document.getElementById('absence-composer-card');
+  if (!card) return;
+  const isCurrentlyOpen = (card.style.display !== 'none');
+  const shouldOpen = (show !== undefined) ? show : !isCurrentlyOpen;
+
+  card.style.display = shouldOpen ? 'block' : 'none';
+
+  if (shouldOpen) {
+    playEarcon('open');
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const startInput = document.getElementById('absence-start-date');
+    const endInput   = document.getElementById('absence-end-date');
+    if (startInput && !startInput.value) startInput.value = todayIso;
+    if (endInput && !endInput.value) endInput.value = todayIso;
+
+    setTimeout(() => {
+      if (startInput) startInput.focus();
+    }, 50);
+    announceSR('Formular für Krankmeldung und Fehlzeit geöffnet. Trage hier deine Fehlzeit ein.', 'polite');
+  } else {
+    playEarcon('delete');
+    const toggleBtn = document.getElementById('btn-compose-absence-toggle');
+    if (toggleBtn) toggleBtn.focus();
+    announceSR('Formular geschlossen.', 'polite');
+  }
+}
+
+function handleAbsenceTypeChange(val) {
+  const customDiv = document.getElementById('absence-custom-times');
+  if (customDiv) {
+    customDiv.style.display = (val === 'custom') ? 'grid' : 'none';
+  }
+}
+
+// Neue Fehlzeit / Krankmeldung speichern
+async function handleReportAbsenceSubmit(event) {
+  if (event) event.preventDefault();
+  const startInput = document.getElementById('absence-start-date');
+  const endInput   = document.getElementById('absence-end-date');
+  const reasonSel  = document.getElementById('absence-reason-select');
+  const typeSel    = document.getElementById('absence-type-select');
+  const startTInput= document.getElementById('absence-start-time');
+  const endTInput  = document.getElementById('absence-end-time');
+  const noteInput  = document.getElementById('absence-note');
+  const sendMsgChk = document.getElementById('absence-send-message');
+
+  const startDate = startInput ? startInput.value : '';
+  const endDate   = (endInput && endInput.value) ? endInput.value : startDate;
+  const reasonVal = reasonSel ? reasonSel.value : 'Krankheit';
+  const noteVal   = noteInput ? noteInput.value.trim() : '';
+  const isFullDay = (typeSel && typeSel.value === 'full');
+  const startTime = isFullDay ? '07:45' : (startTInput ? startTInput.value : '07:45');
+  const endTime   = isFullDay ? '15:10' : (endTInput ? endTInput.value : '15:10');
+
+  if (!startDate) {
+    alert('Bitte gib mindestens ein Startdatum an.');
+    return;
+  }
+
+  const sMin = parseMinutesFromTimeStr(startTime);
+  const eMin = parseMinutesFromTimeStr(endTime);
+  const duration = Math.max(1, Math.round((eMin - sMin) / 45));
+
+  const newAbs = {
+    id: 'custom-abs-' + Date.now(),
+    startDate: startDate,
+    endDate: endDate,
+    startTime: startTime,
+    endTime: endTime,
+    reason: noteVal ? `${reasonVal}: ${noteVal}` : reasonVal,
+    isExcused: false,
+    isCustom: true,
+    hours: isFullDay ? 6 : duration
+  };
+
+  // Lokal in localStorage persistieren
+  try {
+    const list = JSON.parse(localStorage.getItem('webuntis_custom_absences') || '[]');
+    list.unshift(newAbs);
+    localStorage.setItem('webuntis_custom_absences', JSON.stringify(list));
+  } catch (e) { }
+
+  // Im aktuellen Datenbestand hinzufügen
+  if (!appData.absences) appData.absences = [];
+  appData.absences.unshift(newAbs);
+  appData.absences.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+
+  playEarcon('save');
+
+  // Optional: Mitteilung an die Klassenlehrkraft senden
+  if (sendMsgChk && sendMsgChk.checked) {
+    try {
+      const studentName = (appData.config && appData.config.username) ? appData.config.username : 'Schüler';
+      const msgSubj = `Krankmeldung / Fehlzeit (${startDate})`;
+      const msgBody = `Guten Tag,\n\nhiermit melde ich eine Fehlzeit für den Zeitraum von ${startDate} bis ${endDate}.\nGrund: ${reasonVal}${noteVal ? '\nHinweis: ' + noteVal : ''}\n\nMit freundlichen Grüßen,\n${studentName}`;
+      if (typeof handleSendMessageDirect === 'function') {
+        await handleSendMessageDirect(msgSubj, msgBody);
+      }
+    } catch (e) { }
+  }
+
+  // Formular zurücksetzen & schließen
+  toggleAbsenceComposer(false);
+  renderAbsences();
+  announceSR(`Fehlzeit für ${startDate} erfolgreich erfasst und gespeichert.`, 'assertive');
+}
+
+// Fehlzeit löschen
+function deleteCustomAbsence(id) {
+  if (!confirm('Möchtest du diese erfasste Fehlzeit wirklich löschen?')) return;
+  try {
+    let list = JSON.parse(localStorage.getItem('webuntis_custom_absences') || '[]');
+    list = list.filter(a => a.id !== id);
+    localStorage.setItem('webuntis_custom_absences', JSON.stringify(list));
+  } catch (e) { }
+
+  if (appData.absences) {
+    appData.absences = appData.absences.filter(a => a.id !== id);
+  }
+  playEarcon('delete');
+  renderAbsences();
+  announceSR('Fehlzeit wurde gelöscht.', 'polite');
+}
+
+// Status Entschuldigt / Unentschuldigt umschalten
+function toggleAbsenceExcusedStatus(id) {
+  if (!appData.absences) return;
+  const abs = appData.absences.find(a => a.id === id);
+  if (!abs) return;
+
+  abs.isExcused = !abs.isExcused;
+
+  // In custom absences aktualisieren falls vorhanden
+  try {
+    let list = JSON.parse(localStorage.getItem('webuntis_custom_absences') || '[]');
+    const cItem = list.find(a => a.id === id);
+    if (cItem) {
+      cItem.isExcused = abs.isExcused;
+      localStorage.setItem('webuntis_custom_absences', JSON.stringify(list));
+    }
+  } catch (e) { }
+
+  // Im Cache sichern
+  try {
+    localStorage.setItem('webuntis_cached_absences', JSON.stringify(appData.absences));
+  } catch (e) { }
+
+  playEarcon('done');
+  renderAbsences();
+  const stateText = abs.isExcused ? 'entschuldigt' : 'unentschuldigt / offen';
+  announceSR(`Status für Fehlzeit am ${formatAbsenceDateReadable(abs)} auf ${stateText} geändert.`, 'polite');
+}
+
 function readAbsencesSummary() {
   const absences = appData.absences || [];
+  const distinctDays = new Set(absences.map(a => (a.startDate || a.date || '').slice(0, 10)).filter(Boolean)).size;
   const total   = absences.length;
-  const excused = absences.filter(a => a.isExcused).length;
+  const excused = absences.filter(a => !!a.isExcused).length;
   const open    = total - excused;
 
-  let text = `Fehlzeiten-Übersicht: Du hast insgesamt ${total} Fehlzeit${total !== 1 ? 'en' : ''}`;
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayAbsences = absences.filter(a => (a.startDate || a.date || '').slice(0, 10) === todayIso);
+
+  let text = `Fehlzeiten-Übersicht: Du hast insgesamt ${distinctDays} Fehltag${distinctDays !== 1 ? 'e' : ''} mit ${total} erfassten Fehlzeiten`;
   if (total > 0) {
-    text += `, davon ${excused} entschuldigt und ${open} unentschuldigt`;
+    text += `, davon ${excused} entschuldigt und ${open} unentschuldigt oder offen`;
   }
   text += '. ';
 
+  if (todayAbsences.length > 0) {
+    text += `Wichtig: Für den heutigen Tag liegen ${todayAbsences.length} erfasste Fehlzeiten vor: `;
+    todayAbsences.forEach(ta => {
+      text += `Grund: ${ta.reason || 'Krank'}. Status: ${ta.isExcused ? 'Entschuldigt' : 'Noch offen'}. `;
+    });
+  }
+
   if (open > 0) {
-    text += `Du hast noch ${open} unentschuldigte Fehlzeit${open !== 1 ? 'en' : ''}. `;
+    text += `Du hast aktuell noch ${open} unentschuldigte Fehlzeit${open !== 1 ? 'en' : ''}. Reiche zeitnah eine Entschuldigung ein.`;
   } else if (total > 0) {
-    text += 'Alle Fehlzeiten sind entschuldigt. ';
+    text += 'Alle deine erfassten Fehlzeiten sind vollständig entschuldigt.';
+  } else {
+    text += 'Es liegen keine Fehlzeiten vor.';
   }
 
   speak(text, true);
@@ -5906,10 +6147,17 @@ function initApp() {
       } else {
         triggerManualSync();
       }
+    } else if (e.key === 'k' || e.key === 'K') {
+      e.preventDefault();
+      if (currentTab !== 'absences') {
+        switchTab('absences');
+      }
+      toggleAbsenceComposer(true);
     } else if (e.key === 'Escape') {
       closeLessonDetails();
       closeGradeModal();
       toggleMessageComposer(false);
+      toggleAbsenceComposer(false);
     }
   });
 
